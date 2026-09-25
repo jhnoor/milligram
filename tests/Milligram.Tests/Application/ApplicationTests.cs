@@ -3,6 +3,7 @@ using Milligram.Adapters.Cli;
 using Milligram.Analysis.CSharp;
 using Milligram.Application;
 using Milligram.Domain.Hierarchy;
+using Milligram.Domain.Model;
 using Milligram.Domain.Policies;
 
 namespace Milligram.Tests.Application;
@@ -190,21 +191,86 @@ public class ProjectInitializerTests
     {
         using var project = new TempProject(
             ("src/Shop/Domain/Order.cs", "namespace Shop.Domain; public class Order { }"),
-            ("src/Shop/Web/Page.cs", "namespace Shop.Web; public class Page { }"),
+            ("src/Shop/Web/Page.cs", "namespace Shop.Web; public class Page { public Shop.Domain.Order Order = new(); }"),
             ("tests/Shop.Tests/Shop.Tests.csproj", "<Project><ItemGroup><PackageReference Include=\"xunit\" /></ItemGroup></Project>"),
             ("tests/Shop.Tests/T.cs", "namespace Shop.Tests; public class T { }"));
         var paths = new ProjectPaths(project.Root);
         var initializer = new ProjectInitializer(paths, new CSharpScanner(), new Milligram.Analysis.DotNet.DotNetProjectLocator());
 
-        Assert.True(initializer.Initialize(force: false));
-        Assert.False(initializer.Initialize(force: false));
+        Assert.NotNull(initializer.Initialize(force: false));
+        Assert.Null(initializer.Initialize(force: false));
 
         var policy = JsonFile.Read<Policy>(paths.PolicyFile)!;
         Assert.Equal("src", policy.Src);
         Assert.Equal("Shop", policy.Prefix);
-        Assert.Equal(["Domain", "Web"], policy.Order);
+        Assert.Equal(["Web", "Domain"], policy.Order);
+        Assert.Equal([["Domain"], ["Web"]], policy.Levels);
         Assert.Contains("tests/Shop.Tests/**", policy.Exclude);
         Assert.Contains(".milligram/", File.ReadAllLines(Path.Combine(project.Root, ".gitignore")));
+    }
+
+    [Fact]
+    public void InitializeReportsTheLightestLinksOfCyclesAsOutward()
+    {
+        using var project = new TempProject(
+            ("Domain.cs", "namespace Shop.Domain { public class Order { public Shop.Web.Page? Back; } }"),
+            ("Web.cs", "namespace Shop.Web { public class Page { public Shop.Domain.Order A = new(), B = new(); public Shop.Domain.Order C() => A; } }"));
+        var initializer = new ProjectInitializer(new ProjectPaths(project.Root), new CSharpScanner(), new FakeProjectLocator());
+
+        var initialization = initializer.Initialize(force: false)!;
+
+        Assert.Equal([["Domain"], ["Web"]], initialization.Policy.Levels);
+        var outward = Assert.Single(initialization.Outward);
+        Assert.Equal(("Domain", "Web", 1), (outward.From, outward.To, outward.Count));
+        Assert.Equal(
+            [
+                "Levels, inferred from the dependencies (inner first; edit them in milligram.json):",
+                "  L0  Domain",
+                "  L1  Web",
+                "1 dependency points outward (red), the lightest links in dependency cycles:",
+                "  Domain -> Web (1 reference)",
+            ],
+            initialization.Describe());
+    }
+
+    private static DependencyEdge Outward(string from, string to, int count) => new(from, to, EdgeKind.Dependency, count);
+
+    [Fact]
+    public void DescribeListsLevelsAndTheLightestOutwardLinksFirst()
+    {
+        var described = new Initialization(
+            new Policy { Levels = [["Domain"], ["Adapters", "Analysis"]] },
+            [Outward("B", "Z", 5), Outward("C", "Y", 1), Outward("A", "Z", 5), Outward("A", "Y", 5)]).Describe();
+
+        Assert.Equal(
+            [
+                "Levels, inferred from the dependencies (inner first; edit them in milligram.json):",
+                "  L0  Domain",
+                "  L1  Adapters, Analysis",
+                "4 dependencies point outward (red), the lightest links in dependency cycles:",
+                "  C -> Y (1 reference)",
+                "  A -> Y (5 references)",
+                "  A -> Z (5 references)",
+                "  B -> Z (5 references)",
+            ],
+            described);
+    }
+
+    [Fact]
+    public void DescribeSaysSoWhenThereAreNoCyclesAndCapsLongLists()
+    {
+        Assert.Empty(new Initialization(new Policy(), []).Describe());
+        var acyclic = new Initialization(new Policy { Levels = [["Domain"]] }, []);
+        Assert.Equal("No dependency cycles between top-level namespaces.", acyclic.Describe()[^1]);
+
+        var ten = Enumerable.Range(0, 10).Select(i => Outward($"N{i:00}", "Top", 2)).ToList();
+        Assert.Equal("  N09 -> Top (2 references)", new Initialization(acyclic.Policy, ten).Describe()[^1]);
+
+        var twelve = Enumerable.Range(0, 12).Select(i => Outward($"N{i:00}", "Top", 2)).ToList();
+        var described = new Initialization(acyclic.Policy, twelve).Describe();
+        Assert.Contains("12 dependencies point outward (red), the lightest links in dependency cycles:", described);
+        Assert.DoesNotContain("  N10 -> Top (2 references)", described);
+        Assert.Equal("  and 2 more", described[^1]);
     }
 }
 

@@ -38,7 +38,12 @@ cd /path/to/your/csharp/project
 milligram
 ```
 
-The first run writes `milligram.json` from the namespaces it finds. Every run scans the code,
+The first run writes `milligram.json` from the namespaces it finds. It also infers the
+**levels** from the dependencies: a namespace that depends on nothing is innermost, and each of
+the others sits just outside the namespaces it uses. When namespaces depend on each other in a
+cycle, Milligram breaks the cycle at its lightest link (the fewest references) and leaves that
+link pointing outward, so the first diagram already shows the tangles in red. The console lists
+the levels it chose. Edit `levels` to match the architecture you intend. Every run scans the code,
 serves the viewer at `http://localhost:5170/` (loopback only), opens your browser, and starts the
 agent in a terminal. Edit code or `milligram.json` and the diagram updates by itself.
 
@@ -150,7 +155,7 @@ agent tokens.
 | Command | Does |
 |---------|------|
 | `milligram` | Viewer and agent. Options: `--port N`, `--no-agent`, `--no-browser`, `--keep-agent`, `--project DIR`. |
-| `milligram init [--force]` | Write `milligram.json` from the source. |
+| `milligram init [--force]` | Write `milligram.json` from the source, inferring levels from the dependencies. |
 | `milligram ir` | Rescan the source. |
 | `milligram crap [--coverage file.xml]` | Run the tests with coverage (or read a Cobertura file) and score CRAP. |
 | `milligram mutate [--all] [files…]` | Mutation-test changed methods (every file if you list none). |
