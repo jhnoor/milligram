@@ -1,5 +1,7 @@
 # Milligram
 
+[![CI](https://github.com/jhnoor/milligram/actions/workflows/ci.yml/badge.svg)](https://github.com/jhnoor/milligram/actions/workflows/ci.yml)
+
 A live architecture viewer for C# codebases, with an AI agent at your side.
 
 Milligram draws your code as a component diagram, with namespaces as components and types
@@ -161,8 +163,12 @@ agent tokens.
 ```bash
 dotnet tool restore                                        # Stryker, for this repo
 dotnet test                                                # includes a check that Milligram obeys its own dependency rule
+dotnet format Milligram.slnx --verify-no-changes           # lint
 dotnet run --project src/Milligram -- serve --no-agent     # view Milligram itself
 ```
+
+Contributor and agent guidance (layout, conventions, what must change together) is in
+[AGENTS.md](AGENTS.md).
 
 Milligram's own layers, as set in its `milligram.json`:
 
