@@ -1,0 +1,13 @@
+bin/
+obj/
+artifacts/
+TestResults/
+StrykerOutput/
+*.user
+.vs/
+
+# Milligram run files (metrics snapshots in .milligram/metrics/ are committed)
+.milligram/model.json
+.milligram/mail/
+.milligram/run/
+.milligram/agent.md

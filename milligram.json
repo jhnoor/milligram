@@ -1,0 +1,26 @@
+{
+  // Milligram viewing itself. Levels are inner (0) first.
+  "title": "Milligram",
+  "src": "src",
+  "exclude": ["**/bin/**", "**/obj/**"],
+  "prefix": "Milligram",
+  "order": ["Main", "Adapters", "Analysis", "Application", "Domain"],
+  "levels": [
+    ["Domain"],
+    ["Application"],
+    ["Analysis", "Adapters"],
+    ["Main"]
+  ],
+  "foreign": ["Microsoft.CodeAnalysis", "Microsoft.AspNetCore", "System.Text.Json"],
+  "tests": { "projects": ["tests/Milligram.Tests/Milligram.Tests.csproj"] },
+  // What-if: hexagonal packaging. Not in the code.
+  "proposals": [{
+    "id": "hexagonal",
+    "name": "Hexagonal",
+    "layers": [
+      { "id": "core", "label": "Core", "namespaces": ["Domain", "Application"] },
+      { "id": "adapters", "label": "Adapters", "namespaces": ["Analysis", "Adapters"] },
+      { "id": "boot", "label": "Boot", "namespaces": ["Main"] }
+    ]
+  }]
+}
