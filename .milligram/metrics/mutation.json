@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-25T13:23:30.216484+00:00",
+  "generatedAt": "2026-09-25T15:49:13.6969737+00:00",
   "members": {
     "Milligram.Domain.Hierarchy.DependencyRule.IsViolating(EdgeKind,int?,int?)": {
       "killed": 3,
@@ -38,30 +38,30 @@
       "sites": 5
     },
     "Milligram.Application.ActionResult.Done(string,JsonObject)": {
-      "killed": 0,
+      "killed": 1,
       "timeout": 0,
       "survived": 0,
-      "uncovered": 1,
+      "uncovered": 0,
       "hash": "128df6a473661887",
-      "detected": 0,
+      "detected": 1,
       "sites": 1
     },
     "Milligram.Application.ActionResult.Fail(string)": {
-      "killed": 0,
+      "killed": 1,
       "timeout": 0,
       "survived": 0,
-      "uncovered": 1,
+      "uncovered": 0,
       "hash": "2c8159898f141ff0",
-      "detected": 0,
+      "detected": 1,
       "sites": 1
     },
     "Milligram.Application.AgentBriefing.Write(ProjectPaths)": {
-      "killed": 0,
+      "killed": 2,
       "timeout": 0,
       "survived": 0,
-      "uncovered": 2,
+      "uncovered": 0,
       "hash": "b32685cfa463f82a",
-      "detected": 0,
+      "detected": 2,
       "sites": 2
     },
     "Milligram.Application.BuildProject.Directory": {
@@ -74,84 +74,84 @@
       "sites": 0
     },
     "Milligram.Application.CrapService.RunAsync(IReadOnlyList<string>,Action<string>,CancellationToken)": {
-      "killed": 0,
+      "killed": 4,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 6,
+      "survived": 2,
+      "uncovered": 0,
       "hash": "b13f112260a912d0",
-      "detected": 0,
+      "detected": 4,
       "sites": 6
     },
     "Milligram.Application.CrapService.TestProjects()": {
-      "killed": 0,
+      "killed": 2,
       "timeout": 0,
       "survived": 0,
-      "uncovered": 2,
+      "uncovered": 0,
       "hash": "972bea9511e147ba",
-      "detected": 0,
+      "detected": 2,
       "sites": 2
     },
     "Milligram.Application.CrapService.CollectCoverageAsync(Action<string>,CancellationToken)": {
-      "killed": 0,
+      "killed": 12,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 20,
+      "survived": 8,
+      "uncovered": 0,
       "hash": "1b82ffce9c7aabc5",
-      "detected": 0,
+      "detected": 12,
       "sites": 20
     },
     "Milligram.Application.JobQueue.Status": {
-      "killed": 0,
+      "killed": 1,
       "timeout": 0,
       "survived": 0,
-      "uncovered": 1,
+      "uncovered": 0,
       "hash": "0ba181629345385a",
-      "detected": 0,
+      "detected": 1,
       "sites": 1
     },
     "Milligram.Application.JobQueue.Enqueue(string,Func<Action<string>, CancellationToken, Task<string>>,CancellationToken)": {
-      "killed": 0,
+      "killed": 1,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 2,
+      "survived": 1,
+      "uncovered": 0,
       "hash": "6e6ca8c2db7b3fd3",
-      "detected": 0,
+      "detected": 1,
       "sites": 2
     },
     "Milligram.Application.JobQueue.RunAsync(string,Func<Action<string>, CancellationToken, Task<string>>,CancellationToken)": {
-      "killed": 0,
-      "timeout": 0,
-      "survived": 0,
-      "uncovered": 9,
+      "killed": 6,
+      "timeout": 1,
+      "survived": 2,
+      "uncovered": 0,
       "hash": "b76dd4a71dba2c34",
-      "detected": 0,
+      "detected": 7,
       "sites": 9
     },
     "Milligram.Application.JobQueue.Append(string)": {
-      "killed": 0,
+      "killed": 3,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 9,
+      "survived": 6,
+      "uncovered": 0,
       "hash": "f563d1a2353ca635",
-      "detected": 0,
+      "detected": 3,
       "sites": 9
     },
     "Milligram.Application.JobQueue.Finish(JobState,string)": {
       "killed": 0,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 1,
+      "survived": 1,
+      "uncovered": 0,
       "hash": "c1534ed074ec4e56",
       "detected": 0,
       "sites": 1
     },
     "Milligram.Application.JobQueue.Publish()": {
-      "killed": 0,
+      "killed": 1,
       "timeout": 0,
       "survived": 0,
-      "uncovered": 1,
+      "uncovered": 0,
       "hash": "4a4319433537d401",
-      "detected": 0,
+      "detected": 1,
       "sites": 1
     },
     "Milligram.Application.JsonFile.Read<T>(string)": {
@@ -191,12 +191,12 @@
       "sites": 4
     },
     "Milligram.Application.Mailbox.Count": {
-      "killed": 1,
+      "killed": 2,
       "timeout": 0,
-      "survived": 1,
+      "survived": 0,
       "uncovered": 0,
       "hash": "737b8b53cb56d60a",
-      "detected": 1,
+      "detected": 2,
       "sites": 2
     },
     "Milligram.Application.Mailbox.Take(bool)": {
@@ -249,7 +249,7 @@
       "timeout": 0,
       "survived": 0,
       "uncovered": 0,
-      "hash": "baff782e01dfd5d9",
+      "hash": "4550c2ca95c9c370",
       "detected": 4,
       "sites": 4
     },
@@ -272,57 +272,57 @@
       "sites": 3
     },
     "Milligram.Application.MutationService.RunAsync(IReadOnlyList<string>,bool,Action<string>,CancellationToken)": {
-      "killed": 0,
+      "killed": 20,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 25,
-      "hash": "d71f93f061eedf6c",
-      "detected": 0,
-      "sites": 25
+      "survived": 9,
+      "uncovered": 0,
+      "hash": "529ba2a5894187ba",
+      "detected": 20,
+      "sites": 29
     },
     "Milligram.Application.MutationService.Patterns(BuildProject,IReadOnlyList<MemberNode>,IReadOnlyList<MemberNode>)": {
-      "killed": 0,
+      "killed": 8,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 9,
+      "survived": 1,
+      "uncovered": 0,
       "hash": "7eb5bd3739776a62",
-      "detected": 0,
+      "detected": 8,
       "sites": 9
     },
     "Milligram.Application.MutationService.RunStrykerAsync(BuildProject,IReadOnlyList<BuildProject>,IReadOnlyList<string>,Action<string>,CancellationToken)": {
-      "killed": 0,
+      "killed": 16,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 22,
+      "survived": 6,
+      "uncovered": 0,
       "hash": "dea3248627261305",
-      "detected": 0,
+      "detected": 16,
       "sites": 22
     },
     "Milligram.Application.MutationService.Normalize(string)": {
-      "killed": 0,
+      "killed": 1,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 2,
+      "survived": 1,
+      "uncovered": 0,
       "hash": "d1fc370abc461620",
-      "detected": 0,
+      "detected": 1,
       "sites": 2
     },
     "Milligram.Application.MutationService.OwnerOf(string,IReadOnlyList<BuildProject>)": {
-      "killed": 0,
+      "killed": 1,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 3,
+      "survived": 2,
+      "uncovered": 0,
       "hash": "a105950dc385a945",
-      "detected": 0,
+      "detected": 1,
       "sites": 3
     },
     "Milligram.Application.PolicyEditor.NewProposal(string)": {
-      "killed": 1,
+      "killed": 6,
       "timeout": 0,
-      "survived": 7,
+      "survived": 2,
       "uncovered": 1,
       "hash": "5ba7b4d66fc92f6b",
-      "detected": 1,
+      "detected": 6,
       "sites": 9
     },
     "Milligram.Application.PolicyEditor.RenameProposal(string,string)": {
@@ -425,12 +425,12 @@
       "sites": 1
     },
     "Milligram.Application.ProjectPaths.ModelFile": {
-      "killed": 0,
+      "killed": 1,
       "timeout": 0,
-      "survived": 1,
+      "survived": 0,
       "uncovered": 0,
       "hash": "785b0e45859c3a0e",
-      "detected": 0,
+      "detected": 1,
       "sites": 1
     },
     "Milligram.Application.ProjectPaths.MetricsDirectory": {
@@ -490,19 +490,19 @@
     "Milligram.Application.ProjectPaths.RunDirectory": {
       "killed": 0,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 1,
+      "survived": 1,
+      "uncovered": 0,
       "hash": "8806b4226ab14577",
       "detected": 0,
       "sites": 1
     },
     "Milligram.Application.ProjectPaths.BriefingFile": {
-      "killed": 0,
+      "killed": 1,
       "timeout": 0,
       "survived": 0,
-      "uncovered": 1,
+      "uncovered": 0,
       "hash": "29ebd103ef5e082b",
-      "detected": 0,
+      "detected": 1,
       "sites": 1
     },
     "Milligram.Application.ProjectPaths.AgentStateFile": {
@@ -551,120 +551,120 @@
       "sites": 2
     },
     "Milligram.Application.ViewerActions.HandleAsync(ViewerAction,CancellationToken)": {
-      "killed": 0,
-      "timeout": 0,
-      "survived": 0,
-      "uncovered": 17,
+      "killed": 12,
+      "timeout": 1,
+      "survived": 3,
+      "uncovered": 1,
       "hash": "8a619d7afcc493f0",
-      "detected": 0,
+      "detected": 13,
       "sites": 17
     },
     "Milligram.Application.ViewerActions.Regenerate(string)": {
-      "killed": 0,
-      "timeout": 0,
-      "survived": 0,
-      "uncovered": 4,
+      "killed": 2,
+      "timeout": 1,
+      "survived": 1,
+      "uncovered": 0,
       "hash": "a929dea58e522401",
-      "detected": 0,
+      "detected": 3,
       "sites": 4
     },
     "Milligram.Application.ViewerActions.Regenerate()": {
       "killed": 0,
-      "timeout": 0,
-      "survived": 0,
-      "uncovered": 3,
+      "timeout": 2,
+      "survived": 1,
+      "uncovered": 0,
       "hash": "bb0636d74864c8c8",
-      "detected": 0,
+      "detected": 2,
       "sites": 3
     },
     "Milligram.Application.ViewerActions.RefreshCrap()": {
       "killed": 0,
-      "timeout": 0,
-      "survived": 0,
-      "uncovered": 12,
+      "timeout": 2,
+      "survived": 1,
+      "uncovered": 9,
       "hash": "2f8e18311d5bb43e",
-      "detected": 0,
+      "detected": 2,
       "sites": 12
     },
     "Milligram.Application.ViewerActions.RefreshMutation(ViewerAction,bool)": {
-      "killed": 0,
-      "timeout": 0,
-      "survived": 0,
-      "uncovered": 24,
+      "killed": 8,
+      "timeout": 5,
+      "survived": 8,
+      "uncovered": 3,
       "hash": "5d7cb80678678a23",
-      "detected": 0,
+      "detected": 13,
       "sites": 24
     },
     "Milligram.Application.ViewerActions.Omit(ViewerAction)": {
-      "killed": 0,
+      "killed": 5,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 13,
+      "survived": 8,
+      "uncovered": 0,
       "hash": "4583050851ea6d63",
-      "detected": 0,
+      "detected": 5,
       "sites": 13
     },
     "Milligram.Application.ViewerActions.NewProposal(ViewerAction)": {
-      "killed": 0,
+      "killed": 3,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 6,
+      "survived": 3,
+      "uncovered": 0,
       "hash": "ab6baaacd4c434f6",
-      "detected": 0,
+      "detected": 3,
       "sites": 6
     },
     "Milligram.Application.ViewerActions.RenameProposal(ViewerAction)": {
-      "killed": 0,
+      "killed": 5,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 13,
+      "survived": 8,
+      "uncovered": 0,
       "hash": "514b65884039a400",
-      "detected": 0,
+      "detected": 5,
       "sites": 13
     },
     "Milligram.Application.ViewerActions.DeleteProposal(ViewerAction)": {
-      "killed": 0,
+      "killed": 2,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 9,
+      "survived": 7,
+      "uncovered": 0,
       "hash": "c25a0ffc23477a73",
-      "detected": 0,
+      "detected": 2,
       "sites": 9
     },
     "Milligram.Application.ViewerActions.Context(ViewerAction)": {
-      "killed": 0,
+      "killed": 1,
       "timeout": 0,
       "survived": 0,
-      "uncovered": 1,
+      "uncovered": 0,
       "hash": "3f4b9d21c4b9d7ca",
-      "detected": 0,
+      "detected": 1,
       "sites": 1
     },
     "Milligram.Application.ViewerActions.Message(ViewerAction)": {
-      "killed": 0,
+      "killed": 10,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 13,
+      "survived": 3,
+      "uncovered": 0,
       "hash": "664dc95d24780827",
-      "detected": 0,
+      "detected": 10,
       "sites": 13
     },
     "Milligram.Application.ViewerActions.StartAgentAsync(CancellationToken)": {
-      "killed": 0,
+      "killed": 4,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 5,
+      "survived": 1,
+      "uncovered": 0,
       "hash": "1be296425e007b85",
-      "detected": 0,
+      "detected": 4,
       "sites": 5
     },
     "Milligram.Application.ViewerActions.Mail(string,JsonObject)": {
-      "killed": 0,
+      "killed": 3,
       "timeout": 0,
       "survived": 0,
-      "uncovered": 3,
+      "uncovered": 0,
       "hash": "bd01e22cac81bfd1",
-      "detected": 0,
+      "detected": 3,
       "sites": 3
     },
     "Milligram.Application.ViewerActions.Notify(JsonObject)": {
@@ -677,21 +677,21 @@
       "sites": 0
     },
     "Milligram.Application.ViewerActions.ContextData(string,string)": {
-      "killed": 0,
+      "killed": 12,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 14,
+      "survived": 2,
+      "uncovered": 0,
       "hash": "f3fe78145e958c59",
-      "detected": 0,
+      "detected": 12,
       "sites": 14
     },
     "Milligram.Application.ViewerActions.ProposalId(string)": {
-      "killed": 0,
+      "killed": 3,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 5,
+      "survived": 2,
+      "uncovered": 0,
       "hash": "ca58081bc9d59d72",
-      "detected": 0,
+      "detected": 3,
       "sites": 5
     },
     "Milligram.Application.ViewerActions.TargetOf(string,string)": {
@@ -706,8 +706,8 @@
     "Milligram.Application.ViewerActions.Label(ViewerAction)": {
       "killed": 0,
       "timeout": 0,
-      "survived": 0,
-      "uncovered": 2,
+      "survived": 1,
+      "uncovered": 1,
       "hash": "59f9893f6a62b774",
       "detected": 0,
       "sites": 2
@@ -740,21 +740,21 @@
       "sites": 1
     },
     "Milligram.Application.Workspace.Model": {
-      "killed": 0,
+      "killed": 1,
       "timeout": 0,
       "survived": 0,
-      "uncovered": 1,
+      "uncovered": 0,
       "hash": "069b6a155b92eb81",
-      "detected": 0,
+      "detected": 1,
       "sites": 1
     },
     "Milligram.Application.Workspace.Metrics": {
-      "killed": 0,
+      "killed": 1,
       "timeout": 0,
       "survived": 0,
-      "uncovered": 1,
+      "uncovered": 0,
       "hash": "b08b8ed376fb6694",
-      "detected": 0,
+      "detected": 1,
       "sites": 1
     },
     "Milligram.Application.Workspace.Load()": {
@@ -857,12 +857,12 @@
       "sites": 1
     },
     "Milligram.Application.Workspace.TypesOf(string,string)": {
-      "killed": 2,
+      "killed": 3,
       "timeout": 0,
-      "survived": 1,
+      "survived": 0,
       "uncovered": 0,
       "hash": "f87ce1ab0015e0b2",
-      "detected": 2,
+      "detected": 3,
       "sites": 3
     },
     "Milligram.Application.Workspace.FilesOf(string,string)": {
@@ -875,12 +875,12 @@
       "sites": 1
     },
     "Milligram.Application.Workspace.Save<T>(string,T,Action)": {
-      "killed": 0,
+      "killed": 2,
       "timeout": 0,
       "survived": 0,
-      "uncovered": 2,
+      "uncovered": 0,
       "hash": "8c790167408cd1c4",
-      "detected": 0,
+      "detected": 2,
       "sites": 2
     },
     "Milligram.Application.Workspace.Update(Action)": {
@@ -2101,18 +2101,18 @@
   },
   "files": {
     "src/Milligram/Domain/Hierarchy/DependencyRule.cs": "2026-09-25T13:23:30.216484+00:00",
-    "src/Milligram/Application/AgentBriefing.cs": "2026-09-25T13:15:48.8985985+00:00",
-    "src/Milligram/Application/CrapService.cs": "2026-09-25T13:15:48.8985985+00:00",
-    "src/Milligram/Application/JobQueue.cs": "2026-09-25T13:15:48.8985985+00:00",
-    "src/Milligram/Application/Json.cs": "2026-09-25T13:15:48.8985985+00:00",
-    "src/Milligram/Application/Mailbox.cs": "2026-09-25T13:15:48.8985985+00:00",
-    "src/Milligram/Application/MutationService.cs": "2026-09-25T13:15:48.8985985+00:00",
-    "src/Milligram/Application/PolicyEditor.cs": "2026-09-25T13:15:48.8985985+00:00",
-    "src/Milligram/Application/Ports.cs": "2026-09-25T13:15:48.8985985+00:00",
-    "src/Milligram/Application/ProjectInitializer.cs": "2026-09-25T13:15:48.8985985+00:00",
-    "src/Milligram/Application/ProjectPaths.cs": "2026-09-25T13:15:48.8985985+00:00",
-    "src/Milligram/Application/ViewerActions.cs": "2026-09-25T13:15:48.8985985+00:00",
-    "src/Milligram/Application/Workspace.cs": "2026-09-25T13:15:48.8985985+00:00",
+    "src/Milligram/Application/AgentBriefing.cs": "2026-09-25T15:49:13.6969737+00:00",
+    "src/Milligram/Application/CrapService.cs": "2026-09-25T15:49:13.6969737+00:00",
+    "src/Milligram/Application/JobQueue.cs": "2026-09-25T15:49:13.6969737+00:00",
+    "src/Milligram/Application/Json.cs": "2026-09-25T15:49:13.6969737+00:00",
+    "src/Milligram/Application/Mailbox.cs": "2026-09-25T15:49:13.6969737+00:00",
+    "src/Milligram/Application/MutationService.cs": "2026-09-25T15:49:13.6969737+00:00",
+    "src/Milligram/Application/PolicyEditor.cs": "2026-09-25T15:49:13.6969737+00:00",
+    "src/Milligram/Application/Ports.cs": "2026-09-25T15:49:13.6969737+00:00",
+    "src/Milligram/Application/ProjectInitializer.cs": "2026-09-25T15:49:13.6969737+00:00",
+    "src/Milligram/Application/ProjectPaths.cs": "2026-09-25T15:49:13.6969737+00:00",
+    "src/Milligram/Application/ViewerActions.cs": "2026-09-25T15:49:13.6969737+00:00",
+    "src/Milligram/Application/Workspace.cs": "2026-09-25T15:49:13.6969737+00:00",
     "src/Milligram/Domain/Hierarchy/Tree.cs": "2026-09-25T13:15:48.8985985+00:00",
     "src/Milligram/Domain/Hierarchy/TreeBuilder.cs": "2026-09-25T13:15:48.8985985+00:00",
     "src/Milligram/Domain/Mail/MailMessage.cs": "2026-09-25T13:15:48.8985985+00:00",

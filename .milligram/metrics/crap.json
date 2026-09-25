@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-25T13:23:43.4327112+00:00",
+  "generatedAt": "2026-09-25T15:47:37.1162835+00:00",
   "members": {
     "Milligram.Adapters.Cli.CommandLine..ctor(string,List<string>)": {
       "complexity": 1,
@@ -507,18 +507,18 @@
     },
     "Milligram.Analysis.CSharp.CSharpScanner.GlobalUsings(IReadOnlyList<string>)": {
       "complexity": 7,
-      "coverage": 0.9411764705882353,
-      "crap": 7.009973539588846,
+      "coverage": 1,
+      "crap": 7,
       "coverable": 17,
-      "covered": 16,
+      "covered": 17,
       "hash": "628f676754a41818"
     },
     "Milligram.Analysis.CSharp.CSharpScanner.DefaultUsings(string)": {
       "complexity": 3,
-      "coverage": 0,
-      "crap": 12,
+      "coverage": 0.8333333333333334,
+      "crap": 3.0416666666666665,
       "coverable": 6,
-      "covered": 0,
+      "covered": 5,
       "hash": "841f70f095b8e09a"
     },
     "Milligram.Analysis.CSharp.Complexity.Of(SyntaxNode)": {
@@ -1051,26 +1051,26 @@
     },
     "Milligram.Application.ActionResult.Done(string,JsonObject)": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "128df6a473661887"
     },
     "Milligram.Application.ActionResult.Fail(string)": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "2c8159898f141ff0"
     },
     "Milligram.Application.AgentBriefing.Write(ProjectPaths)": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 4,
-      "covered": 0,
+      "covered": 4,
       "hash": "b32685cfa463f82a"
     },
     "Milligram.Application.BuildProject.Directory": {
@@ -1083,74 +1083,74 @@
     },
     "Milligram.Application.CrapService.RunAsync(IReadOnlyList<string>,Action<string>,CancellationToken)": {
       "complexity": 4,
-      "coverage": 0,
-      "crap": 20,
+      "coverage": 1,
+      "crap": 4,
       "coverable": 14,
-      "covered": 0,
+      "covered": 14,
       "hash": "b13f112260a912d0"
     },
     "Milligram.Application.CrapService.TestProjects()": {
       "complexity": 2,
-      "coverage": 0,
-      "crap": 6,
+      "coverage": 1,
+      "crap": 2,
       "coverable": 5,
-      "covered": 0,
+      "covered": 5,
       "hash": "972bea9511e147ba"
     },
     "Milligram.Application.CrapService.CollectCoverageAsync(Action<string>,CancellationToken)": {
       "complexity": 6,
-      "coverage": 0,
-      "crap": 42,
+      "coverage": 1,
+      "crap": 6,
       "coverable": 19,
-      "covered": 0,
+      "covered": 19,
       "hash": "1b82ffce9c7aabc5"
     },
     "Milligram.Application.JobQueue.Status": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "0ba181629345385a"
     },
     "Milligram.Application.JobQueue.Enqueue(string,Func<Action<string>, CancellationToken, Task<string>>,CancellationToken)": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 5,
-      "covered": 0,
+      "covered": 5,
       "hash": "6e6ca8c2db7b3fd3"
     },
     "Milligram.Application.JobQueue.RunAsync(string,Func<Action<string>, CancellationToken, Task<string>>,CancellationToken)": {
       "complexity": 2,
-      "coverage": 0,
-      "crap": 6,
+      "coverage": 1,
+      "crap": 2,
       "coverable": 21,
-      "covered": 0,
+      "covered": 21,
       "hash": "b76dd4a71dba2c34"
     },
     "Milligram.Application.JobQueue.Append(string)": {
       "complexity": 4,
-      "coverage": 0,
-      "crap": 20,
+      "coverage": 1,
+      "crap": 4,
       "coverable": 9,
-      "covered": 0,
+      "covered": 9,
       "hash": "f563d1a2353ca635"
     },
     "Milligram.Application.JobQueue.Finish(JobState,string)": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 4,
-      "covered": 0,
+      "covered": 4,
       "hash": "c1534ed074ec4e56"
     },
     "Milligram.Application.JobQueue.Publish()": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "4a4319433537d401"
     },
     "Milligram.Application.JsonFile.Read<T>(string)": {
@@ -1259,42 +1259,42 @@
     },
     "Milligram.Application.MutationService.RunAsync(IReadOnlyList<string>,bool,Action<string>,CancellationToken)": {
       "complexity": 11,
-      "coverage": 0,
-      "crap": 132,
+      "coverage": 1,
+      "crap": 11,
       "coverable": 26,
-      "covered": 0,
+      "covered": 26,
       "hash": "529ba2a5894187ba"
     },
     "Milligram.Application.MutationService.Patterns(BuildProject,IReadOnlyList<MemberNode>,IReadOnlyList<MemberNode>)": {
       "complexity": 4,
-      "coverage": 0,
-      "crap": 20,
+      "coverage": 1,
+      "crap": 4,
       "coverable": 11,
-      "covered": 0,
+      "covered": 11,
       "hash": "7eb5bd3739776a62"
     },
     "Milligram.Application.MutationService.RunStrykerAsync(BuildProject,IReadOnlyList<BuildProject>,IReadOnlyList<string>,Action<string>,CancellationToken)": {
       "complexity": 4,
-      "coverage": 0,
-      "crap": 20,
+      "coverage": 1,
+      "crap": 4,
       "coverable": 14,
-      "covered": 0,
+      "covered": 14,
       "hash": "dea3248627261305"
     },
     "Milligram.Application.MutationService.Normalize(string)": {
       "complexity": 2,
-      "coverage": 0,
-      "crap": 6,
+      "coverage": 1,
+      "crap": 2,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "d1fc370abc461620"
     },
     "Milligram.Application.MutationService.OwnerOf(string,IReadOnlyList<BuildProject>)": {
       "complexity": 2,
-      "coverage": 0,
-      "crap": 6,
+      "coverage": 1,
+      "crap": 2,
       "coverable": 6,
-      "covered": 0,
+      "covered": 6,
       "hash": "a105950dc385a945"
     },
     "Milligram.Application.PolicyEditor.NewProposal(string)": {
@@ -1451,18 +1451,18 @@
     },
     "Milligram.Application.ProjectPaths.RunDirectory": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "8806b4226ab14577"
     },
     "Milligram.Application.ProjectPaths.BriefingFile": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "29ebd103ef5e082b"
     },
     "Milligram.Application.ProjectPaths.AgentStateFile": {
@@ -1507,146 +1507,146 @@
     },
     "Milligram.Application.ViewerActions.HandleAsync(ViewerAction,CancellationToken)": {
       "complexity": 15,
-      "coverage": 0,
-      "crap": 240,
+      "coverage": 0.875,
+      "crap": 15.439453125,
       "coverable": 24,
-      "covered": 0,
+      "covered": 21,
       "hash": "8a619d7afcc493f0"
     },
     "Milligram.Application.ViewerActions.Regenerate(string)": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 8,
-      "covered": 0,
+      "covered": 8,
       "hash": "a929dea58e522401"
     },
     "Milligram.Application.ViewerActions.Regenerate()": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 4,
-      "covered": 0,
+      "covered": 4,
       "hash": "bb0636d74864c8c8"
     },
     "Milligram.Application.ViewerActions.RefreshCrap()": {
       "complexity": 2,
-      "coverage": 0,
-      "crap": 6,
+      "coverage": 0.7777777777777778,
+      "crap": 2.0438957475994513,
       "coverable": 9,
-      "covered": 0,
+      "covered": 7,
       "hash": "2f8e18311d5bb43e"
     },
     "Milligram.Application.ViewerActions.RefreshMutation(ViewerAction,bool)": {
       "complexity": 7,
-      "coverage": 0,
-      "crap": 56,
+      "coverage": 1,
+      "crap": 7,
       "coverable": 12,
-      "covered": 0,
+      "covered": 12,
       "hash": "5d7cb80678678a23"
     },
     "Milligram.Application.ViewerActions.Omit(ViewerAction)": {
       "complexity": 3,
-      "coverage": 0,
-      "crap": 12,
+      "coverage": 1,
+      "crap": 3,
       "coverable": 10,
-      "covered": 0,
+      "covered": 10,
       "hash": "4583050851ea6d63"
     },
     "Milligram.Application.ViewerActions.NewProposal(ViewerAction)": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 6,
-      "covered": 0,
+      "covered": 6,
       "hash": "ab6baaacd4c434f6"
     },
     "Milligram.Application.ViewerActions.RenameProposal(ViewerAction)": {
       "complexity": 3,
-      "coverage": 0,
-      "crap": 12,
+      "coverage": 1,
+      "crap": 3,
       "coverable": 7,
-      "covered": 0,
+      "covered": 7,
       "hash": "514b65884039a400"
     },
     "Milligram.Application.ViewerActions.DeleteProposal(ViewerAction)": {
       "complexity": 2,
-      "coverage": 0,
-      "crap": 6,
+      "coverage": 1,
+      "crap": 2,
       "coverable": 7,
-      "covered": 0,
+      "covered": 7,
       "hash": "c25a0ffc23477a73"
     },
     "Milligram.Application.ViewerActions.Context(ViewerAction)": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 4,
-      "covered": 0,
+      "covered": 4,
       "hash": "3f4b9d21c4b9d7ca"
     },
     "Milligram.Application.ViewerActions.Message(ViewerAction)": {
       "complexity": 4,
-      "coverage": 0,
-      "crap": 20,
+      "coverage": 1,
+      "crap": 4,
       "coverable": 8,
-      "covered": 0,
+      "covered": 8,
       "hash": "664dc95d24780827"
     },
     "Milligram.Application.ViewerActions.StartAgentAsync(CancellationToken)": {
       "complexity": 2,
-      "coverage": 0,
-      "crap": 6,
+      "coverage": 1,
+      "crap": 2,
       "coverable": 6,
-      "covered": 0,
+      "covered": 6,
       "hash": "1be296425e007b85"
     },
     "Milligram.Application.ViewerActions.Mail(string,JsonObject)": {
       "complexity": 2,
-      "coverage": 0,
-      "crap": 6,
+      "coverage": 1,
+      "crap": 2,
       "coverable": 4,
-      "covered": 0,
+      "covered": 4,
       "hash": "bd01e22cac81bfd1"
     },
     "Milligram.Application.ViewerActions.Notify(JsonObject)": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "79fcb152adf41897"
     },
     "Milligram.Application.ViewerActions.ContextData(string,string)": {
       "complexity": 4,
-      "coverage": 0,
-      "crap": 20,
+      "coverage": 1,
+      "crap": 4,
       "coverable": 8,
-      "covered": 0,
+      "covered": 8,
       "hash": "f3fe78145e958c59"
     },
     "Milligram.Application.ViewerActions.ProposalId(string)": {
       "complexity": 3,
-      "coverage": 0,
-      "crap": 12,
+      "coverage": 1,
+      "crap": 3,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "ca58081bc9d59d72"
     },
     "Milligram.Application.ViewerActions.TargetOf(string,string)": {
       "complexity": 4,
-      "coverage": 0,
-      "crap": 20,
+      "coverage": 1,
+      "crap": 4,
       "coverable": 6,
-      "covered": 0,
+      "covered": 6,
       "hash": "535f79b39d942981"
     },
     "Milligram.Application.ViewerActions.Label(ViewerAction)": {
       "complexity": 4,
-      "coverage": 0,
-      "crap": 20,
+      "coverage": 1,
+      "crap": 4,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "59f9893f6a62b774"
     },
     "Milligram.Application.Workspace..ctor(ProjectPaths,ILanguageScanner)": {
@@ -1675,18 +1675,18 @@
     },
     "Milligram.Application.Workspace.Model": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "069b6a155b92eb81"
     },
     "Milligram.Application.Workspace.Metrics": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "b08b8ed376fb6694"
     },
     "Milligram.Application.Workspace.Load()": {
@@ -1739,18 +1739,18 @@
     },
     "Milligram.Application.Workspace.SaveMetrics(CrapSnapshot)": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "0ea549bebc340c12"
     },
     "Milligram.Application.Workspace.SaveMetrics(MutationSnapshot)": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 1,
-      "covered": 0,
+      "covered": 1,
       "hash": "61051b0c79057272"
     },
     "Milligram.Application.Workspace.Tree(string)": {
@@ -1795,10 +1795,10 @@
     },
     "Milligram.Application.Workspace.Save<T>(string,T,Action)": {
       "complexity": 1,
-      "coverage": 0,
-      "crap": 2,
+      "coverage": 1,
+      "crap": 1,
       "coverable": 4,
-      "covered": 0,
+      "covered": 4,
       "hash": "8c790167408cd1c4"
     },
     "Milligram.Application.Workspace.Update(Action)": {

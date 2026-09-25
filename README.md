@@ -118,8 +118,9 @@ Snapshots live in `.milligram/metrics/`. Commit them, so others see the numbers 
 
 - **CRAP** = complexity² × (1 − coverage)³ + complexity, for each method. Complexity comes from
   Roslyn and line coverage from coverlet.
-- **Mutation**: Stryker.NET runs on the files you pick. Later runs only mutate methods that changed;
-  `--all` re-mutates whole files. Survived or uncovered mutants are test gaps.
+- **Mutation**: Stryker.NET runs on the files you pick. Later runs only mutate methods whose code
+  changed. After improving *tests*, use `--all` (or **Refresh all mutation**) to re-measure.
+  Survived or uncovered mutants are test gaps.
 
 A component takes the worst grade of anything inside it. Values dim on the card when the code has
 changed since they were measured.
