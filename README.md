@@ -161,8 +161,12 @@ agent tokens.
 ```bash
 dotnet tool restore                                        # Stryker, for this repo
 dotnet test                                                # includes a check that Milligram obeys its own dependency rule
+dotnet format Milligram.slnx --verify-no-changes           # lint
 dotnet run --project src/Milligram -- serve --no-agent     # view Milligram itself
 ```
+
+Contributor and agent guidance (layout, conventions, what must change together) is in
+[AGENTS.md](AGENTS.md).
 
 Milligram's own layers, as set in its `milligram.json`:
 

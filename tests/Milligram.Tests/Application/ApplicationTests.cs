@@ -124,7 +124,9 @@ public class WorkspaceTests
         var workspace = Open(project);
         var members = new Dictionary<string, Milligram.Domain.Metrics.MutationEntry>
         {
-            ["b"] = new(1, 0, 0, 0, "h"), ["a"] = new(1, 0, 0, 0, "h"), ["C"] = new(1, 0, 0, 0, "h"),
+            ["b"] = new(1, 0, 0, 0, "h"),
+            ["a"] = new(1, 0, 0, 0, "h"),
+            ["C"] = new(1, 0, 0, 0, "h"),
         };
         var files = new Dictionary<string, DateTimeOffset> { ["z.cs"] = DateTimeOffset.UnixEpoch, ["m.cs"] = DateTimeOffset.UnixEpoch };
 
