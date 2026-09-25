@@ -108,10 +108,21 @@ public sealed class Workspace
         }
     }
 
-    public void SaveMetrics(CrapSnapshot crap) => Save(Paths.CrapFile, crap, () => metrics = metrics with { Crap = crap });
+    /// <summary>Snapshots are written with keys in ordinal order so reruns produce small, local diffs.</summary>
+    public void SaveMetrics(CrapSnapshot crap)
+    {
+        var sorted = crap with { Members = Sorted(crap.Members) };
+        Save(Paths.CrapFile, sorted, () => metrics = metrics with { Crap = sorted });
+    }
 
-    public void SaveMetrics(MutationSnapshot mutation) =>
-        Save(Paths.MutationFile, mutation, () => metrics = metrics with { Mutation = mutation });
+    public void SaveMetrics(MutationSnapshot mutation)
+    {
+        var sorted = mutation with { Members = Sorted(mutation.Members), Files = Sorted(mutation.Files) };
+        Save(Paths.MutationFile, sorted, () => metrics = metrics with { Mutation = sorted });
+    }
+
+    private static SortedDictionary<string, T> Sorted<T>(IReadOnlyDictionary<string, T> entries) =>
+        new(entries.ToDictionary(e => e.Key, e => e.Value), StringComparer.Ordinal);
 
     public DiagramTree Tree(string? contextId)
     {

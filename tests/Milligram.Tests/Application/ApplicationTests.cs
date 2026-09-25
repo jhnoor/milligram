@@ -118,6 +118,25 @@ public class WorkspaceTests
     }
 
     [Fact]
+    public void MetricsSnapshotsAreWrittenInKeyOrder()
+    {
+        using var project = new TempProject(("milligram.json", """{ "prefix": "Shop" }"""));
+        var workspace = Open(project);
+        var members = new Dictionary<string, Milligram.Domain.Metrics.MutationEntry>
+        {
+            ["b"] = new(1, 0, 0, 0, "h"), ["a"] = new(1, 0, 0, 0, "h"), ["C"] = new(1, 0, 0, 0, "h"),
+        };
+        var files = new Dictionary<string, DateTimeOffset> { ["z.cs"] = DateTimeOffset.UnixEpoch, ["m.cs"] = DateTimeOffset.UnixEpoch };
+
+        workspace.SaveMetrics(new Milligram.Domain.Metrics.MutationSnapshot(DateTimeOffset.UnixEpoch, members, files));
+
+        var saved = JsonFile.Read<Milligram.Domain.Metrics.MutationSnapshot>(workspace.Paths.MutationFile)!;
+        Assert.Equal(["C", "a", "b"], saved.Members.Keys);
+        Assert.Equal(["m.cs", "z.cs"], saved.Files.Keys);
+        Assert.Equal(["C", "a", "b"], workspace.Metrics.Mutation.Members.Keys);
+    }
+
+    [Fact]
     public void ABrokenPolicyKeepsTheLastGoodOne()
     {
         using var project = new TempProject(("milligram.json", """{ "prefix": "Shop" }"""));
@@ -183,7 +202,7 @@ public class ProjectInitializerTests
         Assert.Equal("Shop", policy.Prefix);
         Assert.Equal(["Domain", "Web"], policy.Order);
         Assert.Contains("tests/Shop.Tests/**", policy.Exclude);
-        Assert.Contains(".milligram/run/", File.ReadAllLines(Path.Combine(project.Root, ".gitignore")));
+        Assert.Contains(".milligram/", File.ReadAllLines(Path.Combine(project.Root, ".gitignore")));
     }
 }
 

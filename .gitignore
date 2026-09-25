@@ -4,12 +4,8 @@
 artifacts/
 StrykerOutput/
 
-# Viewer run state, regenerated on every start.
-# .milligram/metrics/ (CRAP and mutation snapshots) IS committed.
-.milligram/model.json
-.milligram/mail/
-.milligram/run/
-.milligram/agent.md
+# Milligram's view of itself: model, metrics, mail, and run files are all regenerated locally
+.milligram/
 
 # Editor settings are personal here (see the .vscode entry below).
 

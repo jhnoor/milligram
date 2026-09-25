@@ -18,8 +18,8 @@ public sealed class ProjectPaths(string root)
     public string AgentStateFile => Path.Combine(RunDirectory, "agent.json");
     public string ServerFile => Path.Combine(RunDirectory, "server.json");
 
-    public static readonly IReadOnlyList<string> GitIgnored =
-        [".milligram/model.json", ".milligram/mail/", ".milligram/run/", ".milligram/agent.md"];
+    /// <summary>Everything Milligram writes is local: the model and metrics regenerate, mail and run files are transient.</summary>
+    public static readonly IReadOnlyList<string> GitIgnored = [".milligram/"];
 
     public string Relative(string path) =>
         Path.GetRelativePath(Root, Path.GetFullPath(path, Root)).Replace('\\', '/');

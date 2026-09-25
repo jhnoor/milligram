@@ -114,7 +114,10 @@ proposal** in the viewer creates an empty one, and right-clicking a proposal ren
 
 ## Metrics
 
-Snapshots live in `.milligram/metrics/`. Commit them, so others see the numbers without re-running.
+Snapshots live in the examined project's `.milligram/metrics/`. `milligram init` git-ignores
+`.milligram/`, because everything in it can be regenerated. If you want clones or teammates to see
+the numbers without re-running the tests, remove that line and commit `.milligram/metrics/`.
+Snapshots are written in sorted order, so diffs stay small.
 
 - **CRAP** = complexity² × (1 − coverage)³ + complexity, for each method. Complexity comes from
   Roslyn and line coverage from coverlet.
