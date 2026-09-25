@@ -69,7 +69,9 @@ the buttons in the viewer.
 
 ## Configure: `milligram.json`
 
-Comments are allowed. Paths are relative to `prefix` and match whole dotted segments.
+Comments are allowed. Paths are relative to `prefix` and match whole dotted segments. `milligram init`
+writes a short, commented starter. When the viewer edits the file (omit, proposals), it rewrites only
+the keys it changes, so your comments and layout stay.
 
 ```jsonc
 {

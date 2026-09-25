@@ -53,13 +53,13 @@ public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scan
         return new Initialization(policy, layers.Outward);
     }
 
-    /// <summary>Writes milligram.json unless it exists (null then); always makes sure run files are git-ignored.</summary>
+    /// <summary>Writes a commented milligram.json unless one exists (null then); always makes sure run files are git-ignored.</summary>
     public Initialization? Initialize(bool force)
     {
         EnsureGitIgnore();
         if (File.Exists(paths.PolicyFile) && !force) return null;
         var initialization = Propose();
-        JsonFile.Write(paths.PolicyFile, initialization.Policy);
+        JsonFile.WriteText(paths.PolicyFile, PolicyText.Starter(initialization));
         return initialization;
     }
 

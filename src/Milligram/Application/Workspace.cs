@@ -95,12 +95,25 @@ public sealed class Workspace
         }
     }
 
+    /// <summary>
+    /// Applies a viewer edit. Only the keys it changes are rewritten, so comments and layout in milligram.json
+    /// survive; a file that does not parse is left alone and the edit is refused.
+    /// </summary>
     public Policy EditPolicy(Func<Policy, Policy> edit)
     {
         lock (gate)
         {
             var edited = edit(policy);
-            JsonFile.Write(Paths.PolicyFile, edited);
+            var exists = File.Exists(Paths.PolicyFile);
+            try
+            {
+                var text = PolicyText.Edit(exists ? File.ReadAllText(Paths.PolicyFile) : "{\n}\n", exists ? policy : new Policy(), edited);
+                JsonFile.WriteText(Paths.PolicyFile, text);
+            }
+            catch (System.Text.Json.JsonException e)
+            {
+                throw new MilligramException($"Fix milligram.json before editing it from the viewer: {e.Message}");
+            }
             policy = edited;
             PolicyError = null;
             Invalidate();

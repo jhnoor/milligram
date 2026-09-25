@@ -51,12 +51,15 @@ public static class JsonFile
         return JsonSerializer.Deserialize<T>(stream, MilligramJson.Options);
     }
 
+    public static void Write<T>(string path, T value) =>
+        WriteText(path, JsonSerializer.Serialize(value, MilligramJson.Options) + "\n");
+
     /// <summary>Writes to a temporary sibling and renames, so readers never see half a file.</summary>
-    public static void Write<T>(string path, T value)
+    public static void WriteText(string path, string text)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(value, MilligramJson.Options) + "\n");
+        File.WriteAllText(temp, text);
         File.Move(temp, path, overwrite: true);
     }
 
