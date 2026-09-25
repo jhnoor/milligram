@@ -15,6 +15,15 @@ as components, using an ELK layout. Boxes are coloured by CRAP (complexity × mi
 by Stryker.NET mutation score. A companion agent (Copilot CLI in tmux) talks to the viewer through
 file mailboxes. Version 0.1.0.
 
+## Current focus (decided September 2026)
+
+- **C# / .NET only.** Don't add other languages or generalise for them yet.
+- **The companion agent stays on Copilot CLI.** Don't add support for other agents yet.
+- **Dogfood on this repo until the beta**, then roll out to the company's codebases for feedback.
+- **The priority is onboarding**: any .NET repo, one command, a useful diagram. See the
+  onboarding epic, [jhnoor/milligram#1](https://github.com/jhnoor/milligram/issues/1), and its
+  sub-issues.
+
 ## Environment and commands
 
 Requirements: the .NET 10 SDK. In Claude Code on the web, `.claude/hooks/session-start.sh`
