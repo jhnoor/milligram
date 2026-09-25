@@ -93,6 +93,9 @@ Match the existing code. It is terse and consistent:
 - All JSON goes through `MilligramJson.Options` and `JsonFile`. Web defaults, camelCase enums,
   comments and trailing commas allowed in input. `JsonFile.Write` is atomic (temp file + rename).
   Keep it that way, because the watcher and the agent read these files while they are being written.
+  `milligram.json` is written through `PolicyText`: `init` writes a commented starter, and viewer edits
+  (`Workspace.EditPolicy`) rewrite only the keys that changed, so hand-written comments survive. Never
+  `JsonFile.Write` a whole `Policy` over it.
 - For errors the user should see, throw `MilligramException`. `Program` and `ViewerActions` turn
   it into a message. Don't use it for bugs.
 - Long work (scans, tests, Stryker) runs through `JobQueue`, one job at a time, and reports

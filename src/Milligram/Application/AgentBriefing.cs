@@ -67,7 +67,7 @@ public static class AgentBriefing
 
         - **Do not invent components.** The real diagram *is* the namespace tree. If the user wants a
           grouping that is not in the code, make a **proposal**; do not rename namespaces unless asked.
-        - Preserve `proposals` (and everything else you did not mean to change) when you rewrite the file.
+        - Edit the file in place: keep its comments, `proposals`, and everything else you did not mean to change.
         - Paths are relative to `prefix`: with prefix `Shop`, `Shop.Billing.Invoices` is `Billing.Invoices`.
 
         ## Proposals

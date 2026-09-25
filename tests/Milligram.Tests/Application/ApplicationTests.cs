@@ -174,6 +174,76 @@ public class WorkspaceTests
         editor.DeleteProposal(proposal.Id);
         Assert.Empty(workspace.Policy.Proposals);
     }
+
+    [Fact]
+    public void ViewerEditsKeepHandWrittenCommentsAndLayout()
+    {
+        const string text = """
+            {
+              // Shop, as we mean it to be.
+              "prefix": "Shop",
+              "levels": [ ["Domain"], ["Web"] ] // inner first
+            }
+
+            """;
+        using var project = new TempProject(("milligram.json", text), ("A.cs", Source));
+        var workspace = Open(project);
+        workspace.Generate();
+        Assert.True(workspace.Tree(null).Contains("Shop.Web.Page"));
+        var editor = new PolicyEditor(workspace);
+
+        editor.Omit("Web", null);
+        editor.NewProposal("Split");
+
+        Assert.False(workspace.Tree(null).Contains("Shop.Web.Page"));
+        var written = File.ReadAllText(workspace.Paths.PolicyFile);
+        Assert.StartsWith("""
+            {
+              // Shop, as we mean it to be.
+              "prefix": "Shop",
+              "levels": [ ["Domain"], ["Web"] ], // inner first
+              "omit": ["Web"],
+            """, written);
+        var reread = JsonFile.Read<Policy>(workspace.Paths.PolicyFile)!;
+        Assert.Equal(["Web"], reread.Omit);
+        Assert.Equal("Split", reread.Proposals.Single().Name);
+    }
+
+    [Fact]
+    public void ViewerEditsWithoutAFileWriteOnlyWhatDiffersFromTheDefaults()
+    {
+        using var project = new TempProject(("A.cs", Source));
+        var workspace = Open(project);
+
+        new PolicyEditor(workspace).Omit("Web", null);
+
+        Assert.Equal("{\n  \"omit\": [\"Web\"]\n}\n", File.ReadAllText(workspace.Paths.PolicyFile));
+    }
+
+    [Fact]
+    public void AViewerEditAfterTheFileWasDeletedWritesTheWholePolicy()
+    {
+        using var project = new TempProject(("milligram.json", """{ "prefix": "Shop" }"""));
+        var workspace = Open(project);
+        File.Delete(workspace.Paths.PolicyFile);
+
+        new PolicyEditor(workspace).Omit("Web", null);
+
+        Assert.Equal("{\n  \"prefix\": \"Shop\",\n  \"omit\": [\"Web\"]\n}\n", File.ReadAllText(workspace.Paths.PolicyFile));
+    }
+
+    [Fact]
+    public void AViewerEditIsRefusedWhileTheFileIsBroken()
+    {
+        using var project = new TempProject(("milligram.json", """{ "prefix": "Shop" }"""));
+        var workspace = Open(project);
+        File.WriteAllText(workspace.Paths.PolicyFile, "{ \"prefix\": ");
+
+        var refused = Assert.Throws<MilligramException>(() => new PolicyEditor(workspace).Omit("Web", null));
+        Assert.StartsWith("Fix milligram.json before editing it from the viewer:", refused.Message);
+        Assert.Equal("{ \"prefix\": ", File.ReadAllText(workspace.Paths.PolicyFile));
+        Assert.Empty(workspace.Policy.Omit);
+    }
 }
 
 public class ProjectInitializerTests
@@ -207,6 +277,24 @@ public class ProjectInitializerTests
         Assert.Equal([["Domain"], ["Web"]], policy.Levels);
         Assert.Contains("tests/Shop.Tests/**", policy.Exclude);
         Assert.Contains(".milligram/", File.ReadAllLines(Path.Combine(project.Root, ".gitignore")));
+    }
+
+    [Fact]
+    public void InitializeWritesAShortCommentedFileThatLoadsAsTheProposedPolicy()
+    {
+        using var project = new TempProject(
+            ("src/Shop/Domain/Order.cs", "namespace Shop.Domain; public class Order { }"),
+            ("src/Shop/Web/Page.cs", "namespace Shop.Web; public class Page { public Shop.Domain.Order Order = new(); }"));
+        var paths = new ProjectPaths(project.Root);
+        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator());
+
+        var proposed = initializer.Initialize(force: false)!.Policy;
+
+        var text = File.ReadAllText(paths.PolicyFile);
+        Assert.True(text.Split('\n').Length <= 22, text);
+        Assert.Contains("// Inferred from the dependencies", text);
+        Assert.Contains("\"levels\": [\n    [\"Domain\"],\n    [\"Web\"]\n  ],", text);
+        Assert.Equal(PolicyTextTests.Json(proposed), PolicyTextTests.Json(JsonFile.Read<Policy>(paths.PolicyFile)!));
     }
 
     [Fact]
@@ -271,6 +359,126 @@ public class ProjectInitializerTests
         Assert.Contains("12 dependencies point outward (red), the lightest links in dependency cycles:", described);
         Assert.DoesNotContain("  N10 -> Top (2 references)", described);
         Assert.Equal("  and 2 more", described[^1]);
+    }
+}
+
+public class PolicyTextTests
+{
+    internal static string Json(Policy policy) => System.Text.Json.JsonSerializer.Serialize(policy, MilligramJson.Compact);
+
+    private static Policy Parse(string text) => System.Text.Json.JsonSerializer.Deserialize<Policy>(text, MilligramJson.Options)!;
+
+    [Fact]
+    public void AStarterPutsListsThatDoNotFitOnePerLine()
+    {
+        var order = Enumerable.Range(0, 20).Select(i => $"Namespace{i:00}").ToList();
+        var policy = new Policy { Title = "big", Src = "src", Prefix = "Big", Order = order, Levels = [["Namespace00"]] };
+
+        var text = PolicyText.Starter(new Initialization(policy, []));
+
+        Assert.Contains("\"order\": [\n    \"Namespace00\",\n    \"Namespace01\",", text);
+        Assert.Contains("    \"Namespace19\"\n  ],", text);
+        Assert.Equal(Json(policy), Json(Parse(text)));
+    }
+
+    [Fact]
+    public void AStarterWithNothingToLayerStillLoads()
+    {
+        var policy = new Policy();
+
+        var text = PolicyText.Starter(new Initialization(policy, []));
+
+        Assert.Contains("\"title\": null,", text);
+        Assert.Contains("\"levels\": [],", text);
+        Assert.Equal(Json(policy), Json(Parse(text)));
+    }
+
+    [Fact]
+    public void AnEditRewritesOnlyTheKeysThatChanged()
+    {
+        const string text = """
+            {
+              // keep me
+              "prefix": "Shop", // and me
+              "omit": [ "A" ],
+              /* block */ "levels": [["Domain"]]
+            }
+            """;
+        var before = Parse(text);
+
+        var edited = PolicyText.Edit(text, before, before with { Omit = ["A", "B"] });
+
+        Assert.Equal(text.Replace("[ \"A\" ]", "[\"A\", \"B\"]"), edited);
+    }
+
+    [Fact]
+    public void AnEditFindsKeysWhateverTheirCase()
+    {
+        const string text = "{ \"Omit\": [\"A\"] }";
+        var before = Parse(text);
+
+        Assert.Equal("{ \"Omit\": [\"A\", \"B\"] }", PolicyText.Edit(text, before, before with { Omit = ["A", "B"] }));
+    }
+
+    [Theory]
+    [InlineData("{ \"prefix\": \"Shop\" }", "{ \"prefix\": \"Shop\", \n  \"omit\": [\"Web\"]\n}")]
+    [InlineData("{\n  \"prefix\": \"Shop\",\n}\n", "{\n  \"prefix\": \"Shop\",\n  \"omit\": [\"Web\"]\n}\n")]
+    [InlineData("{\n  \"prefix\": \"Shop\" // a comment, with a comma\n}\n", "{\n  \"prefix\": \"Shop\", // a comment, with a comma\n  \"omit\": [\"Web\"]\n}\n")]
+    [InlineData("{\n  \"prefix\": \"Shop\" /* a, b */ ,\n}\n", "{\n  \"prefix\": \"Shop\" /* a, b */ ,\n  \"omit\": [\"Web\"]\n}\n")]
+    [InlineData("{\n  \"prefix\": \"Shop\" , /* x */\n}\n", "{\n  \"prefix\": \"Shop\" , /* x */\n  \"omit\": [\"Web\"]\n}\n")]
+    [InlineData("{\n  \"prefix\": \"Shop\" // a note\n  ,\n}\n", "{\n  \"prefix\": \"Shop\" // a note\n  ,\n  \"omit\": [\"Web\"]\n}\n")]
+    [InlineData("{\n\"prefix\": \"Shop\"\n}\n", "{\n\"prefix\": \"Shop\",\n\"omit\": [\"Web\"]\n}\n")]
+    [InlineData("{\n    \"prefix\": \"Shop\"\n}\n", "{\n    \"prefix\": \"Shop\",\n    \"omit\": [\"Web\"]\n}\n")]
+    [InlineData("{}", "{\n  \"omit\": [\"Web\"]\n}")]
+    public void AnEditAppendsAKeyTheTextLacks(string text, string expected)
+    {
+        var before = Parse(text);
+
+        var edited = PolicyText.Edit(text, before, before with { Omit = ["Web"] });
+
+        Assert.Equal(expected, edited);
+        Assert.Equal(["Web"], Parse(edited).Omit);
+    }
+
+    [Fact]
+    public void AnEditLaysOutLongValuesOnePerLineAtTheKeysIndent()
+    {
+        const string text = "{\n    \"proposals\": []\n}\n";
+        var proposal = new Proposal
+        {
+            Id = "p1",
+            Name = "Split the core",
+            Layers = [new ProposalGroup { Id = "core", Label = "Core", Namespaces = [ProposalEntry.Of("Domain"), ProposalEntry.Of("Application")] }],
+        };
+        var before = Parse(text);
+
+        var edited = PolicyText.Edit(text, before, before with { Proposals = [proposal] });
+
+        Assert.Equal(
+            """
+            {
+                "proposals": [
+                  {
+                    "id": "p1",
+                    "name": "Split the core",
+                    "layers": [{ "id": "core", "label": "Core", "namespaces": ["Domain", "Application"] }],
+                    "omit": []
+                  }
+                ]
+            }
+
+            """,
+            edited);
+        Assert.Equal(Json(before with { Proposals = [proposal] }), Json(Parse(edited)));
+    }
+
+    [Theory]
+    [InlineData("[1]", "milligram.json is not a JSON object.")]
+    [InlineData("{ \"prefix\": ", null)]
+    public void AnEditRefusesTextThatIsNotAJsonObject(string text, string? message)
+    {
+        var refused = Assert.ThrowsAny<System.Text.Json.JsonException>(() => PolicyText.Edit(text, new Policy(), new Policy { Omit = ["Web"] }));
+        if (message is not null) Assert.Equal(message, refused.Message);
     }
 }
 
