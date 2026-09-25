@@ -142,5 +142,6 @@ Match the existing code. It is terse and consistent:
 - Commit subjects are imperative and short: "Keep metrics snapshots local and write them in sorted
   order". The body says why, and gives measured numbers where relevant (coverage, mutation score).
 - Run `dotnet build`, `dotnet test`, and `dotnet format --verify-no-changes` before every commit.
+  CI (`.github/workflows/ci.yml`) runs the same checks on every PR, in Release with `-warnaserror`.
 - Don't commit `.milligram/`, `artifacts/`, `StrykerOutput/`, `bin/`, or `obj/`. The `.gitignore`
   covers them.

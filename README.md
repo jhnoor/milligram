@@ -1,5 +1,7 @@
 # Milligram
 
+[![CI](https://github.com/jhnoor/milligram/actions/workflows/ci.yml/badge.svg)](https://github.com/jhnoor/milligram/actions/workflows/ci.yml)
+
 A live architecture viewer for C# codebases, with an AI agent at your side.
 
 Milligram draws your code as a component diagram, with namespaces as components and types
