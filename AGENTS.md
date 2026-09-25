@@ -53,7 +53,7 @@ One project, `src/Milligram`, packed as the `milligram` dotnet tool. One test pr
 
 | Namespace | Level | Holds |
 |-----------|-------|-------|
-| `Domain` | 0 | Pure model and rules. `Model` (CodeModel, TypeNode, edges), `Policies` (milligram.json records, NamePath, Glob), `Hierarchy` (component tree, dependency rule), `Views` (what the browser draws), `Metrics` (CRAP, mutation, grades, snapshots), `Mail`. |
+| `Domain` | 0 | Pure model and rules. `Model` (CodeModel, TypeNode, edges), `Policies` (milligram.json records, NamePath, Glob), `Hierarchy` (component tree, dependency rule, `Layering` used by `init` to infer levels), `Views` (what the browser draws), `Metrics` (CRAP, mutation, grades, snapshots), `Mail`. |
 | `Application` | 1 | Use cases and ports. `Workspace` (current policy, model, and metrics, all thread-safe), `ViewerActions` (what the viewer's buttons do), `CrapService`, `MutationService`, `JobQueue`, `Mailbox`, `PolicyEditor`, `ProjectInitializer`, `AgentBriefing`, and `Ports.cs` (every interface an adapter implements). |
 | `Analysis` | 2 | Readers of the outside world: the Roslyn `CSharp` scanner, the Cobertura and Stryker report readers, and the .csproj locator. |
 | `Adapters` | 2 | Web server and SSE `EventHub`, tmux companion, file watcher, process runner, CLI parsing. |

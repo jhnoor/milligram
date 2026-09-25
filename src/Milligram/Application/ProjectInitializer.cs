@@ -1,11 +1,40 @@
+using Milligram.Domain.Hierarchy;
+using Milligram.Domain.Model;
 using Milligram.Domain.Policies;
 
 namespace Milligram.Application;
 
+/// <summary>A first policy and the dependencies its inferred levels leave pointing outward.</summary>
+public sealed record Initialization(Policy Policy, IReadOnlyList<DependencyEdge> Outward)
+{
+    private const int ListedOutward = 10;
+
+    /// <summary>What init decided, for the console: the levels, and which arrows start out red.</summary>
+    public IReadOnlyList<string> Describe()
+    {
+        if (Policy.Levels.Count == 0) return [];
+        var lines = new List<string> { "Levels, inferred from the dependencies (inner first; edit them in milligram.json):" };
+        lines.AddRange(Policy.Levels.Select((names, level) => $"  L{level}  {string.Join(", ", names)}"));
+        if (Outward.Count == 0)
+        {
+            lines.Add("No dependency cycles between top-level namespaces.");
+            return lines;
+        }
+        lines.Add($"{Outward.Count} {(Outward.Count == 1 ? "dependency points" : "dependencies point")} outward (red), the lightest links in dependency cycles:");
+        lines.AddRange(Outward
+            .OrderBy(e => e.Count).ThenBy(e => e.From, StringComparer.Ordinal).ThenBy(e => e.To, StringComparer.Ordinal)
+            .Take(ListedOutward)
+            .Select(e => $"  {e.From} -> {e.To} ({e.Count} {(e.Count == 1 ? "reference" : "references")})"));
+        if (Outward.Count > ListedOutward) lines.Add($"  and {Outward.Count - ListedOutward} more");
+        return lines;
+    }
+}
+
 /// <summary>Writes a first milligram.json from what is actually in the source: no invented components.</summary>
 public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scanner, IProjectLocator locator)
 {
-    public Policy Propose()
+    /// <summary>Levels come from the dependencies (see <see cref="Layering"/>); boxes are ordered outer first, as drawn.</summary>
+    public Initialization Propose()
     {
         var src = Directory.Exists(Path.Combine(paths.Root, "src")) ? "src" : ".";
         var testDirectories = locator.Find(paths.Root)
@@ -18,22 +47,20 @@ public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scan
 
         var model = scanner.Scan(new ScanRequest(paths.Root, paths.Absolute(src), exclude, "", [], title));
         var prefix = CommonPrefix(model.Types.Select(t => t.Namespace).Where(n => n.Length > 0).Distinct().ToList());
-        var order = model.Types
-            .Select(t => NamePath.Segments(NamePath.Relative(t.Namespace, prefix)).FirstOrDefault())
-            .OfType<string>()
-            .Distinct()
-            .Order(StringComparer.Ordinal)
-            .ToList();
-        return new Policy { Title = title, Src = src, Exclude = exclude, Prefix = prefix, Order = order };
+        var layers = Layering.TopLevel(model, prefix);
+        var order = layers.Levels.Reverse().SelectMany(names => names).ToList();
+        var policy = new Policy { Title = title, Src = src, Exclude = exclude, Prefix = prefix, Order = order, Levels = layers.Levels };
+        return new Initialization(policy, layers.Outward);
     }
 
-    /// <summary>Writes milligram.json unless it exists; always makes sure run files are git-ignored.</summary>
-    public bool Initialize(bool force)
+    /// <summary>Writes milligram.json unless it exists (null then); always makes sure run files are git-ignored.</summary>
+    public Initialization? Initialize(bool force)
     {
         EnsureGitIgnore();
-        if (File.Exists(paths.PolicyFile) && !force) return false;
-        JsonFile.Write(paths.PolicyFile, Propose());
-        return true;
+        if (File.Exists(paths.PolicyFile) && !force) return null;
+        var initialization = Propose();
+        JsonFile.Write(paths.PolicyFile, initialization.Policy);
+        return initialization;
     }
 
     public static string CommonPrefix(IReadOnlyList<string> namespaces)

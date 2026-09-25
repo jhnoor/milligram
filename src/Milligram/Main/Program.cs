@@ -43,7 +43,11 @@ public static class Program
 
     private static async Task<int> ServeAsync(Composition c, CommandLine line)
     {
-        if (c.Initializer.Initialize(force: false)) Console.WriteLine("Wrote milligram.json from the namespaces found in the source.");
+        if (c.Initializer.Initialize(force: false) is { } initialization)
+        {
+            Console.WriteLine("Wrote milligram.json from the namespaces found in the source.");
+            foreach (var described in initialization.Describe()) Console.WriteLine("  " + described);
+        }
         c.Workspace.Load();
         if (c.Workspace.PolicyError is { } error) Console.Error.WriteLine(error);
 
@@ -85,8 +89,13 @@ public static class Program
 
     private static int Init(Composition c, CommandLine line)
     {
-        var written = c.Initializer.Initialize(line.Has("force"));
-        Console.WriteLine(written ? $"Wrote {c.Paths.PolicyFile}" : "milligram.json already exists (use --force to replace it).");
+        if (c.Initializer.Initialize(line.Has("force")) is not { } initialization)
+        {
+            Console.WriteLine("milligram.json already exists (use --force to replace it).");
+            return 0;
+        }
+        Console.WriteLine($"Wrote {c.Paths.PolicyFile}");
+        foreach (var described in initialization.Describe()) Console.WriteLine(described);
         return 0;
     }
 
