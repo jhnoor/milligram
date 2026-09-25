@@ -26,6 +26,7 @@ public static class Program
                 "ir" => Ir(composition),
                 "crap" => await CrapAsync(composition, line),
                 "mutate" => await MutateAsync(composition, line),
+                "doctor" => await DoctorAsync(composition),
                 "mail" => Mail(composition, line),
                 "tell" => Tell(composition, line),
                 "agent" => await AgentAsync(composition, line),
@@ -43,12 +44,19 @@ public static class Program
 
     private static async Task<int> ServeAsync(Composition c, CommandLine line)
     {
-        if (c.Initializer.Initialize(force: false) is { } initialization)
+        var initialization = c.Initializer.Initialize(force: false);
+        if (initialization is not null)
         {
             Console.WriteLine("Wrote milligram.json from the namespaces found in the source.");
             foreach (var described in initialization.Describe()) Console.WriteLine("  " + described);
         }
         c.Workspace.Load();
+        if (initialization is not null)
+        {
+            Console.WriteLine("Checking what the metrics and the agent need (`milligram doctor` runs this again):");
+            foreach (var check in await c.Doctor.RunAsync(CancellationToken.None))
+                foreach (var described in check.Describe()) Console.WriteLine("  " + described);
+        }
         if (c.Workspace.PolicyError is { } error) Console.Error.WriteLine(error);
 
         var (app, url) = await c.WebServer().StartAsync(line.IntValue("port", DefaultPort), CancellationToken.None);
@@ -122,6 +130,16 @@ public static class Program
         var result = await c.Mutation.RunAsync(files, line.Has("all"), Console.WriteLine, CancellationToken.None);
         Console.WriteLine($"Mutated {result.Members} members in {result.Projects} project(s): {result.Mutants} mutants.");
         return 0;
+    }
+
+    private static async Task<int> DoctorAsync(Composition c)
+    {
+        c.Workspace.Load();
+        Console.WriteLine($"Milligram doctor: {c.Paths.Root}");
+        var checks = await c.Doctor.RunAsync(CancellationToken.None);
+        foreach (var check in checks)
+            foreach (var described in check.Describe()) Console.WriteLine("  " + described);
+        return checks.Any(check => check.Status == CheckStatus.Failed) ? 1 : 0;
     }
 
     private static int Mail(Composition c, CommandLine line)
@@ -215,6 +233,7 @@ public static class Program
           ir                      Scan the source and write .milligram/model.json.
           crap [--coverage F]     Run tests with coverage (or read Cobertura file F) and score CRAP.
           mutate [--all] [files]  Mutation-test changed members (Stryker.NET); --all for whole files.
+          doctor                  Check what the metrics and the agent need; print the fix for anything missing.
           mail [--peek]           Print (and remove) mail for the agent.
           tell display <ctx> [--focus id] | notify <text> | reload
                                   Send mail to the viewer.

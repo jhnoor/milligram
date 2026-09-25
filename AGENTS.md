@@ -41,6 +41,7 @@ dotnet tool restore                            # Stryker 5, pinned in dotnet-too
 dotnet run --project src/Milligram -- ir                     # rescan -> .milligram/model.json
 dotnet run --project src/Milligram -- crap                   # tests + coverage -> .milligram/metrics/crap.json
 dotnet run --project src/Milligram -- mutate src/Milligram/Domain/Metrics/Crap.cs   # differential mutation
+dotnet run --project src/Milligram -- doctor                 # what the metrics and the agent need, with fixes
 dotnet run --project src/Milligram -- --no-agent --no-browser   # viewer at http://localhost:5170/
 ```
 

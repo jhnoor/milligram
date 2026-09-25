@@ -103,6 +103,10 @@ public static class AgentBriefing
            members that changed. `--all` re-mutates whole files. Surviving or uncovered mutants are test
            gaps: say so, and offer to write the missing tests. Do not loop re-running mutation.
 
+        If `milligram crap` or `milligram mutate` fails because something is missing, run `milligram doctor`:
+        it lists what the metrics need and the command that fixes each gap. Tell the user; don't install
+        tools yourself.
+
         `milligram ir` regenerates the model by hand if you ever need it.
 
         Do not commit or push unless asked.

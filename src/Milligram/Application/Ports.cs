@@ -29,7 +29,8 @@ public interface IMutationReportReader
     IReadOnlyList<Mutant> Read(string reportFile, string root, string projectDirectory);
 }
 
-public sealed record BuildProject(string Path, string Name, bool IsTest, IReadOnlyList<string> References)
+/// <summary>A project file; <see cref="IsRestored"/> means its packages resolve, so the scanner can bind their types.</summary>
+public sealed record BuildProject(string Path, string Name, bool IsTest, IReadOnlyList<string> References, bool IsRestored = false)
 {
     public string Directory => System.IO.Path.GetDirectoryName(Path)!;
 }
@@ -38,6 +39,12 @@ public sealed record BuildProject(string Path, string Name, bool IsTest, IReadOn
 public interface IProjectLocator
 {
     IReadOnlyList<BuildProject> Find(string root);
+
+    /// <summary>
+    /// Whether <paramref name="project"/> uses <paramref name="package"/>: true when its project file names it; otherwise
+    /// what its restored packages say, or null before a restore, when there is no way to tell.
+    /// </summary>
+    bool? UsesPackage(BuildProject project, string package);
 }
 
 public interface IProcessRunner

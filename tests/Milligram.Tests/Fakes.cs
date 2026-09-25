@@ -9,10 +9,14 @@ internal sealed class FakeProcessRunner(Func<string, IReadOnlyList<string>, stri
 {
     public List<(string Command, IReadOnlyList<string> Args, string Directory)> Calls { get; } = [];
 
+    /// <summary>What a command prints, keyed by its first argument (e.g. "--version").</summary>
+    public Dictionary<string, string[]> Output { get; } = [];
+
     public Task<int> RunAsync(string command, IReadOnlyList<string> args, string workingDirectory, Action<string> onLine, CancellationToken cancellation)
     {
         Calls.Add((command, args, workingDirectory));
         onLine($"ran {command} {args.FirstOrDefault()}");
+        foreach (var line in Output.GetValueOrDefault(args.FirstOrDefault() ?? "", [])) onLine(line);
         return Task.FromResult(onRun?.Invoke(command, args, workingDirectory) ?? 0);
     }
 
@@ -24,7 +28,12 @@ internal sealed class FakeProcessRunner(Func<string, IReadOnlyList<string>, stri
 
 internal sealed class FakeProjectLocator(params BuildProject[] projects) : IProjectLocator
 {
+    /// <summary>Answers <see cref="UsesPackage"/>; by default every project has every package.</summary>
+    public Func<BuildProject, string, bool?> Uses { get; init; } = (_, _) => true;
+
     public IReadOnlyList<BuildProject> Find(string root) => projects;
+
+    public bool? UsesPackage(BuildProject project, string package) => Uses(project, package);
 }
 
 internal sealed class FakeCoverageReader(LineHits hits) : ICoverageReader
