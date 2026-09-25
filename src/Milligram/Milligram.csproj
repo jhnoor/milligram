@@ -17,6 +17,9 @@
 
     <!-- The viewer's web assets are embedded so the tool runs from anywhere. -->
     <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+
+    <!-- The Web SDK runs `dotnet run` in the project directory; run where invoked, like the installed tool. -->
+    <RunWorkingDirectory>$(MSBuildStartupDirectory)</RunWorkingDirectory>
   </PropertyGroup>
 
   <ItemGroup>
