@@ -78,13 +78,41 @@ public class DotNetProjectLocatorTests
                   <ItemGroup><ProjectReference Include="..\..\src\App\App.csproj" /></ItemGroup>
                 </Project>
                 """),
-            ("src/App/bin/Copy.csproj", "<Project />"));
+            ("src/App/bin/Copy.csproj", "<Project />"),
+            ("src/Lib/Lib.csproj", "<Project><PropertyGroup><IsPackable>true</IsPackable></PropertyGroup></Project>"),
+            ("tests/Spec/Spec.csproj", "<Project><PropertyGroup><IsTestProject> True </IsTestProject></PropertyGroup></Project>"));
 
         var projects = new DotNetProjectLocator().Find(project.Root);
 
-        Assert.Equal(["App", "App.Tests"], projects.Select(p => p.Name));
-        Assert.False(projects[0].IsTest);
-        Assert.True(projects[1].IsTest);
-        Assert.Equal(projects[0].Path, Assert.Single(projects[1].References));
+        Assert.Equal(["App", "Lib", "App.Tests", "Spec"], projects.Select(p => p.Name));
+        Assert.Equal([false, false, true, true], projects.Select(p => p.IsTest));
+        Assert.Equal(projects[0].Path, Assert.Single(projects[2].References));
+    }
+
+    [Fact]
+    public void KnowsWhichProjectsAreRestoredAndWhichPackagesTheyUse()
+    {
+        using var project = new TempProject(
+            ("named/Named.csproj", """<Project><ItemGroup><PackageReference Include="Coverlet.Collector" /></ItemGroup></Project>"""),
+            ("restored/Restored.csproj", "<Project />"),
+            ("restored/obj/project.assets.json", """{ "libraries": { "coverlet.collector/6.0.4": { "type": "package" }, "xunit/2.9.3": {} } }"""),
+            ("without/Without.csproj", "<Project />"),
+            ("without/obj/project.assets.json", """{ "libraries": { "xunit/2.9.3": {} } }"""),
+            ("fresh/Fresh.csproj", "<Project />"),
+            ("broken/Broken.csproj", "<Project />"),
+            ("broken/obj/project.assets.json", "{ nope"),
+            ("odd/Odd.csproj", "<Project />"),
+            ("odd/obj/project.assets.json", "[]"));
+        var locator = new DotNetProjectLocator();
+        var projects = locator.Find(project.Root).ToDictionary(p => p.Name);
+
+        Assert.Equal(["Broken", "Odd", "Restored", "Without"], projects.Values.Where(p => p.IsRestored).Select(p => p.Name).Order());
+        Assert.Null(locator.UsesPackage(projects["Odd"], "coverlet.collector"));
+        Assert.True(locator.UsesPackage(projects["Named"], "coverlet.collector"));
+        Assert.True(locator.UsesPackage(projects["Restored"], "coverlet.collector"));
+        Assert.False(locator.UsesPackage(projects["Without"], "coverlet.collector"));
+        Assert.Null(locator.UsesPackage(projects["Fresh"], "coverlet.collector"));
+        Assert.Null(locator.UsesPackage(projects["Broken"], "coverlet.collector"));
+        Assert.False(locator.UsesPackage(projects["Restored"], "coverlet"));
     }
 }

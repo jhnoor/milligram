@@ -26,6 +26,7 @@ public sealed class Composition
         Mutation = new MutationService(Workspace, locator, processes, new StrykerReportReader());
         Actions = new ViewerActions(Workspace, new PolicyEditor(Workspace), Crap, Mutation, Jobs, Companion, Events);
         Initializer = new ProjectInitializer(Paths, scanner, locator);
+        Doctor = new Doctor(Workspace, Crap, locator, processes, Companion);
     }
 
     public ProjectPaths Paths { get; }
@@ -37,6 +38,7 @@ public sealed class Composition
     public MutationService Mutation { get; }
     public ViewerActions Actions { get; }
     public ProjectInitializer Initializer { get; }
+    public Doctor Doctor { get; }
 
     public WebServer WebServer() => new(Workspace, Actions, Jobs, Companion, Events);
 }

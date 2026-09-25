@@ -142,6 +142,59 @@ public class CrapServiceTests
         var service = new CrapService(fixture.Workspace, new FakeProjectLocator(fixture.TestProject), new FakeProcessRunner(), new FakeCoverageReader(Hits));
         Assert.Equal([Path.Combine(fixture.Project.Root, "t/T.csproj")], service.TestProjects());
     }
+
+    [Fact]
+    public async Task StopsBeforeRunningTestsWhenNoTestProjectCanMeasureCoverage()
+    {
+        using var fixture = new ServiceFixture();
+        var other = new BuildProject(Path.Combine(fixture.Project.Root, "tests/Other.Tests/Other.Tests.csproj"), "Other.Tests", true, [fixture.AppProject.Path]);
+        var processes = new FakeProcessRunner(WriteCoverage);
+        var locator = new FakeProjectLocator(fixture.AppProject, fixture.TestProject, other) { Uses = (_, _) => false };
+        var service = new CrapService(fixture.Workspace, locator, processes, new FakeCoverageReader(Hits));
+
+        var refused = await Assert.ThrowsAsync<MilligramException>(() => service.RunAsync(null, _ => { }, CancellationToken.None));
+
+        Assert.Empty(processes.Calls);
+        Assert.False(File.Exists(fixture.Workspace.Paths.ModelFile));
+        Assert.Equal(
+            "No test project can measure coverage: they lack coverlet.collector. Fix: dotnet add tests/App.Tests/App.Tests.csproj package coverlet.collector; " +
+            "dotnet add tests/Other.Tests/Other.Tests.csproj package coverlet.collector",
+            refused.Message);
+    }
+
+    [Fact]
+    public async Task WarnsAboutTestProjectsWithoutACollectorAndRunsTheRest()
+    {
+        using var fixture = new ServiceFixture();
+        var other = new BuildProject(Path.Combine(fixture.Project.Root, "tests/Other.Tests/Other.Tests.csproj"), "Other.Tests", true, [fixture.AppProject.Path]);
+        var fresh = new BuildProject(Path.Combine(fixture.Project.Root, "tests/New.Tests/New.Tests.csproj"), "New.Tests", true, [fixture.AppProject.Path]);
+        var processes = new FakeProcessRunner(WriteCoverage);
+        var locator = new FakeProjectLocator(fixture.AppProject, fixture.TestProject, other, fresh)
+        {
+            Uses = (project, package) => package != CrapService.CoverageCollector || project == fixture.TestProject ? true : project == fresh ? null : false,
+        };
+        var log = new List<string>();
+
+        await new CrapService(fixture.Workspace, locator, processes, new FakeCoverageReader(Hits)).RunAsync(null, log.Add, CancellationToken.None);
+
+        Assert.Equal(3, processes.Calls.Count);
+        Assert.Contains(
+            "tests/Other.Tests/Other.Tests.csproj lacks coverlet.collector, so its tests add no coverage. Fix: dotnet add tests/Other.Tests/Other.Tests.csproj package coverlet.collector",
+            log);
+        Assert.DoesNotContain(log, line => line.StartsWith("tests/New.Tests", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ReadingACoverageFileNeedsNoCollector()
+    {
+        using var fixture = new ServiceFixture();
+        var locator = new FakeProjectLocator(fixture.AppProject, fixture.TestProject) { Uses = (_, _) => false };
+        var service = new CrapService(fixture.Workspace, locator, new FakeProcessRunner(), new FakeCoverageReader(Hits));
+
+        var result = await service.RunAsync(["coverage.xml"], _ => { }, CancellationToken.None);
+
+        Assert.Equal(2, result.Members);
+    }
 }
 
 public class MutationServiceTests

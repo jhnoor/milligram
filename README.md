@@ -23,6 +23,9 @@ match.
 - For the agent: `tmux` and [GitHub Copilot CLI](https://github.com/github/copilot-cli)
 - For coverage: test projects that reference `coverlet.collector` (the default in `dotnet new xunit`)
 
+`milligram doctor` checks all of these for your project, plus whether it is restored, and prints the
+fix for anything missing. The first run checks them too.
+
 ## Install
 
 ```bash
@@ -161,6 +164,7 @@ agent tokens.
 | `milligram ir` | Rescan the source. |
 | `milligram crap [--coverage file.xml]` | Run the tests with coverage (or read a Cobertura file) and score CRAP. |
 | `milligram mutate [--all] [files…]` | Mutation-test changed methods (every file if you list none). |
+| `milligram doctor` | Check the SDK, restore, test projects, coverage collector, Stryker, and the agent; print the fix for anything missing. Exits 1 if something is. |
 | `milligram mail [--peek]` | Print and remove mail for the agent. |
 | `milligram tell display <real\|proposalId>` / `tell notify "text"` | Send mail to the viewer. |
 | `milligram agent status\|start\|stop\|attach` | Manage the agent session. |
