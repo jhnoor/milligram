@@ -85,7 +85,7 @@ public class CrapServiceTests
         await service.RunAsync(null, _ => { }, CancellationToken.None);
 
         var args = Assert.Single(processes.Calls).Args;
-        Assert.Equal(Path.Combine(fixture.Project.Root, "tests/Other/Other.csproj"), args[1]);
+        Assert.Equal(fixture.Workspace.Paths.Absolute("tests/Other/Other.csproj"), args[1]);
         Assert.Equal("Category=Fast", FakeProcessRunner.After(args, "--filter"));
     }
 
@@ -140,7 +140,7 @@ public class CrapServiceTests
     {
         using var fixture = new ServiceFixture("""{ "prefix": "App", "tests": { "projects": ["t/T.csproj"] } }""");
         var service = new CrapService(fixture.Workspace, new FakeProjectLocator(fixture.TestProject), new FakeProcessRunner(), new FakeCoverageReader(Hits));
-        Assert.Equal([Path.Combine(fixture.Project.Root, "t/T.csproj")], service.TestProjects());
+        Assert.Equal([fixture.Workspace.Paths.Absolute("t/T.csproj")], service.TestProjects());
     }
 
     [Fact]

@@ -155,7 +155,7 @@ public sealed class ViewerActions(
         data["text"] = action.Text.Trim();
         if (action.Selection is not null) data["selection"] = action.Selection.DeepClone();
         Mail(MailMessage.Ops.Message, data);
-        return ActionResult.Done(companion.IsRunning() ? "Sent to the agent." : "Queued; the agent is not running.");
+        return ActionResult.Done(companion.IsRunning() ? "Sent to the agent." : "Queued; the agent is not running. If you run your own, tell it to run `milligram mail`.");
     }
 
     private async Task<ActionResult> StartAgentAsync(CancellationToken cancellation)

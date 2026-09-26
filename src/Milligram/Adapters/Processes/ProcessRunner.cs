@@ -57,30 +57,96 @@ public sealed partial class ProcessRunner : IProcessRunner
             using var process = Process.Start(info);
             return process is not null;
         }
-        catch (System.ComponentModel.Win32Exception)
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or ArgumentException)
         {
             return false;
         }
     }
 
-    public static bool OnPath(string command) =>
-        Path.IsPathRooted(command)
-            ? File.Exists(command)
-            : (Environment.GetEnvironmentVariable("PATH") ?? "")
-                .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-                .Any(dir => File.Exists(Path.Combine(dir, command)));
+    /// <summary>
+    /// Starts a process that runs alongside this one and hands over each line it prints, in UTF-8. Stopping it closes
+    /// the process's input, which tells a well-behaved child to finish, and kills it if it hasn't within two seconds.
+    /// </summary>
+    public static Followed? Follow(string command, IReadOnlyList<string> args, Action<string> onLine)
+    {
+        var info = StartInfo(command, args, Environment.CurrentDirectory, redirect: true);
+        info.RedirectStandardInput = true;
+        info.StandardOutputEncoding = System.Text.Encoding.UTF8;
+        var process = new Process { StartInfo = info };
+        process.OutputDataReceived += (_, e) => { if (e.Data is { } line) onLine(line); };
+        process.ErrorDataReceived += (_, _) => { };
+        try
+        {
+            process.Start();
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            process.Dispose();
+            return null;
+        }
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        return new Followed(process);
+    }
 
+    public sealed class Followed(Process process) : IDisposable
+    {
+        /// <summary>True when the process finished on its own once its input closed.</summary>
+        public bool Stop()
+        {
+            try
+            {
+                process.StandardInput.Close();
+                if (process.WaitForExit(2000)) return true;
+                process.Kill(entireProcessTree: true);
+            }
+            catch (Exception e) when (e is InvalidOperationException or IOException) { }
+            return false;
+        }
+
+        public void Dispose()
+        {
+            Stop();
+            process.Dispose();
+        }
+    }
+
+    /// <summary>The full path of a program on PATH, trying each extension in PATHEXT on Windows; null when there is none.</summary>
+    public static string? Find(string command) =>
+        ProgramPath.Resolve(command, Environment.GetEnvironmentVariable("PATH"), Environment.GetEnvironmentVariable("PATHEXT"),
+            OperatingSystem.IsWindows(), File.Exists);
+
+    public static bool OnPath(string command) => Find(command) is not null;
+
+    /// <summary>Opens a URL or a document with the program the user chose for it (ShellExecute, on Windows).</summary>
+    public static bool Open(string target)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            return true;
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Starts the program that <see cref="Find"/> resolves, so lookup and launch agree. A .cmd or .bat file runs through
+    /// cmd.exe with arguments quoted by cmd.exe's rules, which .NET's escaping doesn't cover.
+    /// </summary>
     private static ProcessStartInfo StartInfo(string command, IReadOnlyList<string> args, string workingDirectory, bool redirect)
     {
-        var info = new ProcessStartInfo(command)
-        {
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = redirect,
-            RedirectStandardError = redirect,
-            RedirectStandardInput = false,
-            UseShellExecute = false,
-        };
-        foreach (var arg in args) info.ArgumentList.Add(arg);
+        var program = Find(command) ?? command;
+        var info = OperatingSystem.IsWindows() && ProgramPath.IsBatchFile(program)
+            ? new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"), BatchCommandLine.For(program, args))
+            : new ProcessStartInfo(program, args);
+        info.WorkingDirectory = workingDirectory;
+        info.RedirectStandardOutput = redirect;
+        info.RedirectStandardError = redirect;
+        info.RedirectStandardInput = false;
+        info.UseShellExecute = false;
         info.Environment["DOTNET_NOLOGO"] = "1";
         info.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
         return info;

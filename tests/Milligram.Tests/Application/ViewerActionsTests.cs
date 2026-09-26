@@ -262,21 +262,39 @@ public class JobQueueTests
             lock (order) order.Add("first");
             return "";
         });
-        await Task.Delay(50);
         var second = jobs.Enqueue("Second", (_, _) =>
         {
             lock (order) order.Add("second");
             return Task.FromResult("");
         });
-        await Task.Delay(50);
+        await Jobs.Running(jobs, "First");
 
         Assert.Equal(["Second"], jobs.Status.Queued);
-        Assert.Equal(JobState.Running, jobs.Status.State);
+        Assert.Empty(order);
         release.SetResult();
         await Task.WhenAll(first, second);
 
         Assert.Equal(["first", "second"], order);
         Assert.Equal("Second", jobs.Status.Name);
+    }
+
+    [Fact]
+    public async Task JobsEnqueuedTogetherFromAPoolThreadRunInTheOrderTheyCame()
+    {
+        var jobs = new JobQueue(new FakeEvents());
+        var order = new List<int>();
+
+        // The web server and the file watcher enqueue from thread-pool threads, whose own work queue is last in, first out.
+        var all = await Task.Run(() => Enumerable.Range(0, 20)
+            .Select(i => jobs.Enqueue($"Job {i}", (_, _) =>
+            {
+                lock (order) order.Add(i);
+                return Task.FromResult("");
+            }))
+            .ToList());
+        await Task.WhenAll(all);
+
+        Assert.Equal(Enumerable.Range(0, 20), order);
     }
 
     [Fact]
@@ -305,5 +323,72 @@ public class AgentBriefingTests
         Assert.Contains("milligram mail", text);
         Assert.Contains("milligram tell display", text);
         Assert.Contains("Do not invent components", text);
+    }
+}
+
+public class AgentLauncherTests : IDisposable
+{
+    private readonly TempProject project = new(("milligram.json", """{ "agent": { "command": "my-copilot" } }"""));
+    private readonly Workspace workspace;
+    private readonly FakeCompanion companion = new();
+
+    public AgentLauncherTests()
+    {
+        workspace = new Workspace(new ProjectPaths(project.Root), new CSharpScanner());
+        workspace.Load();
+    }
+
+    public void Dispose() => project.Dispose();
+
+    private Task<AgentLauncher.Outcome> Start(bool wanted = true) => new AgentLauncher(workspace, companion).StartAsync(wanted, CancellationToken.None);
+
+    private const string RunYourOwn = "  To run your own agent, start my-copilot in the project folder and tell it to read .milligram/agent.md.";
+
+    [Fact]
+    public async Task WithoutTheAgentTheBriefingIsWrittenAndTheBannerSaysHowToRunYourOwn()
+    {
+        var outcome = await Start(wanted: false);
+
+        Assert.True(File.Exists(workspace.Paths.BriefingFile));
+        Assert.Equal(new[] { "Agent: not started (--no-agent)", RunYourOwn }, outcome.Banner);
+        Assert.False(outcome.Started);
+        Assert.Equal(0, companion.Starts);
+    }
+
+    [Fact]
+    public async Task WhenTheAgentCantStartTheBriefingIsWrittenAndTheBannerSaysWhy()
+    {
+        companion.Available = false;
+
+        var outcome = await Start();
+
+        Assert.True(File.Exists(workspace.Paths.BriefingFile));
+        Assert.Equal(new[] { "Agent: not started (tmux is not installed.)", RunYourOwn }, outcome.Banner);
+        Assert.False(outcome.Started);
+        Assert.Equal(0, companion.Starts);
+    }
+
+    [Fact]
+    public async Task AnAgentAlreadyRunningIsBriefedAndLeftToWhoeverStartedIt()
+    {
+        companion.Running = true;
+
+        var outcome = await Start();
+
+        Assert.True(File.Exists(workspace.Paths.BriefingFile));
+        Assert.Equal(new[] { "Agent: already running — tmux attach -t milligram-test" }, outcome.Banner);
+        Assert.False(outcome.Started);
+        Assert.Equal(0, companion.Starts);
+    }
+
+    [Fact]
+    public async Task AnAvailableAgentIsStartedAndStoppedLater()
+    {
+        var outcome = await Start();
+
+        Assert.True(File.Exists(workspace.Paths.BriefingFile));
+        Assert.Equal(new[] { "Agent: tmux attach -t milligram-test" }, outcome.Banner);
+        Assert.True(outcome.Started);
+        Assert.Equal(1, companion.Starts);
     }
 }

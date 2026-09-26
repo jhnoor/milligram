@@ -92,8 +92,24 @@ internal sealed class FakeEvents : IViewerEvents
     public void Publish(string type, object? payload = null) => published.Enqueue((type, payload));
 }
 
+internal sealed class FakeWatchLimits(WatchLimit? limit = null) : IWatchLimits
+{
+    public WatchLimit? For(string root) => limit;
+}
+
 internal static class Jobs
 {
+    /// <summary>Waits for the named job to start, rather than sleeping and hoping it has.</summary>
+    public static async Task Running(JobQueue jobs, string name)
+    {
+        for (var i = 0; i < 400; i++)
+        {
+            if (jobs.Status is { State: JobState.Running } status && status.Name == name) return;
+            await Task.Delay(25);
+        }
+        throw new TimeoutException($"Job '{name}' did not start; last status {jobs.Status}.");
+    }
+
     /// <summary>Waits for the named job to finish and returns its final status.</summary>
     public static async Task<JobStatus> Finished(JobQueue jobs, string name)
     {

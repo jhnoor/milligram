@@ -14,31 +14,40 @@ public sealed record JobStatus(
     public static readonly JobStatus Idle = new("", JobState.Idle, null, null, null, [], []);
 }
 
-/// <summary>Runs long jobs (scans, tests, mutation) one at a time and reports progress to viewers.</summary>
+/// <summary>Runs long jobs (scans, tests, mutation) one at a time, in the order they came, and reports progress to viewers.</summary>
 public sealed class JobQueue(IViewerEvents events)
 {
     private const int LogLimit = 400;
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(400);
 
     private readonly Lock gate = new();
-    private readonly SemaphoreSlim turn = new(1, 1);
     private readonly List<string> queued = [];
     private readonly List<string> log = [];
     private JobStatus status = JobStatus.Idle;
     private DateTimeOffset lastProgress;
+    private Task tail = Task.CompletedTask;
 
     public JobStatus Status { get { lock (gate) return status with { Log = log.ToList(), Queued = queued.ToList() }; } }
 
+    /// <summary>
+    /// Each job starts when the one before it ends, however that ended. Continuations are scheduled rather than run
+    /// inline, so no job runs under the lock or on the caller's thread.
+    /// </summary>
     public Task Enqueue(string name, Func<Action<string>, CancellationToken, Task<string>> work, CancellationToken cancellation = default)
     {
-        lock (gate) queued.Add(name);
+        Task job;
+        lock (gate)
+        {
+            queued.Add(name);
+            job = tail = tail.ContinueWith(_ => RunAsync(name, work, cancellation),
+                CancellationToken.None, TaskContinuationOptions.DenyChildAttach, TaskScheduler.Default).Unwrap();
+        }
         Publish();
-        return Task.Run(() => RunAsync(name, work, cancellation), cancellation);
+        return job;
     }
 
     private async Task RunAsync(string name, Func<Action<string>, CancellationToken, Task<string>> work, CancellationToken cancellation)
     {
-        await turn.WaitAsync(cancellation);
         try
         {
             lock (gate)
@@ -48,6 +57,7 @@ public sealed class JobQueue(IViewerEvents events)
                 status = new JobStatus(name, JobState.Running, DateTimeOffset.UtcNow, null, null, [], []);
             }
             Publish();
+            cancellation.ThrowIfCancellationRequested();
             var message = await work(Append, cancellation);
             Finish(JobState.Succeeded, message);
         }
@@ -55,10 +65,6 @@ public sealed class JobQueue(IViewerEvents events)
         {
             Append($"error: {e.Message}");
             Finish(JobState.Failed, e.Message);
-        }
-        finally
-        {
-            turn.Release();
         }
     }
 

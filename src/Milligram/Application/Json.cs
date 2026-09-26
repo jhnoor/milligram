@@ -60,8 +60,62 @@ public static class JsonFile
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
         File.WriteAllText(temp, text);
-        File.Move(temp, path, overwrite: true);
+        try
+        {
+            Replace(temp, path);
+        }
+        catch
+        {
+            TryDelete(temp);
+            throw;
+        }
     }
+
+    /// <summary>Reads a whole file, sharing it the way <see cref="Read{T}"/> does, so an editor can still save it meanwhile.</summary>
+    public static string ReadText(string path)
+    {
+        using var reader = new StreamReader(OpenShared(path));
+        return reader.ReadToEnd();
+    }
+
+    private const int ReplaceAttempts = 10;
+
+    /// <summary>
+    /// On Windows, renaming over a file fails while anyone has it open, even a reader that shares deletes: a virus
+    /// scanner, the search indexer, an editor, or another Milligram. Those opens are brief, so retry for about a second.
+    /// </summary>
+    internal static void Replace(string temp, string path)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.Move(temp, path, overwrite: true);
+                return;
+            }
+            catch (Exception e) when (IsLocked(e) && attempt < ReplaceAttempts)
+            {
+                Thread.Sleep(20 * attempt);
+            }
+            catch (Exception e) when (IsLocked(e))
+            {
+                throw new MilligramException($"Could not replace {path}, because another program keeps it open. Close that program, or wait a moment, and try again. ({e.Message})");
+            }
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+    }
+
+    private const int SharingViolation = unchecked((int)0x80070020);
+    private const int LockViolation = unchecked((int)0x80070021);
+
+    /// <summary>Windows reports a file held open as a sharing violation, or as access denied.</summary>
+    private static bool IsLocked(Exception e) =>
+        OperatingSystem.IsWindows() && e is UnauthorizedAccessException or IOException { HResult: SharingViolation or LockViolation };
 
     private static FileStream OpenShared(string path) =>
         new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);

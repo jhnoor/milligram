@@ -1,4 +1,5 @@
 using Milligram.Adapters.Companion;
+using Milligram.Adapters.Files;
 using Milligram.Adapters.Processes;
 using Milligram.Adapters.Web;
 using Milligram.Analysis.Coverage;
@@ -12,7 +13,7 @@ namespace Milligram.Main;
 /// <summary>The composition root: the only place that knows every concrete class.</summary>
 public sealed class Composition
 {
-    public Composition(string root, string selfCommand)
+    public Composition(string root, IReadOnlyList<string> selfCommand)
     {
         Paths = new ProjectPaths(root);
         Events = new EventHub();
@@ -26,7 +27,9 @@ public sealed class Composition
         Mutation = new MutationService(Workspace, locator, processes, new StrykerReportReader());
         Actions = new ViewerActions(Workspace, new PolicyEditor(Workspace), Crap, Mutation, Jobs, Companion, Events);
         Initializer = new ProjectInitializer(Paths, scanner, locator);
-        Doctor = new Doctor(Workspace, Crap, locator, processes, Companion);
+        WatchLimits = new DrvFs();
+        Doctor = new Doctor(Workspace, Crap, locator, processes, Companion, WatchLimits);
+        Agent = new AgentLauncher(Workspace, Companion);
     }
 
     public ProjectPaths Paths { get; }
@@ -38,7 +41,9 @@ public sealed class Composition
     public MutationService Mutation { get; }
     public ViewerActions Actions { get; }
     public ProjectInitializer Initializer { get; }
+    public IWatchLimits WatchLimits { get; }
     public Doctor Doctor { get; }
+    public AgentLauncher Agent { get; }
 
     public WebServer WebServer() => new(Workspace, Actions, Jobs, Companion, Events);
 }

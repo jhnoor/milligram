@@ -20,8 +20,9 @@ public sealed record Check(string Name, CheckStatus Status, string Detail, IRead
 /// <summary>
 /// Checks what Milligram needs, without running any tests: an SDK that works here, restored projects, test
 /// projects with a coverage collector, Stryker.NET, and the companion agent. Anything missing comes with its fix.
+/// Where the file watcher can't see every change as it happens, it says so too.
 /// </summary>
-public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocator locator, IProcessRunner processes, ICompanion companion)
+public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocator locator, IProcessRunner processes, ICompanion companion, IWatchLimits watching)
 {
     private const int Listed = 3;
 
@@ -29,7 +30,7 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
     {
         var projects = locator.Find(workspace.Paths.Root);
         var tests = crap.TestProjects();
-        return
+        List<Check> checks =
         [
             await SdkAsync(cancellation),
             Restored(projects),
@@ -38,6 +39,8 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
             await StrykerAsync(cancellation),
             Agent(),
         ];
+        if (watching.For(workspace.Paths.Root) is { } limit) checks.Add(Check.Skipped("Watching", limit.Detail, limit.Fix));
+        return checks;
     }
 
     /// <summary>`dotnet --version` in the project root honours its global.json, as `dotnet test` will.</summary>
@@ -104,7 +107,9 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
         return companion.IsAvailable(out var reason)
             ? Check.Ok("Agent", $"tmux and {settings.Command} found")
             : Check.Failed("Agent", reason,
-                $"install tmux and {settings.Command} (see the README's Requirements), or turn the agent off: \"agent\": {{ \"enabled\": false }}");
+                "install what the agent needs (see the README's Requirements for your platform)",
+                $"or run your own: {AgentBriefing.RunYourOwn(workspace.Paths, settings.Command)}",
+                "or turn the agent off: \"agent\": { \"enabled\": false }");
     }
 
     private string Names(IEnumerable<string> paths)

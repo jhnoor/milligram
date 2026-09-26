@@ -55,9 +55,9 @@ One project, `src/Milligram`, packed as the `milligram` dotnet tool. One test pr
 | Namespace | Level | Holds |
 |-----------|-------|-------|
 | `Domain` | 0 | Pure model and rules. `Model` (CodeModel, TypeNode, edges), `Policies` (milligram.json records, NamePath, Glob), `Hierarchy` (component tree, dependency rule, `Layering` used by `init` to infer levels), `Views` (what the browser draws), `Metrics` (CRAP, mutation, grades, snapshots), `Mail`. |
-| `Application` | 1 | Use cases and ports. `Workspace` (current policy, model, and metrics, all thread-safe), `ViewerActions` (what the viewer's buttons do), `CrapService`, `MutationService`, `JobQueue`, `Mailbox`, `PolicyEditor`, `ProjectInitializer`, `AgentBriefing`, and `Ports.cs` (every interface an adapter implements). |
+| `Application` | 1 | Use cases and ports. `Workspace` (current policy, model, and metrics, all thread-safe), `ViewerActions` (what the viewer's buttons do), `CrapService`, `MutationService`, `JobQueue`, `Mailbox`, `PolicyEditor`, `ProjectInitializer`, `AgentBriefing`, `AgentLauncher` (what `serve` does about the agent), and `Ports.cs` (every interface an adapter implements). |
 | `Analysis` | 2 | Readers of the outside world: the Roslyn `CSharp` scanner, the Cobertura and Stryker report readers, and the .csproj locator. |
-| `Adapters` | 2 | Web server and SSE `EventHub`, tmux companion, file watcher, process runner, CLI parsing. |
+| `Adapters` | 2 | Web server and SSE `EventHub`, tmux companion and `AgentLaunch` (how any companion starts the agent: command, arguments, conversation, and the `milligram` shim), file watcher (with `DrvFs`, `WindowsSideWatcher` and `ChangePoller` for a Windows drive under WSL), process runner (with `ProgramPath` and `BatchCommandLine` for Windows), CLI parsing. |
 | `Main` | 3 | `Program` (commands) and `Composition` (the only place that constructs concrete classes). |
 | `wwwroot/` | n/a | The viewer: vanilla JS with no build step (`app.js`, `index.html`, `style.css`), embedded in the assembly. `lib/elk.bundled.js` is vendored ELK (EPL-2.0). Do not edit it. |
 
@@ -103,6 +103,9 @@ Match the existing code. It is terse and consistent:
   progress with the `log` callback.
 - Keep the web server's safety guard: loopback host names only, POSTs must carry
   `X-Milligram: 1`, and file access must pass `ProjectPaths.Contains` (no path traversal).
+- Start programs only through `ProcessRunner`. It resolves them with `ProgramPath` (PATHEXT on
+  Windows), so lookup and launch agree, and runs `.cmd` and `.bat` files through `cmd.exe` with
+  `BatchCommandLine`'s quoting, so a file name from the project can't run another command.
 
 ## Tests
 
@@ -114,6 +117,8 @@ Match the existing code. It is terse and consistent:
 - Prefer the real `CSharpScanner` on a small `TempProject` over mocking the scanner.
 - Keep the whole suite fast. Nothing may shell out to real `dotnet test`, Stryker, or tmux.
   Use the fakes.
+- The suite runs on Linux, Windows and macOS. Compare paths after `ProjectPaths.Absolute` or
+  `Path.GetFullPath`, which normalise separators on Windows. Mark tests of Windows-only behaviour `[WindowsFact]`.
 - After a change, dogfood it: run `crap`, then `mutate` on the files you touched. Surviving
   mutants mean missing tests. As of September 2026, `Main.Program`, `Adapters.Companion.Desktop`,
   `Adapters.Files.ProjectWatcher` and `Adapters.Web.WebServer` have no coverage. They are the
@@ -146,6 +151,9 @@ Match the existing code. It is terse and consistent:
 - Commit subjects are imperative and short: "Keep metrics snapshots local and write them in sorted
   order". The body says why, and gives measured numbers where relevant (coverage, mutation score).
 - Run `dotnet build`, `dotnet test`, and `dotnet format --verify-no-changes` before every commit.
-  CI (`.github/workflows/ci.yml`) runs the same checks on every PR, in Release with `-warnaserror`.
+  CI (`.github/workflows/ci.yml`) runs the same checks on every PR, in Release with `-warnaserror`:
+  build and test on Linux, Windows and macOS, and the format check on Linux.
+- `.gitattributes` keeps every file LF on every OS. Raw string literals take the line endings of their
+  file, so a CRLF checkout would change the agent's briefing and break tests.
 - Don't commit `.milligram/`, `artifacts/`, `StrykerOutput/`, `bin/`, or `obj/`. The `.gitignore`
   covers them.

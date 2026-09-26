@@ -71,3 +71,12 @@ public interface IViewerEvents
 {
     void Publish(string type, object? payload = null);
 }
+
+/// <summary>What the file watcher can't see as it happens where the project lives, and the way around it.</summary>
+public sealed record WatchLimit(string Detail, string Fix);
+
+public interface IWatchLimits
+{
+    /// <summary>Null when the watcher sees every change as it happens.</summary>
+    WatchLimit? For(string root);
+}

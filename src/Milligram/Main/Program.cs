@@ -61,38 +61,26 @@ public static class Program
 
         var (app, url) = await c.WebServer().StartAsync(line.IntValue("port", DefaultPort), CancellationToken.None);
         JsonFile.Write(c.Paths.ServerFile, new { url, pid = Environment.ProcessId, started = DateTimeOffset.UtcNow });
-        using var watcher = new ProjectWatcher(c.Paths, c.Workspace, c.Actions, c.Events);
+        var limit = c.WatchLimits.For(c.Paths.Root);
+        using var watcher = new ProjectWatcher(c.Paths, c.Workspace, c.Actions, c.Events, windowsDrive: limit is not null);
         c.Actions.Regenerate("Scan");
 
         Console.WriteLine($"Milligram {Version} — {c.Paths.Root}");
         Console.WriteLine($"  Viewer: {url}");
-        var startedAgent = await StartAgentAsync(c, line);
+        if (limit is not null)
+        {
+            Console.WriteLine($"  Watching: {limit.Detail}, so Milligram {watcher.Workaround}.");
+            Console.WriteLine($"    Tip: {limit.Fix}.");
+        }
+        var agent = await c.Agent.StartAsync(wanted: !line.Has("no-agent"), CancellationToken.None);
+        foreach (var banner in agent.Banner) Console.WriteLine("  " + banner);
         if (!line.Has("no-browser") && !Desktop.OpenUrl(url)) Console.WriteLine("  (Open the viewer URL in your browser.)");
         Console.WriteLine("  Ctrl+C stops the viewer.");
 
         await app.WaitForShutdownAsync();
-        if (startedAgent && !line.Has("keep-agent") && !c.Workspace.Policy.Agent.KeepOnExit) c.Companion.Stop();
+        if (agent.Started && !line.Has("keep-agent") && !c.Workspace.Policy.Agent.KeepOnExit) c.Companion.Stop();
         File.Delete(c.Paths.ServerFile);
         return 0;
-    }
-
-    private static async Task<bool> StartAgentAsync(Composition c, CommandLine line)
-    {
-        if (line.Has("no-agent")) return false;
-        if (!c.Companion.IsAvailable(out var reason))
-        {
-            Console.WriteLine($"  Agent: not started ({reason})");
-            return false;
-        }
-        if (c.Companion.IsRunning())
-        {
-            AgentBriefing.Write(c.Paths);
-            Console.WriteLine($"  Agent: already running — {c.Companion.AttachCommand}");
-            return false;
-        }
-        await c.Companion.StartAsync(CancellationToken.None);
-        Console.WriteLine($"  Agent: {c.Companion.AttachCommand}");
-        return true;
     }
 
     private static int Init(Composition c, CommandLine line)
@@ -203,13 +191,11 @@ public static class Program
     }
 
     /// <summary>How to run this same build again, for the agent's `milligram` shim.</summary>
-    private static string SelfCommand()
+    private static IReadOnlyList<string> SelfCommand()
     {
         var process = Environment.ProcessPath ?? "dotnet";
         var assembly = typeof(Program).Assembly.Location;
-        return Path.GetFileNameWithoutExtension(process) == "dotnet"
-            ? $"{TmuxCompanion.Quote(process)} {TmuxCompanion.Quote(assembly)}"
-            : TmuxCompanion.Quote(process);
+        return Path.GetFileNameWithoutExtension(process) == "dotnet" ? [process, assembly] : [process];
     }
 
     private static int Usage(string message)
