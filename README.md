@@ -1,6 +1,6 @@
 # Milligram
 
-[![CI](https://github.com/jhnoor/milligram/actions/workflows/ci.yml/badge.svg)](https://github.com/jhnoor/milligram/actions/workflows/ci.yml)
+[![CI](https://github.com/jhnoor/milligram/actions/workflows/ci.yml/badge.svg)](https://github.com/jhnoor/milligram/actions/workflows/ci.yml) · [Website](https://jhnoor.github.io/milligram/)
 
 A live architecture viewer for C# codebases, with an AI agent at your side.
 

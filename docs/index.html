@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Milligram</title>
+<meta name="description" content="A live map of a C# codebase: architecture, mutants and CRAP, with an AI agent at your side.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M9 5 L23 16 L9 27' fill='none' stroke='%23e0342f' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f8f9fb;
+    --ink: #1c1c1c;
+    --muted: #6b6f76;
+    --chevron: #e0342f;
+    --good: #4caf50;
+    --fair: #f47f7a;
+    --bad: #d93030;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15171a;
+      --ink: #ecebe8;
+      --muted: #9a9ea5;
+      --chevron: #f0544e;
+      --good: #5cc462;
+      --fair: #f7928d;
+      --bad: #ee4a44;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171a;
+    --ink: #ecebe8;
+    --muted: #9a9ea5;
+    --chevron: #f0544e;
+    --good: #5cc462;
+    --fair: #f7928d;
+    --bad: #ee4a44;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Source Serif 4", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    line-height: 1.4;
+  }
+  main {
+    max-width: 44rem;
+    margin: 0 auto;
+    padding: clamp(2rem, 7vw, 4.5rem) 16px 3rem;
+  }
+  h1 {
+    font-size: clamp(3rem, 11vw, 4.25rem);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.25em;
+  }
+  .tagline {
+    color: var(--muted);
+    font-size: 1.15rem;
+    margin: 0 0 2.25rem;
+    max-width: 30em;
+  }
+
+  ul { list-style: none; margin: 0; padding: 0 0 0 0.5rem; }
+  li {
+    display: grid;
+    grid-template-columns: 1.6rem 1fr;
+    column-gap: 0.5rem;
+    margin: 0 0 1.4rem;
+  }
+  li svg { width: 1.3rem; height: 1.6rem; margin-top: 0.35rem; }
+  .term { font-size: clamp(1.75rem, 6vw, 2.25rem); }
+  .what { grid-column: 2; color: var(--muted); font-size: 1.05rem; }
+
+  figure { margin: 2.5rem 0 0; padding-left: clamp(0rem, 14vw, 8.5rem); }
+  .sketch {
+    display: block;
+    width: 100%;
+    max-width: 26rem;
+    height: auto;
+    overflow: visible;
+  }
+  .sketch path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .sketch .line { stroke: var(--ink); stroke-width: 7; }
+  .sketch .fill { stroke-width: 7; }
+  .good { stroke: var(--good); }
+  .fair { stroke: var(--fair); }
+  .bad  { stroke: var(--bad); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .sketch .fill {
+      stroke-dasharray: 1200;
+      stroke-dashoffset: 1200;
+      animation: scribble 1.4s ease-out forwards;
+    }
+    .sketch .fair { animation-delay: 0.3s; }
+    .sketch .bad  { animation-delay: 0.6s; }
+  }
+  @keyframes scribble { to { stroke-dashoffset: 0; } }
+
+  footer {
+    margin-top: 3rem;
+    font-size: 1.1rem;
+  }
+  a { color: var(--ink); text-underline-offset: 0.2em; text-decoration-color: var(--chevron); }
+  a:hover { color: var(--chevron); }
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9em;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Milligram</h1>
+  <p class="tagline">A live map of a C# codebase that shows where the risk is, with an AI agent at your side to fix it.</p>
+
+  <ul>
+    <li>
+      <svg viewBox="0 0 26 32" aria-hidden="true"><path d="M6 5 L20 16 L7 27" fill="none" stroke="var(--chevron)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="term">Architecture</span>
+      <span class="what">Namespaces drawn as components. Arrows that break the dependency rule turn red.</span>
+    </li>
+    <li>
+      <svg viewBox="0 0 26 32" aria-hidden="true"><path d="M7 4 L20 15 L6 26" fill="none" stroke="var(--chevron)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="term">Mutants</span>
+      <span class="what">Stryker.NET mutation score: do your tests notice when the code changes?</span>
+    </li>
+    <li>
+      <svg viewBox="0 0 26 32" aria-hidden="true"><path d="M6 6 L20 16 L8 27" fill="none" stroke="var(--chevron)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="term">CRAP</span>
+      <span class="what">Complexity × missing coverage. The code that is risky to touch.</span>
+    </li>
+  </ul>
+
+  <figure>
+    <svg class="sketch" viewBox="0 0 420 380" role="img" aria-label="Sketch of three components: a green, well-tested box depends on a pink one, and a red, risky box depends on both.">
+      <!-- top left: healthy -->
+      <path class="fill good" d="M22 30 L104 24 L26 40 L112 38 L24 52 L100 56 L28 66 L110 70 L22 80 L118 84"/>
+      <path class="line" d="M12 12 Q70 8 128 11 Q131 55 129 98 Q70 101 12 99 Q9 55 12 12 Z"/>
+
+      <!-- top right: so-so -->
+      <path class="fill fair" d="M262 24 L346 20 L266 30 L338 32 L262 40 L352 42 L266 52 L344 56 L264 64 L362 66 L262 80 L360 78"/>
+      <path class="line" d="M252 8 Q300 5 350 9 Q356 50 352 92 Q300 94 252 92 Q248 50 252 8 Z"/>
+
+      <!-- bottom left: risky -->
+      <path class="fill bad" d="M24 282 L128 280 L28 292 L118 296 L24 304 L132 306 L30 318 L126 320 L26 330 L130 334 L32 344 L110 346"/>
+      <path class="line" d="M10 266 Q78 262 142 268 Q146 312 140 358 Q76 362 14 356 Q7 310 10 266 Z"/>
+
+      <!-- top left -> top right -->
+      <path class="line" d="M146 58 Q190 55 234 57"/>
+      <path class="line" d="M214 40 L236 57 L212 74"/>
+
+      <!-- bottom -> top left -->
+      <path class="line" d="M64 248 Q62 185 68 124"/>
+      <path class="line" d="M50 140 L68 120 L92 136"/>
+
+      <!-- bottom -> top right -->
+      <path class="line" d="M112 244 Q180 176 262 118"/>
+      <path class="line" d="M232 116 L264 114 L256 144"/>
+    </svg>
+  </figure>
+
+  <footer>
+    <p><a href="https://github.com/jhnoor/milligram">Get it on GitHub</a>, then run <code>milligram</code> in any .NET repo.</p>
+  </footer>
+</main>
+</body>
+</html>
