@@ -55,7 +55,8 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
         app.MapGet("/api/view", (string? context, string? focus) => Json(workspace.View(context, focus)));
         app.MapGet("/api/type", (string? context, string id) => workspace.Card(context, id) is { } card ? Json(card) : Results.NotFound());
         app.MapGet("/api/source", (string file) => Source(file));
-        app.MapPost("/api/open", async (HttpContext context) => Open(await Read<OpenRequest>(context)));
+        // Typed as returning IResult: as a bare invocation, the lambda would bind to RequestDelegate and drop its result.
+        app.MapPost("/api/open", async Task<IResult> (HttpContext context) => Open(await Read<OpenRequest>(context)));
         app.MapPost("/api/action", async (HttpContext context) =>
             await Read<ViewerAction>(context) is { } action
                 ? Json(await actions.HandleAsync(action, context.RequestAborted))

@@ -2,7 +2,7 @@ using Milligram.Adapters.Processes;
 
 namespace Milligram.Adapters.Companion;
 
-/// <summary>Opens browsers, editors, and terminals on Linux, WSL, and macOS.</summary>
+/// <summary>Opens browsers, editors, and terminals on Linux, WSL, macOS, and Windows.</summary>
 public static class Desktop
 {
     public const string DefaultEditor = "code -g {file}:{line}";
@@ -11,6 +11,7 @@ public static class Desktop
 
     public static bool OpenUrl(string url)
     {
+        if (OperatingSystem.IsWindows()) return ProcessRunner.Open(url);
         if (OperatingSystem.IsMacOS()) return ProcessRunner.Launch("open", [url]);
         if (IsWsl)
         {
