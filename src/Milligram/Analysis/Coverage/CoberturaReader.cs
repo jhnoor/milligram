@@ -18,7 +18,7 @@ public sealed class CoberturaReader : ICoverageReader
             {
                 if (type.Attribute("filename")?.Value is not { Length: > 0 } filename) continue;
                 var relative = Relative(root, Resolve(filename, sources, root));
-                if (relative.StartsWith("..", StringComparison.Ordinal)) continue;
+                if (IsOutside(relative)) continue;
                 if (!files.TryGetValue(relative, out var lines)) files[relative] = lines = [];
                 foreach (var line in type.Element("lines")?.Elements("line") ?? [])
                 {
@@ -38,4 +38,7 @@ public sealed class CoberturaReader : ICoverageReader
     }
 
     private static string Relative(string root, string path) => Path.GetRelativePath(root, path).Replace('\\', '/');
+
+    /// <summary>On Windows, a file on another drive has no relative path, so GetRelativePath returns it whole.</summary>
+    private static bool IsOutside(string relative) => relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative);
 }

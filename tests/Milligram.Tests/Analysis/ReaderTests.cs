@@ -32,6 +32,24 @@ public class CoberturaReaderTests
         Assert.Equal(new Dictionary<int, int> { [1] = 0 }, hits.For("src/B.cs"));
         Assert.Equal(2, hits.Files.Count);
     }
+
+    [WindowsFact]
+    public void AFileOnAnotherDriveIsOutsideTheProject()
+    {
+        using var project = new TempProject(("src/A.cs", "class A {}"));
+        var otherDrive = char.ToUpperInvariant(project.Root[0]) == 'Z' ? 'Y' : 'Z';
+        var report = project.Write("coverage.cobertura.xml", $"""
+            <?xml version="1.0"?>
+            <coverage><packages><package name="App"><classes>
+              <class name="A" filename="{project.Root}\src\A.cs"><lines><line number="1" hits="1"/></lines></class>
+              <class name="Outside" filename="{otherDrive}:\elsewhere\C.cs"><lines><line number="1" hits="1"/></lines></class>
+            </classes></package></packages></coverage>
+            """);
+
+        var hits = new CoberturaReader().Read([report], project.Root);
+
+        Assert.Equal(["src/A.cs"], hits.Files.Keys);
+    }
 }
 
 public class StrykerReportReaderTests
