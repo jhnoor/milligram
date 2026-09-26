@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Milligram.Analysis.Coverage;
 using Milligram.Analysis.DotNet;
 using Milligram.Analysis.Mutation;
@@ -54,7 +55,7 @@ public class StrykerReportReaderTests
                 }
               }
             }
-            """.Replace("PROJECT", project.Root));
+            """.Replace("PROJECT", JsonEncodedText.Encode(project.Root).ToString()));
 
         var mutants = new StrykerReportReader().Read(report, project.Root, "/unused");
 

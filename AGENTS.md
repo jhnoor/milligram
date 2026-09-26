@@ -114,6 +114,8 @@ Match the existing code. It is terse and consistent:
 - Prefer the real `CSharpScanner` on a small `TempProject` over mocking the scanner.
 - Keep the whole suite fast. Nothing may shell out to real `dotnet test`, Stryker, or tmux.
   Use the fakes.
+- The suite runs on Linux, Windows and macOS. Compare paths after `ProjectPaths.Absolute` or
+  `Path.GetFullPath`, which normalise separators on Windows. Mark tests of Windows-only behaviour `[WindowsFact]`.
 - After a change, dogfood it: run `crap`, then `mutate` on the files you touched. Surviving
   mutants mean missing tests. As of September 2026, `Main.Program`, `Adapters.Companion.Desktop`,
   `Adapters.Files.ProjectWatcher` and `Adapters.Web.WebServer` have no coverage. They are the
@@ -146,6 +148,9 @@ Match the existing code. It is terse and consistent:
 - Commit subjects are imperative and short: "Keep metrics snapshots local and write them in sorted
   order". The body says why, and gives measured numbers where relevant (coverage, mutation score).
 - Run `dotnet build`, `dotnet test`, and `dotnet format --verify-no-changes` before every commit.
-  CI (`.github/workflows/ci.yml`) runs the same checks on every PR, in Release with `-warnaserror`.
+  CI (`.github/workflows/ci.yml`) runs the same checks on every PR, in Release with `-warnaserror`:
+  build and test on Linux, Windows and macOS, and the format check on Linux.
+- `.gitattributes` keeps every file LF on every OS. Raw string literals take the line endings of their
+  file, so a CRLF checkout would change the agent's briefing and break tests.
 - Don't commit `.milligram/`, `artifacts/`, `StrykerOutput/`, `bin/`, or `obj/`. The `.gitignore`
   covers them.
