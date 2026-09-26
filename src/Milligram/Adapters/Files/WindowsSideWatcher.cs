@@ -12,6 +12,13 @@ public sealed class WindowsSideWatcher : IDisposable
 {
     public const string Ready = "?ready";
     public const string Overflow = "?overflow";
+
+    /// <summary>
+    /// The directories that are never scanned, and anything in them, for PowerShell's case-insensitive -match. The
+    /// directory itself counts too: writing a file inside it can raise a change for the directory, with no trailing \.
+    /// </summary>
+    public const string Unscanned = @"\\(bin|obj|\.git|node_modules|\.vs|\.idea|\.milligram\\run)(\\|$)";
+
     private const string PowerShellOnC = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
 
     private readonly ProcessRunner.Followed process;
@@ -72,7 +79,7 @@ public sealed class WindowsSideWatcher : IDisposable
           if ($e.SourceIdentifier -eq 'Error') { $out.WriteLine('{{Overflow}}'); continue }
           $a = $e.SourceEventArgs
           $paths = if ($a -is [IO.RenamedEventArgs]) { $a.OldFullPath, $a.FullPath } else { $a.FullPath }
-          foreach ($p in $paths) { if ($p -notmatch '\\(bin|obj|\.git|node_modules|\.vs|\.idea)\\|\\\.milligram\\run\\') { $out.WriteLine($p) } }
+          foreach ($p in $paths) { if ($p -notmatch '{{Unscanned}}') { $out.WriteLine($p) } }
         }
         """;
 

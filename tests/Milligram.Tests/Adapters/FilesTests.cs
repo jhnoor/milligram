@@ -107,6 +107,25 @@ public class WindowsSideWatcherTests
     public void TheScriptQuotesTheRootForPowerShell() =>
         Assert.Contains(@"-ArgumentList 'C:\it''s here'", WindowsSideWatcher.Script(@"C:\it's here"));
 
+    [Theory]
+    [InlineData(@"C:\p\src\obj\B.cs", true)]
+    [InlineData(@"C:\p\src\obj", true)]
+    [InlineData(@"C:\p\src\Bin\Debug\A.dll", true)]
+    [InlineData(@"C:\p\.git", true)]
+    [InlineData(@"C:\p\.milligram\run\agent.json", true)]
+    [InlineData(@"C:\p\.milligram\run", true)]
+    [InlineData(@"C:\p\src\A.cs", false)]
+    [InlineData(@"C:\p\src", false)]
+    [InlineData(@"C:\p\src\objects\A.cs", false)]
+    [InlineData(@"C:\p\.milligram\metrics\crap.json", false)]
+    [InlineData(@"C:\p\.milligram\mail\to-viewer\1.json", false)]
+    [InlineData(@"C:\p\.milligram\runner.json", false)]
+    public void UnscannedDirectoriesAreSkippedWithWhateverTheyHold(string path, bool skipped) =>
+        Assert.Equal(skipped, System.Text.RegularExpressions.Regex.IsMatch(path, WindowsSideWatcher.Unscanned, System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+
+    [Fact]
+    public void TheScriptUsesThatFilter() => Assert.Contains($"-notmatch '{WindowsSideWatcher.Unscanned}'", WindowsSideWatcher.Script(@"C:\p"));
+
     [WindowsFact]
     public void TheScriptReportsChangesOutsideUnscannedDirectoriesAndStopsWhenItsInputCloses()
     {
@@ -123,8 +142,14 @@ public class WindowsSideWatcherTests
             File.WriteAllText(Path.Combine(project.Root, "src", "obj", "B.cs"), "b changed");
             File.WriteAllText(Path.Combine(project.Root, "src", "A.cs"), "a changed");
 
-            Assert.True(lines.TryTake(out var changed, TimeSpan.FromSeconds(10)), "no change was reported");
-            Assert.Equal(Path.Combine(project.Root, "src", "A.cs"), changed);
+            // Changes to directories may be reported too, so read until A.cs, which comes after anything B.cs raised.
+            var reported = new List<string>();
+            while (!reported.Contains(Path.Combine(project.Root, "src", "A.cs")))
+            {
+                Assert.True(lines.TryTake(out var line, TimeSpan.FromSeconds(10)), $"A.cs was not reported; got {string.Join(", ", reported)}");
+                reported.Add(line);
+            }
+            Assert.DoesNotContain(reported, path => path.Contains(@"\obj", StringComparison.OrdinalIgnoreCase));
             Assert.True(watcher.Stop(), "the watcher kept running after its input closed");
         }
         finally
