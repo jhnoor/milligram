@@ -13,7 +13,7 @@ namespace Milligram.Main;
 /// <summary>The composition root: the only place that knows every concrete class.</summary>
 public sealed class Composition
 {
-    public Composition(string root, string selfCommand)
+    public Composition(string root, IReadOnlyList<string> selfCommand)
     {
         Paths = new ProjectPaths(root);
         Events = new EventHub();

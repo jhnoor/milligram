@@ -10,9 +10,9 @@ namespace Milligram.Adapters.Companion;
 /// Runs the companion agent (GitHub Copilot CLI by default) in a tmux session unique to the examined
 /// project. tmux is only the doorbell: messages travel through the .milligram/mail directories.
 /// </summary>
-public sealed class TmuxCompanion(ProjectPaths paths, Func<Policy> policy, string selfCommand) : ICompanion
+public sealed class TmuxCompanion(ProjectPaths paths, Func<Policy> policy, IReadOnlyList<string> self) : ICompanion
 {
-    private sealed record AgentState(string SessionId, DateTimeOffset CreatedAt);
+    private readonly AgentLaunches launches = new(paths, policy, self);
 
     public string SessionName { get; } = SessionNameFor(paths.Root);
 
@@ -48,7 +48,7 @@ public sealed class TmuxCompanion(ProjectPaths paths, Func<Policy> policy, strin
 
         AgentBriefing.Write(paths);
         var script = WriteLaunchScript();
-        var code = Tmux("new-session", "-d", "-s", SessionName, "-c", paths.Root, "-x", "200", "-y", "50", $"bash {Quote(script)}");
+        var code = Tmux("new-session", "-d", "-s", SessionName, "-c", paths.Root, "-x", "200", "-y", "50", $"bash {AgentLaunches.BashQuote(script)}");
         if (code != 0) throw new MilligramException($"tmux could not start session {SessionName}.");
         OpenTerminal();
         return Task.CompletedTask;
@@ -70,60 +70,20 @@ public sealed class TmuxCompanion(ProjectPaths paths, Func<Policy> policy, strin
 
     private string WriteLaunchScript()
     {
-        var settings = policy().Agent;
-        var (state, resumed) = LoadOrCreateState();
-        var shim = WriteShim();
-        var command = Path.GetFileName(settings.Command) == "copilot"
-            ? CopilotCommand(settings, state, resumed)
-            : [settings.Command, .. settings.Args];
-
         var script = Path.Combine(paths.RunDirectory, "agent.sh");
-        File.WriteAllText(script, $"""
-            #!/usr/bin/env bash
-            # Written by milligram: starts the companion agent inside tmux.
-            export PATH={Quote(shim)}:"$PATH"
-            cd {Quote(paths.Root)} || exit 1
-            exec {string.Join(' ', command.Select(Quote))}
-
-            """);
+        File.WriteAllText(script, Script(launches.Prepare(windows: false)));
         return script;
     }
 
-    private IReadOnlyList<string> CopilotCommand(AgentSettings settings, AgentState state, bool resumed)
-    {
-        var args = new List<string> { settings.Command, "--session-id", state.SessionId };
-        if (!resumed) args.AddRange(["--name", $"Milligram: {Path.GetFileName(paths.Root)}"]);
-        foreach (var tool in settings.AllowTools) args.AddRange(["--allow-tool", tool]);
-        args.AddRange(["--allow-tool", $"write({paths.PolicyFile})"]);
-        if (settings.Model is { Length: > 0 } model) args.AddRange(["--model", model]);
-        args.AddRange(settings.Args);
-        args.AddRange(["-i", resumed ? AgentBriefing.ResumePrompt : AgentBriefing.LaunchPrompt]);
-        return args;
-    }
+    /// <summary>The launch as the bash script that tmux runs.</summary>
+    public static string Script(AgentLaunch launch) => $"""
+        #!/usr/bin/env bash
+        # Written by milligram: starts the companion agent inside tmux.
+        export PATH={AgentLaunches.BashQuote(launch.ShimDirectory)}:"$PATH"
+        cd {AgentLaunches.BashQuote(launch.WorkingDirectory)} || exit 1
+        exec {string.Join(' ', launch.Args.Prepend(launch.Command).Select(AgentLaunches.BashQuote))}
 
-    /// <summary>Keeps one agent conversation per project, resumed on every start.</summary>
-    private (AgentState State, bool Resumed) LoadOrCreateState()
-    {
-        if (JsonFile.Read<AgentState>(paths.AgentStateFile) is { SessionId.Length: > 0 } existing) return (existing, true);
-        var created = new AgentState(Guid.NewGuid().ToString(), DateTimeOffset.UtcNow);
-        JsonFile.Write(paths.AgentStateFile, created);
-        return (created, false);
-    }
-
-    /// <summary>A `milligram` on the agent's PATH that runs this very build of the tool.</summary>
-    private string WriteShim()
-    {
-        var directory = Path.Combine(paths.RunDirectory, "bin");
-        Directory.CreateDirectory(directory);
-        var shim = Path.Combine(directory, "milligram");
-        File.WriteAllText(shim, $"#!/usr/bin/env bash\nexec {selfCommand} \"$@\"\n");
-        if (!OperatingSystem.IsWindows())
-            File.SetUnixFileMode(shim, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-                                       UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
-        return directory;
-    }
-
-    public static string Quote(string word) => "'" + word.Replace("'", "'\\''") + "'";
+        """;
 
     private static int Tmux(params string[] args) => ProcessRunner.Capture("tmux", args).ExitCode;
 }

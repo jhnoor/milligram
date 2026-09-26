@@ -191,13 +191,11 @@ public static class Program
     }
 
     /// <summary>How to run this same build again, for the agent's `milligram` shim.</summary>
-    private static string SelfCommand()
+    private static IReadOnlyList<string> SelfCommand()
     {
         var process = Environment.ProcessPath ?? "dotnet";
         var assembly = typeof(Program).Assembly.Location;
-        return Path.GetFileNameWithoutExtension(process) == "dotnet"
-            ? $"{TmuxCompanion.Quote(process)} {TmuxCompanion.Quote(assembly)}"
-            : TmuxCompanion.Quote(process);
+        return Path.GetFileNameWithoutExtension(process) == "dotnet" ? [process, assembly] : [process];
     }
 
     private static int Usage(string message)
