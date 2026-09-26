@@ -54,6 +54,72 @@ public class PolicyJsonTests
     }
 }
 
+public class JsonFileTests
+{
+    /// <summary>Opens a file the way a virus scanner or an editor might: reading, and sharing neither writes nor deletes.</summary>
+    private static FileStream HoldOpen(string path) => new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+    [Fact]
+    public void AWriteReplacesTheFileAndLeavesNoTemporaryFileBehind()
+    {
+        using var project = new TempProject(("state/a.json", "old"));
+        var path = Path.Combine(project.Root, "state", "a.json");
+
+        JsonFile.WriteText(path, "new");
+
+        Assert.Equal("new", File.ReadAllText(path));
+        Assert.Equal([path], Directory.GetFiles(Path.GetDirectoryName(path)!));
+    }
+
+    [WindowsFact]
+    public async Task AWriteWaitsBrieflyForAReaderToLetGo()
+    {
+        using var project = new TempProject(("a.json", "old"));
+        var path = Path.Combine(project.Root, "a.json");
+        // Even a reader that shares deletes, as Milligram's own do, blocks a rename over the file on Windows.
+        var held = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        var release = Task.Delay(200).ContinueWith(_ => held.Dispose(), TaskScheduler.Default);
+
+        JsonFile.WriteText(path, "new");
+
+        await release;
+        Assert.Equal("new", JsonFile.ReadText(path));
+        Assert.Equal([path], Directory.GetFiles(project.Root));
+    }
+
+    [WindowsFact]
+    public async Task AReplaceWaitsBrieflyForAScannerToLetGoOfTheNewFile()
+    {
+        using var project = new TempProject(("a.json", "old"), ("a.json.new.tmp", "new"));
+        var path = Path.Combine(project.Root, "a.json");
+        // A scanner reading the new file makes the rename fail with a sharing violation, not access denied.
+        var held = HoldOpen(path + ".new.tmp");
+        var release = Task.Delay(200).ContinueWith(_ => held.Dispose(), TaskScheduler.Default);
+
+        JsonFile.Replace(path + ".new.tmp", path);
+
+        await release;
+        Assert.Equal("new", File.ReadAllText(path));
+        Assert.Equal([path], Directory.GetFiles(project.Root));
+    }
+
+    [WindowsFact]
+    public void AFileThatStaysOpenIsReportedByNameAndKeepsItsContents()
+    {
+        using var project = new TempProject(("a.json", "old"));
+        var path = Path.Combine(project.Root, "a.json");
+
+        using (HoldOpen(path))
+        {
+            var refused = Assert.Throws<MilligramException>(() => JsonFile.WriteText(path, "new"));
+            Assert.Contains(path, refused.Message);
+        }
+
+        Assert.Equal("old", File.ReadAllText(path));
+        Assert.Equal([path], Directory.GetFiles(project.Root));
+    }
+}
+
 public class MailboxTests
 {
     [Fact]

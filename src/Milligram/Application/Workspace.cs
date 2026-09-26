@@ -107,7 +107,7 @@ public sealed class Workspace
             var exists = File.Exists(Paths.PolicyFile);
             try
             {
-                var text = PolicyText.Edit(exists ? File.ReadAllText(Paths.PolicyFile) : "{\n}\n", exists ? policy : new Policy(), edited);
+                var text = PolicyText.Edit(exists ? JsonFile.ReadText(Paths.PolicyFile) : "{\n}\n", exists ? policy : new Policy(), edited);
                 JsonFile.WriteText(Paths.PolicyFile, text);
             }
             catch (System.Text.Json.JsonException e)
