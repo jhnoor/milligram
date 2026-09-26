@@ -262,21 +262,39 @@ public class JobQueueTests
             lock (order) order.Add("first");
             return "";
         });
-        await Task.Delay(50);
         var second = jobs.Enqueue("Second", (_, _) =>
         {
             lock (order) order.Add("second");
             return Task.FromResult("");
         });
-        await Task.Delay(50);
+        await Jobs.Running(jobs, "First");
 
         Assert.Equal(["Second"], jobs.Status.Queued);
-        Assert.Equal(JobState.Running, jobs.Status.State);
+        Assert.Empty(order);
         release.SetResult();
         await Task.WhenAll(first, second);
 
         Assert.Equal(["first", "second"], order);
         Assert.Equal("Second", jobs.Status.Name);
+    }
+
+    [Fact]
+    public async Task JobsEnqueuedTogetherFromAPoolThreadRunInTheOrderTheyCame()
+    {
+        var jobs = new JobQueue(new FakeEvents());
+        var order = new List<int>();
+
+        // The web server and the file watcher enqueue from thread-pool threads, whose own work queue is last in, first out.
+        var all = await Task.Run(() => Enumerable.Range(0, 20)
+            .Select(i => jobs.Enqueue($"Job {i}", (_, _) =>
+            {
+                lock (order) order.Add(i);
+                return Task.FromResult("");
+            }))
+            .ToList());
+        await Task.WhenAll(all);
+
+        Assert.Equal(Enumerable.Range(0, 20), order);
     }
 
     [Fact]
