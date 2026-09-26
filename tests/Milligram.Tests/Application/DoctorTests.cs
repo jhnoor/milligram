@@ -67,7 +67,9 @@ public class DoctorTests
                 Fix: dotnet tool install -g dotnet-stryker
                 Fix: or, if the repository pins it in a tool manifest: dotnet tool restore
             ✗ Agent: tmux is not installed.
-                Fix: install tmux and copilot (see the README's Requirements), or turn the agent off: "agent": { "enabled": false }
+                Fix: install what the agent needs (see the README's Requirements for your platform)
+                Fix: or run your own: start copilot in the project folder and tell it to read .milligram/agent.md
+                Fix: or turn the agent off: "agent": { "enabled": false }
             """,
             Report(checks));
     }

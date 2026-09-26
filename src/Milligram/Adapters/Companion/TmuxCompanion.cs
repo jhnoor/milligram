@@ -29,13 +29,17 @@ public sealed class TmuxCompanion(ProjectPaths paths, Func<Policy> policy, strin
     {
         var settings = policy().Agent;
         reason = !settings.Enabled ? "The agent is disabled in milligram.json (agent.enabled)."
+            : !Supported ? "tmux, which the agent runs in, doesn't run on native Windows."
             : !ProcessRunner.OnPath("tmux") ? "tmux is not installed."
             : !ProcessRunner.OnPath(settings.Command) ? $"'{settings.Command}' is not on PATH."
             : "";
         return reason.Length == 0;
     }
 
-    public bool IsRunning() => ProcessRunner.OnPath("tmux") && Tmux("has-session", "-t", SessionName) == 0;
+    public bool IsRunning() => Supported && ProcessRunner.OnPath("tmux") && Tmux("has-session", "-t", SessionName) == 0;
+
+    /// <summary>Not native Windows: a tmux from MSYS2 or Cygwin can't run the bash launch script with Windows paths in it.</summary>
+    private static bool Supported => !OperatingSystem.IsWindows();
 
     public Task StartAsync(CancellationToken cancellation)
     {

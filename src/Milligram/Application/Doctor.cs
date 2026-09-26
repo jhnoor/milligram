@@ -104,7 +104,9 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
         return companion.IsAvailable(out var reason)
             ? Check.Ok("Agent", $"tmux and {settings.Command} found")
             : Check.Failed("Agent", reason,
-                $"install tmux and {settings.Command} (see the README's Requirements), or turn the agent off: \"agent\": {{ \"enabled\": false }}");
+                "install what the agent needs (see the README's Requirements for your platform)",
+                $"or run your own: {AgentBriefing.RunYourOwn(workspace.Paths, settings.Command)}",
+                "or turn the agent off: \"agent\": { \"enabled\": false }");
     }
 
     private string Names(IEnumerable<string> paths)

@@ -18,6 +18,10 @@ public static class AgentBriefing
         File.WriteAllText(paths.BriefingFile, Text);
     }
 
+    /// <summary>How to run the agent in a terminal of your own, which has no doorbell: you tell it when there is mail.</summary>
+    public static string RunYourOwn(ProjectPaths paths, string command) =>
+        $"start {command} in the project folder and tell it to read {paths.Relative(paths.BriefingFile)}";
+
     public const string Text = """
         # Milligram companion
 

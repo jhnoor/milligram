@@ -26,6 +26,15 @@ match.
 `milligram doctor` checks all of these for your project, plus whether it is restored, and prints the
 fix for anything missing. The first run checks them too.
 
+The viewer, the editor integration, `crap` and `mutate` work the same everywhere. The agent differs:
+
+| Platform | Agent |
+|----------|-------|
+| Linux | tmux, and a terminal emulator for its window (`x-terminal-emulator`, `gnome-terminal`, `konsole` or `xterm`). |
+| macOS | tmux from Homebrew (`brew install tmux`). The agent opens in Terminal. |
+| WSL2 (recommended on Windows) | tmux inside WSL. The agent opens in a Windows Terminal tab. On `/mnt/c`, edits made by Windows programs aren't noticed yet ([#19](https://github.com/jhnoor/milligram/issues/19)). |
+| Windows | Milligram can't start the agent yet: tmux doesn't run on native Windows ([#14](https://github.com/jhnoor/milligram/issues/14)). [Run your own](#run-the-agent-yourself). Copilot CLI needs PowerShell 7 (`winget install Microsoft.PowerShell`). |
+
 ## Install
 
 ```bash
@@ -154,6 +163,20 @@ Anything else, such as editing code, asks for your approval in its terminal. Add
 The viewer and agent exchange JSON files in `.milligram/mail/`. The agent reads with `milligram mail`
 and replies with `milligram tell`. The viewer runs scans, metrics, and omits itself, so those cost no
 agent tokens.
+
+### Run the agent yourself
+
+With `--no-agent`, or where Milligram can't start the agent (native Windows, or no tmux), run it in a
+terminal of your own. Milligram writes `.milligram/agent.md` every time it starts, and the banner says
+so. In the project folder:
+
+```bash
+copilot --allow-tool 'shell(milligram:*)'    # then: "Read .milligram/agent.md and follow it."
+```
+
+Without `--allow-tool`, Copilot asks before each `milligram` command. The agent needs `milligram` on
+its PATH, as it is once installed as a tool. There is no doorbell: after you send something from the
+viewer, tell the agent to run `milligram mail`.
 
 ## Commands
 

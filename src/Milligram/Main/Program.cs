@@ -66,33 +66,15 @@ public static class Program
 
         Console.WriteLine($"Milligram {Version} — {c.Paths.Root}");
         Console.WriteLine($"  Viewer: {url}");
-        var startedAgent = await StartAgentAsync(c, line);
+        var agent = await c.Agent.StartAsync(wanted: !line.Has("no-agent"), CancellationToken.None);
+        foreach (var banner in agent.Banner) Console.WriteLine("  " + banner);
         if (!line.Has("no-browser") && !Desktop.OpenUrl(url)) Console.WriteLine("  (Open the viewer URL in your browser.)");
         Console.WriteLine("  Ctrl+C stops the viewer.");
 
         await app.WaitForShutdownAsync();
-        if (startedAgent && !line.Has("keep-agent") && !c.Workspace.Policy.Agent.KeepOnExit) c.Companion.Stop();
+        if (agent.Started && !line.Has("keep-agent") && !c.Workspace.Policy.Agent.KeepOnExit) c.Companion.Stop();
         File.Delete(c.Paths.ServerFile);
         return 0;
-    }
-
-    private static async Task<bool> StartAgentAsync(Composition c, CommandLine line)
-    {
-        if (line.Has("no-agent")) return false;
-        if (!c.Companion.IsAvailable(out var reason))
-        {
-            Console.WriteLine($"  Agent: not started ({reason})");
-            return false;
-        }
-        if (c.Companion.IsRunning())
-        {
-            AgentBriefing.Write(c.Paths);
-            Console.WriteLine($"  Agent: already running — {c.Companion.AttachCommand}");
-            return false;
-        }
-        await c.Companion.StartAsync(CancellationToken.None);
-        Console.WriteLine($"  Agent: {c.Companion.AttachCommand}");
-        return true;
     }
 
     private static int Init(Composition c, CommandLine line)

@@ -27,6 +27,7 @@ public sealed class Composition
         Actions = new ViewerActions(Workspace, new PolicyEditor(Workspace), Crap, Mutation, Jobs, Companion, Events);
         Initializer = new ProjectInitializer(Paths, scanner, locator);
         Doctor = new Doctor(Workspace, Crap, locator, processes, Companion);
+        Agent = new AgentLauncher(Workspace, Companion);
     }
 
     public ProjectPaths Paths { get; }
@@ -39,6 +40,7 @@ public sealed class Composition
     public ViewerActions Actions { get; }
     public ProjectInitializer Initializer { get; }
     public Doctor Doctor { get; }
+    public AgentLauncher Agent { get; }
 
     public WebServer WebServer() => new(Workspace, Actions, Jobs, Companion, Events);
 }
