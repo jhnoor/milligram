@@ -61,11 +61,17 @@ public static class Program
 
         var (app, url) = await c.WebServer().StartAsync(line.IntValue("port", DefaultPort), CancellationToken.None);
         JsonFile.Write(c.Paths.ServerFile, new { url, pid = Environment.ProcessId, started = DateTimeOffset.UtcNow });
-        using var watcher = new ProjectWatcher(c.Paths, c.Workspace, c.Actions, c.Events);
+        var limit = c.WatchLimits.For(c.Paths.Root);
+        using var watcher = new ProjectWatcher(c.Paths, c.Workspace, c.Actions, c.Events, windowsDrive: limit is not null);
         c.Actions.Regenerate("Scan");
 
         Console.WriteLine($"Milligram {Version} — {c.Paths.Root}");
         Console.WriteLine($"  Viewer: {url}");
+        if (limit is not null)
+        {
+            Console.WriteLine($"  Watching: {limit.Detail}, so Milligram {watcher.Workaround}.");
+            Console.WriteLine($"    Tip: {limit.Fix}.");
+        }
         var agent = await c.Agent.StartAsync(wanted: !line.Has("no-agent"), CancellationToken.None);
         foreach (var banner in agent.Banner) Console.WriteLine("  " + banner);
         if (!line.Has("no-browser") && !Desktop.OpenUrl(url)) Console.WriteLine("  (Open the viewer URL in your browser.)");

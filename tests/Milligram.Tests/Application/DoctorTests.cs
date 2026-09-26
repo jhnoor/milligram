@@ -5,9 +5,9 @@ namespace Milligram.Tests.Application;
 
 public class DoctorTests
 {
-    private static Doctor Doctor(ServiceFixture fixture, FakeProjectLocator locator, FakeProcessRunner processes, FakeCompanion companion) =>
+    private static Doctor Doctor(ServiceFixture fixture, FakeProjectLocator locator, FakeProcessRunner processes, FakeCompanion companion, WatchLimit? limit = null) =>
         new(fixture.Workspace, new CrapService(fixture.Workspace, locator, processes, new FakeCoverageReader(new LineHits(new Dictionary<string, IReadOnlyDictionary<int, int>>()))),
-            locator, processes, companion);
+            locator, processes, companion, new FakeWatchLimits(limit));
 
     private static string Report(IReadOnlyList<Check> checks) => string.Join("\n", checks.SelectMany(c => c.Describe()));
 
@@ -72,6 +72,21 @@ public class DoctorTests
                 Fix: or turn the agent off: "agent": { "enabled": false }
             """,
             Report(checks));
+    }
+
+    [Fact]
+    public async Task SaysWhenTheWatcherCantSeeEveryChangeAsItHappens()
+    {
+        using var fixture = new ServiceFixture();
+        var processes = new FakeProcessRunner { Output = { ["--version"] = ["10.0.401"] } };
+        var limit = new WatchLimit("the project is on a Windows drive", "keep it in the Linux file system");
+
+        var checks = await Doctor(fixture, new FakeProjectLocator(), processes, new FakeCompanion(), limit).RunAsync(CancellationToken.None);
+        var unlimited = await Doctor(fixture, new FakeProjectLocator(), processes, new FakeCompanion()).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["– Watching: the project is on a Windows drive", "    Fix: keep it in the Linux file system"], checks[^1].Describe());
+        Assert.Equal(CheckStatus.Skipped, checks[^1].Status);
+        Assert.DoesNotContain(unlimited, check => check.Name == "Watching");
     }
 
     [Theory]

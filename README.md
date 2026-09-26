@@ -32,7 +32,7 @@ The viewer, the editor integration, `crap` and `mutate` work the same everywhere
 |----------|-------|
 | Linux | tmux, and a terminal emulator for its window (`x-terminal-emulator`, `gnome-terminal`, `konsole` or `xterm`). |
 | macOS | tmux from Homebrew (`brew install tmux`). The agent opens in Terminal. |
-| WSL2 (recommended on Windows) | tmux inside WSL. The agent opens in a Windows Terminal tab. On `/mnt/c`, edits made by Windows programs aren't noticed yet ([#19](https://github.com/jhnoor/milligram/issues/19)). |
+| WSL2 (recommended on Windows) | tmux inside WSL. The agent opens in a Windows Terminal tab. On a Windows drive (`/mnt/c/…`), Linux isn't told about changes that Windows programs make, so Milligram also watches the project from Windows through `powershell.exe` (or polls, if WSL can't start Windows programs). A project in the Linux file system (for example `~/src`) scans faster and needs neither. |
 | Windows | Milligram can't start the agent yet: tmux doesn't run on native Windows ([#14](https://github.com/jhnoor/milligram/issues/14)). [Run your own](#run-the-agent-yourself). Copilot CLI needs PowerShell 7 (`winget install Microsoft.PowerShell`). |
 
 ## Install

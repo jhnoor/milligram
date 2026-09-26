@@ -63,6 +63,54 @@ public sealed partial class ProcessRunner : IProcessRunner
         }
     }
 
+    /// <summary>
+    /// Starts a process that runs alongside this one and hands over each line it prints, in UTF-8. Stopping it closes
+    /// the process's input, which tells a well-behaved child to finish, and kills it if it hasn't within two seconds.
+    /// </summary>
+    public static Followed? Follow(string command, IReadOnlyList<string> args, Action<string> onLine)
+    {
+        var info = StartInfo(command, args, Environment.CurrentDirectory, redirect: true);
+        info.RedirectStandardInput = true;
+        info.StandardOutputEncoding = System.Text.Encoding.UTF8;
+        var process = new Process { StartInfo = info };
+        process.OutputDataReceived += (_, e) => { if (e.Data is { } line) onLine(line); };
+        process.ErrorDataReceived += (_, _) => { };
+        try
+        {
+            process.Start();
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            process.Dispose();
+            return null;
+        }
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        return new Followed(process);
+    }
+
+    public sealed class Followed(Process process) : IDisposable
+    {
+        /// <summary>True when the process finished on its own once its input closed.</summary>
+        public bool Stop()
+        {
+            try
+            {
+                process.StandardInput.Close();
+                if (process.WaitForExit(2000)) return true;
+                process.Kill(entireProcessTree: true);
+            }
+            catch (Exception e) when (e is InvalidOperationException or IOException) { }
+            return false;
+        }
+
+        public void Dispose()
+        {
+            Stop();
+            process.Dispose();
+        }
+    }
+
     /// <summary>The full path of a program on PATH, trying each extension in PATHEXT on Windows; null when there is none.</summary>
     public static string? Find(string command) =>
         ProgramPath.Resolve(command, Environment.GetEnvironmentVariable("PATH"), Environment.GetEnvironmentVariable("PATHEXT"),

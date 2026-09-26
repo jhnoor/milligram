@@ -1,4 +1,5 @@
 using Milligram.Adapters.Companion;
+using Milligram.Adapters.Files;
 using Milligram.Adapters.Processes;
 using Milligram.Adapters.Web;
 using Milligram.Analysis.Coverage;
@@ -26,7 +27,8 @@ public sealed class Composition
         Mutation = new MutationService(Workspace, locator, processes, new StrykerReportReader());
         Actions = new ViewerActions(Workspace, new PolicyEditor(Workspace), Crap, Mutation, Jobs, Companion, Events);
         Initializer = new ProjectInitializer(Paths, scanner, locator);
-        Doctor = new Doctor(Workspace, Crap, locator, processes, Companion);
+        WatchLimits = new DrvFs();
+        Doctor = new Doctor(Workspace, Crap, locator, processes, Companion, WatchLimits);
         Agent = new AgentLauncher(Workspace, Companion);
     }
 
@@ -39,6 +41,7 @@ public sealed class Composition
     public MutationService Mutation { get; }
     public ViewerActions Actions { get; }
     public ProjectInitializer Initializer { get; }
+    public IWatchLimits WatchLimits { get; }
     public Doctor Doctor { get; }
     public AgentLauncher Agent { get; }
 

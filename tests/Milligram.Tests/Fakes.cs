@@ -92,6 +92,11 @@ internal sealed class FakeEvents : IViewerEvents
     public void Publish(string type, object? payload = null) => published.Enqueue((type, payload));
 }
 
+internal sealed class FakeWatchLimits(WatchLimit? limit = null) : IWatchLimits
+{
+    public WatchLimit? For(string root) => limit;
+}
+
 internal static class Jobs
 {
     /// <summary>Waits for the named job to finish and returns its final status.</summary>
