@@ -153,6 +153,66 @@ public class MailboxTests
     public void AMissingMailboxIsEmpty() => Assert.Empty(new Mailbox("/definitely/not/here").Take());
 }
 
+public class ScanSummaryTests
+{
+    private const string PolicyJson = """{ "prefix": "Shop", "levels": [["Domain"], ["Web"]] }""";
+
+    private static Workspace Scanned(TempProject project)
+    {
+        var workspace = new Workspace(new ProjectPaths(project.Root), new CSharpScanner());
+        workspace.Load();
+        workspace.Generate();
+        return workspace;
+    }
+
+    [Fact]
+    public void CountsTypesNamespacesAndRedArrowsAndAsksForCrapFirst()
+    {
+        using var project = new TempProject(
+            ("milligram.json", PolicyJson),
+            ("A.cs", """
+                namespace Shop.Domain { public class Order { Shop.Web.Page? page; } }
+                namespace Shop.Web { public class Page { } }
+                """));
+
+        var summary = ScanSummary.Of(Scanned(project));
+
+        Assert.Equal(new ScanSummary(2, 2, 1, HasCrap: false, HasMutation: false), summary);
+        Assert.Equal(
+            ["2 types in 2 namespaces, 1 red arrow.", "Next: `milligram crap` to colour the boxes by complexity × missing coverage (runs your tests)."],
+            summary.Describe());
+    }
+
+    [Fact]
+    public void ACleanDiagramSaysSoAndMovesOnToMutation()
+    {
+        var summary = new ScanSummary(9, 3, 0, HasCrap: true, HasMutation: false);
+        Assert.Equal(
+            ["9 types in 3 namespaces, no red arrows.", "Next: `milligram mutate` to score how well those tests kill mutants."],
+            summary.Describe());
+    }
+
+    [Fact]
+    public void WithBothMetricsItPointsAtTheWorstThingOnScreen()
+    {
+        Assert.Equal("Next: open the viewer and follow the red arrows: they point the wrong way.",
+            new ScanSummary(9, 3, 2, HasCrap: true, HasMutation: true).Describe().Last());
+        Assert.Equal("Next: open the viewer and start with the reddest boxes.",
+            new ScanSummary(9, 3, 0, HasCrap: true, HasMutation: true).Describe().Last());
+    }
+
+    /// <summary>The commonest first-run failure: "src" points somewhere with no C# in it.</summary>
+    [Fact]
+    public void AnEmptyScanSendsTheUserBackToTheConfiguration()
+    {
+        using var project = new TempProject(("milligram.json", """{ "src": "nope" }"""));
+        var summary = ScanSummary.Of(Scanned(project));
+
+        Assert.Equal(new ScanSummary(0, 0, 0, HasCrap: false, HasMutation: false), summary);
+        Assert.Equal(["No types found. Check \"src\" and \"exclude\" in milligram.json, then rerun."], summary.Describe());
+    }
+}
+
 public class WorkspaceTests
 {
     private const string Source = """

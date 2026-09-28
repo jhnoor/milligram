@@ -89,7 +89,8 @@ internal sealed class TypeCollector(CSharpCompilation compilation, string root)
 {
     private readonly Dictionary<INamedTypeSymbol, TypeAccumulator> types = new(SymbolEqualityComparer.Default);
 
-    public IReadOnlyDictionary<INamedTypeSymbol, TypeAccumulator> Collect(IEnumerable<SyntaxTree> trees)
+    /// <summary><paramref name="onTree"/> runs after each file, so the caller can report binding progress.</summary>
+    public IReadOnlyDictionary<INamedTypeSymbol, TypeAccumulator> Collect(IEnumerable<SyntaxTree> trees, Action? onTree = null)
     {
         foreach (var tree in trees)
         {
@@ -105,6 +106,7 @@ internal sealed class TypeCollector(CSharpCompilation compilation, string root)
             }
             if (unit.Members.OfType<GlobalStatementSyntax>().Any() && model.GetDeclaredSymbol(unit) is { } entry)
                 Get(entry.ContainingType).AddTopLevelStatements(unit, model);
+            onTree?.Invoke();
         }
         return types;
     }

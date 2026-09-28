@@ -14,7 +14,7 @@ public sealed class CrapService(Workspace workspace, IProjectLocator projects, I
     {
         var collect = coverageReports is null or { Count: 0 };
         var tests = collect ? RunnableTestProjects(log) : [];
-        var model = workspace.Generate();
+        var model = workspace.Generate(log);
         var (reports, exitCode) = collect ? await CollectCoverageAsync(tests, log, cancellation) : (coverageReports!, 0);
         if (reports.Count == 0)
             throw new MilligramException("No coverage report was produced. Does the test project reference coverlet.collector?");

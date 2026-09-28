@@ -76,7 +76,7 @@ public sealed class Workspace
     }
 
     /// <summary>Scans the source with the current policy and writes .milligram/model.json.</summary>
-    public CodeModel Generate()
+    public CodeModel Generate(Action<string>? progress = null)
     {
         lock (scanGate)
         {
@@ -88,7 +88,7 @@ public sealed class Workspace
                 current.Prefix,
                 current.Foreign,
                 current.Title ?? DefaultTitle);
-            var scanned = scanner.Scan(request);
+            var scanned = scanner.Scan(request, progress);
             JsonFile.Write(Paths.ModelFile, scanned);
             Update(() => model = scanned);
             return scanned;

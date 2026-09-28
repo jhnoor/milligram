@@ -63,15 +63,14 @@ public sealed class ViewerActions(
         }
     }
 
-    public void Regenerate(string reason = "Scan")
-    {
+    /// <summary>The returned task completes when the scan does, so `serve` can report what the first one found.</summary>
+    public Task Regenerate(string reason = "Scan") =>
         jobs.Enqueue(reason, (log, _) =>
         {
-            var model = workspace.Generate();
+            var model = workspace.Generate(log);
             events.Publish("model");
             return Task.FromResult($"{model.Types.Count} types, {model.Edges.Count} dependencies.");
         });
-    }
 
     private ActionResult Regenerate()
     {
