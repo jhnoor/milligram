@@ -1,8 +1,23 @@
 # Milligram
 
-[![CI](https://github.com/jhnoor/milligram/actions/workflows/ci.yml/badge.svg)](https://github.com/jhnoor/milligram/actions/workflows/ci.yml) · [Website](https://jhnoor.github.io/milligram/)
+[![CI](https://github.com/jhnoor/milligram/actions/workflows/ci.yml/badge.svg)](https://github.com/jhnoor/milligram/actions/workflows/ci.yml) [![NuGet](https://img.shields.io/nuget/v/Milligram)](https://www.nuget.org/packages/Milligram) · [Website](https://jhnoor.github.io/milligram/)
 
 A live architecture viewer for C# codebases, with an AI agent at your side.
+
+## Try it in 60 seconds
+
+With the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) installed:
+
+```bash
+cd your/dotnet/repo
+dnx Milligram
+```
+
+`dnx` fetches Milligram from nuget.org and runs it without installing it. It asks once before the
+download. Milligram writes a `milligram.json` for your repo, lists what the metrics and the agent
+still need, and opens the diagram in your browser. Ctrl+C stops it.
+
+## What it does
 
 Milligram draws your code as a component diagram, with namespaces as components and types
 inside them. You can click from the top level all the way down to a method's source. Boxes are
@@ -37,10 +52,22 @@ The viewer, the editor integration, `crap` and `mutate` work the same everywhere
 
 ## Install
 
+`dnx Milligram` needs no install. To have `milligram` on your PATH instead:
+
 ```bash
-git clone <this repo> && cd milligram
+dotnet tool install -g Milligram      # and later: dotnet tool update -g Milligram
+```
+
+This README writes commands as `milligram …`. With `dnx`, write `dnx Milligram …` instead, for
+example `dnx Milligram crap`. Milligram's options pass through, except `--version` and `--help`,
+which `dnx` takes for itself. Put those after `--`, as in `dnx Milligram -- --version`.
+
+To build it from source instead:
+
+```bash
+git clone https://github.com/jhnoor/milligram && cd milligram
 dotnet pack src/Milligram -c Release
-dotnet tool install -g Milligram --add-source ./artifacts
+dotnet tool install -g Milligram --source ./artifacts --prerelease    # a local build is 0.0.0-dev
 ```
 
 ## Use
@@ -175,8 +202,9 @@ copilot --allow-tool 'shell(milligram:*)'    # then: "Read .milligram/agent.md a
 ```
 
 Without `--allow-tool`, Copilot asks before each `milligram` command. The agent needs `milligram` on
-its PATH, as it is once installed as a tool. There is no doorbell: after you send something from the
-viewer, tell the agent to run `milligram mail`.
+its PATH, so install it as a tool (`dotnet tool install -g Milligram`) even if you run the viewer
+with `dnx`. An agent that Milligram starts itself gets a `milligram` on its PATH either way. There
+is no doorbell: after you send something from the viewer, tell the agent to run `milligram mail`.
 
 ## Commands
 
@@ -201,7 +229,7 @@ dotnet format Milligram.slnx --verify-no-changes           # lint
 dotnet run --project src/Milligram -- serve --no-agent     # view Milligram itself
 ```
 
-Contributor and agent guidance (layout, conventions, what must change together) is in
+Contributor and agent guidance (layout, conventions, what must change together, releasing) is in
 [AGENTS.md](AGENTS.md).
 
 Milligram's own layers, as set in its `milligram.json`:
@@ -211,5 +239,7 @@ Milligram's own layers, as set in its `milligram.json`:
 - `Analysis` and `Adapters` (2) — Roslyn, readers, web, tmux.
 - `Main` (3) — composition.
 
-The diagram layout uses [ELK](https://github.com/kieler/elkjs), vendored under `wwwroot/lib`
-(EPL-2.0).
+## License
+
+MIT, see [LICENSE](LICENSE). The diagram layout uses [ELK](https://github.com/kieler/elkjs),
+vendored under `wwwroot/lib` under the EPL-2.0. See [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).

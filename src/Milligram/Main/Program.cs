@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json.Nodes;
 using Milligram.Adapters.Cli;
 using Milligram.Adapters.Companion;
@@ -40,7 +41,9 @@ public static class Program
         }
     }
 
-    private static string Version => typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+    /// <summary>The package version, prerelease label included, without the commit hash the SDK appends.</summary>
+    private static string Version =>
+        typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0";
 
     private static async Task<int> ServeAsync(Composition c, CommandLine line)
     {

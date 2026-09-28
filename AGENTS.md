@@ -13,7 +13,7 @@ decide what to work on next, and then to get it done with an agent.
 Today it handles **C# only**. Roslyn scans the source into a model. The browser draws namespaces
 as components, using an ELK layout. Boxes are coloured by CRAP (complexity × missing coverage) and
 by Stryker.NET mutation score. A companion agent (Copilot CLI in tmux) talks to the viewer through
-file mailboxes. Version 0.1.0.
+file mailboxes. It ships as the `Milligram` dotnet tool on nuget.org, so `dnx Milligram` runs it.
 
 ## Current focus (decided September 2026)
 
@@ -158,3 +158,19 @@ Match the existing code. It is terse and consistent:
   file, so a CRLF checkout would change the agent's briefing and break tests.
 - Don't commit `.milligram/`, `artifacts/`, `StrykerOutput/`, `bin/`, or `obj/`. The `.gitignore`
   covers them.
+
+## Releasing
+
+- The version comes from the git tag. The `.csproj` says `0.0.0-dev`, so every local build is
+  marked as unreleased. Don't put a real version there.
+- To release, tag a commit on `main` and push the tag: `git tag v0.3.0 && git push origin v0.3.0`.
+  `.github/workflows/release.yml` runs all of CI on it, packs with the tag's version, runs the
+  package with `dnx` in an empty project, pushes it to nuget.org, and creates a GitHub release
+  with the `.nupkg` attached.
+- nuget.org can't delete a version, only unlist it. A broken release is fixed by a new tag.
+  A tag with a prerelease label (`v0.3.0-beta.1`) is published as a prerelease, which
+  `dnx Milligram` skips unless it gets `--prerelease`.
+- Publishing uses nuget.org Trusted Publishing, so there is no API key to rotate. The policy on
+  nuget.org names the repository, the workflow file `release.yml`, and the environment `release`.
+  Renaming any of them breaks publishing until the policy is updated. The `NUGET_USER` secret holds
+  the nuget.org user name.
