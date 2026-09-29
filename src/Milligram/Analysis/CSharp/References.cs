@@ -12,7 +12,7 @@ namespace Milligram.Analysis.CSharp;
 public static class References
 {
     private static readonly Lazy<IReadOnlyList<MetadataReference>> Framework = new(LoadFramework);
-    private static readonly ConcurrentDictionary<string, (DateTime Stamp, IReadOnlyList<string> Paths)> Assets = new();
+    private static readonly ConcurrentDictionary<string, (DateTime Stamp, IReadOnlyList<string[]> Candidates)> Assets = new();
 
     public static IReadOnlyList<MetadataReference> For(IEnumerable<string> projectDirectories, Action<string>? progress = null)
     {
@@ -80,13 +80,12 @@ public static class References
         var assets = Path.Combine(projectDirectory, "obj", "project.assets.json");
         if (!File.Exists(assets)) return [];
         var stamp = File.GetLastWriteTimeUtc(assets);
-        if (Assets.TryGetValue(assets, out var cached) && cached.Stamp == stamp) return cached.Paths;
-        var paths = ReadAssets(assets);
-        Assets[assets] = (stamp, paths);
-        return paths;
+        if (!Assets.TryGetValue(assets, out var cached) || cached.Stamp != stamp)
+            Assets[assets] = cached = (stamp, ReadAssets(assets));
+        return cached.Candidates.Select(candidates => candidates.FirstOrDefault(File.Exists)).OfType<string>().ToList();
     }
 
-    private static IReadOnlyList<string> ReadAssets(string assetsFile)
+    private static IReadOnlyList<string[]> ReadAssets(string assetsFile)
     {
         try
         {
@@ -97,7 +96,7 @@ public static class References
             var target = root.GetProperty("targets").EnumerateObject().FirstOrDefault().Value;
             if (target.ValueKind != JsonValueKind.Object) return [];
 
-            var result = new List<string>();
+            var result = new List<string[]>();
             foreach (var package in target.EnumerateObject())
             {
                 if (!package.Value.TryGetProperty("type", out var type) || type.GetString() != "package") continue;
@@ -105,8 +104,7 @@ public static class References
                 if (!libraries.TryGetProperty(package.Name, out var library) || !library.TryGetProperty("path", out var libraryPath)) continue;
                 foreach (var asset in compile.EnumerateObject().Select(a => a.Name).Where(a => a.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
                 {
-                    var file = folders.Select(f => Path.Combine(f, libraryPath.GetString()!, asset)).FirstOrDefault(File.Exists);
-                    if (file is not null) result.Add(file);
+                    result.Add(folders.Select(f => Path.Combine(f, libraryPath.GetString()!, asset)).ToArray());
                 }
             }
             return result;

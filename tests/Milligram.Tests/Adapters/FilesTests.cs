@@ -109,7 +109,12 @@ public class WindowsSideWatcherTests
 
     [Theory]
     [InlineData(@"C:\p\src\obj\B.cs", true)]
-    [InlineData(@"C:\p\src\obj", true)]
+    [InlineData(@"C:\p\src\obj", false)]
+    [InlineData(@"C:\p\src\obj\project.assets.json", false)]
+    [InlineData(@"C:\p\src\obj\Debug\net10.0\App.GlobalUsings.g.cs", false)]
+    [InlineData(@"C:\p\src\obj\Debug\project.assets.json", true)]
+    [InlineData(@"C:\p\src\obj\Debug\App.AssemblyInfo.cs", true)]
+    [InlineData(@"C:\p\bin\obj\project.assets.json", true)]
     [InlineData(@"C:\p\src\Bin\Debug\A.dll", true)]
     [InlineData(@"C:\p\.git", true)]
     [InlineData(@"C:\p\.milligram\run\agent.json", true)]
@@ -140,16 +145,18 @@ public class WindowsSideWatcherTests
             Assert.Equal(WindowsSideWatcher.Ready, ready);
 
             File.WriteAllText(Path.Combine(project.Root, "src", "obj", "B.cs"), "b changed");
+            File.WriteAllText(Path.Combine(project.Root, "src", "obj", "project.assets.json"), "{}");
             File.WriteAllText(Path.Combine(project.Root, "src", "A.cs"), "a changed");
 
             // Changes to directories may be reported too, so read until A.cs, which comes after anything B.cs raised.
             var reported = new List<string>();
-            while (!reported.Contains(Path.Combine(project.Root, "src", "A.cs")))
+            while (!reported.Contains(Path.Combine(project.Root, "src", "A.cs")) ||
+                !reported.Contains(Path.Combine(project.Root, "src", "obj", "project.assets.json")))
             {
                 Assert.True(lines.TryTake(out var line, TimeSpan.FromSeconds(10)), $"A.cs was not reported; got {string.Join(", ", reported)}");
                 reported.Add(line);
             }
-            Assert.DoesNotContain(reported, path => path.Contains(@"\obj", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(Path.Combine(project.Root, "src", "obj", "B.cs"), reported);
             Assert.True(watcher.Stop(), "the watcher kept running after its input closed");
         }
         finally

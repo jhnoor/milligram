@@ -87,7 +87,9 @@ cycle, Milligram breaks the cycle at its lightest link (the fewest references) a
 link pointing outward, so the first diagram already shows the tangles in red. The console lists
 the levels it chose. Edit `levels` to match the architecture you intend. Every run scans the code,
 serves the viewer at `http://localhost:5170/` (loopback only), opens your browser, and starts the
-agent in a terminal. Edit code or `milligram.json` and the diagram updates by itself.
+agent in a terminal. Edit code, a `.csproj` or `milligram.json` and the diagram updates by itself.
+Restored `obj/project.assets.json` files and generated global usings also trigger a new scan;
+ordinary build output is ignored.
 
 Initialization also selects up to eight external libraries for the `foreign` ovals, ranked by
 how many of your types use them. It groups namespaces at two segments (three for `System.*`),

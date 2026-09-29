@@ -11,7 +11,7 @@ namespace Milligram.Adapters.Files;
 /// </summary>
 public sealed class ProjectWatcher : IDisposable
 {
-    /// <summary>Directories that are never scanned, so neither events from them nor polling them matter.</summary>
+    /// <summary>Directories excluded from source; project inputs under obj are watched separately.</summary>
     private static readonly HashSet<string> Unscanned = ["bin", "obj", ".git", ".milligram", "node_modules", ".vs", ".idea"];
 
     private readonly ProjectPaths paths;
@@ -31,10 +31,10 @@ public sealed class ProjectWatcher : IDisposable
         this.events = events;
         Directory.CreateDirectory(paths.ToViewerDirectory);
         Directory.CreateDirectory(paths.MetricsDirectory);
-        Watch(paths.Root, "milligram.json", recursive: false);
-        Watch(paths.StateDirectory, "*", recursive: true);
-        Watch(paths.Root, "*.cs", recursive: true);
-        Watch(paths.Root, "*", recursive: true, directories: true);
+        Watch(paths.Root, ["milligram.json"], recursive: false);
+        Watch(paths.StateDirectory, ["*"], recursive: true);
+        Watch(paths.Root, ["*.cs", "*.csproj", "project.assets.json"], recursive: true);
+        Watch(paths.Root, ["*"], recursive: true, directories: true);
         if (windowsDrive)
         {
             windowsSide = WindowsSideWatcher.Start(paths.Root, OnChange, RefreshAll, TimeSpan.FromSeconds(15));
@@ -49,13 +49,25 @@ public sealed class ProjectWatcher : IDisposable
         : poller is not null ? "polls for them instead, every few seconds or more on a large project (powershell.exe didn't start)"
         : null;
 
-    /// <summary>What polling looks at: the scanned source, the policy, the model, the metrics, and mail for the viewer.</summary>
-    private IEnumerable<KeyValuePair<string, Stamp>> Watched() =>
+    /// <summary>Polling includes the same project inputs that can change a native event-driven scan.</summary>
+    internal IEnumerable<KeyValuePair<string, Stamp>> Watched() =>
         ChangePoller.Files(paths.Absolute(workspace.Policy.Src), name => name.EndsWith(".cs", StringComparison.Ordinal), recurse: true, Unscanned)
+            .Concat(ProjectInputs())
             .Concat(ChangePoller.Files(paths.Root, name => name == "milligram.json", recurse: false))
             .Concat(ChangePoller.Files(paths.StateDirectory, name => name == "model.json", recurse: false))
             .Concat(ChangePoller.Files(paths.MetricsDirectory, _ => true, recurse: true))
             .Concat(ChangePoller.Files(paths.ToViewerDirectory, _ => true, recurse: false));
+
+    private IEnumerable<KeyValuePair<string, Stamp>> ProjectInputs()
+    {
+        var projects = ChangePoller.Files(paths.Root, name => name.EndsWith(".csproj", StringComparison.Ordinal), recurse: true, Unscanned)
+            .Where(file => IsProjectInput(paths.Relative(file.Key))).ToList();
+        foreach (var file in projects) yield return file;
+        foreach (var directory in projects.Select(file => Path.GetDirectoryName(file.Key)!).Distinct(StringComparer.Ordinal))
+            foreach (var file in ChangePoller.Files(Path.Combine(directory, "obj"),
+                name => name == "project.assets.json" || name.EndsWith(".GlobalUsings.g.cs", StringComparison.Ordinal), recurse: true))
+                if (IsProjectInput(paths.Relative(file.Key))) yield return file;
+    }
 
     /// <summary>When changes came too fast to list, everything they could have touched is refreshed.</summary>
     internal void RefreshAll()
@@ -67,13 +79,14 @@ public sealed class ProjectWatcher : IDisposable
         debounce.Run("source", 800, SourceChanged);
     }
 
-    private void Watch(string directory, string filter, bool recursive, bool directories = false)
+    private void Watch(string directory, IReadOnlyList<string> filters, bool recursive, bool directories = false)
     {
-        var watcher = new FileSystemWatcher(directory, filter)
+        var watcher = new FileSystemWatcher(directory, filters[0])
         {
             IncludeSubdirectories = recursive,
             NotifyFilter = directories ? NotifyFilters.DirectoryName : NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
         };
+        foreach (var filter in filters.Skip(1)) watcher.Filters.Add(filter);
         Action<string> changed = directories ? DirectoryChanged : OnChange;
         watcher.Changed += (_, e) => changed(e.FullPath);
         watcher.Created += (_, e) => changed(e.FullPath);
@@ -92,16 +105,33 @@ public sealed class ProjectWatcher : IDisposable
         else if (relative == ".milligram/model.json") debounce.Run("model", 300, ModelChanged);
         else if (relative.StartsWith(".milligram/metrics/", StringComparison.Ordinal)) debounce.Run("metrics", 300, MetricsChanged);
         else if (relative.StartsWith(".milligram/mail/to-viewer/", StringComparison.Ordinal)) debounce.Run("mail", 150, DeliverMail);
-        else if (relative.EndsWith(".cs", StringComparison.Ordinal) && IsScanned(relative)) debounce.Run("source", 800, SourceChanged);
-        else if (IsScanned(relative, directory: true) && (Directory.Exists(fullPath) ||
-            workspace.Model.Types.Any(type => type.Spans.Any(span => span.File.StartsWith(relative + "/", StringComparison.Ordinal)))))
+        else if ((relative.EndsWith(".cs", StringComparison.Ordinal) && IsScanned(relative)) || IsProjectInput(relative))
+            debounce.Run("source", 800, SourceChanged);
+        else if (IsProjectInput(relative + "/project.assets.json") || (IsScanned(relative, directory: true) && (Directory.Exists(fullPath) ||
+            workspace.Model.Types.Any(type => type.Spans.Any(span => span.File.StartsWith(relative + "/", StringComparison.Ordinal))))))
             DirectoryChanged(fullPath);
     }
 
     /// <summary>A folder move may raise no events for the source files it carries.</summary>
     private void DirectoryChanged(string fullPath)
     {
-        if (IsScanned(paths.Relative(fullPath), directory: true)) debounce.Run("source", 800, SourceChanged);
+        var relative = paths.Relative(fullPath);
+        if (IsScanned(relative, directory: true) || IsProjectInput(relative + "/project.assets.json"))
+            debounce.Run("source", 800, SourceChanged);
+    }
+
+    internal bool IsProjectInput(string relative)
+    {
+        var parts = relative.Split('/');
+        var ownerLength = parts.Length - 1;
+        if (!relative.EndsWith(".csproj", StringComparison.Ordinal))
+        {
+            ownerLength = Array.IndexOf(parts, "obj");
+            if (ownerLength < 0 || !((parts.Length == ownerLength + 2 && parts[^1] == "project.assets.json") ||
+                parts[^1].EndsWith(".GlobalUsings.g.cs", StringComparison.Ordinal))) return false;
+        }
+        var owner = ownerLength == 0 ? "." : string.Join('/', parts.Take(ownerLength));
+        return IsScanned(owner, directory: true);
     }
 
     internal bool IsScanned(string relative, bool directory = false)
@@ -109,7 +139,7 @@ public sealed class ProjectWatcher : IDisposable
         var policy = workspace.Policy;
         var src = paths.Relative(paths.Absolute(policy.Src)).TrimEnd('/');
         if (src != "." && !relative.StartsWith(src + "/", StringComparison.Ordinal) &&
-            !(directory && (relative == src || src.StartsWith(relative + "/", StringComparison.Ordinal)))) return false;
+            !(directory && (relative == "." || relative == src || src.StartsWith(relative + "/", StringComparison.Ordinal)))) return false;
         if (relative.Split('/').Any(Unscanned.Contains)) return false;
         return !policy.Exclude.Any(glob => Glob.Matches(glob, directory ? relative + "/" : relative));
     }

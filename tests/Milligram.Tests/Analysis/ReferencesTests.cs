@@ -182,6 +182,54 @@ public class ReferencesTests
         Assert.Equal("Shop.RevisedOrder", Assert.Single(Scan(project).Edges).From);
     }
 
+    [Fact]
+    public void APackageRestoredAfterTheFirstScanBindsWithoutRewritingAssets()
+    {
+        using var project = new TempProject(("App/App.csproj", "<Project />"),
+            ("App/Order.cs", "namespace Shop; public class Order : Vendor.Entity { }"));
+        var packageRoot = Path.Combine(project.Root, "packages").Replace('\\', '/');
+        var assets = project.Write("App/obj/project.assets.json", $$"""
+            {
+              "packageFolders": { "{{packageRoot}}": {} },
+              "libraries": { "Vendor/1.0": { "path": "vendor/1.0" } },
+              "targets": { "net10.0": { "Vendor/1.0": { "type": "package", "compile": { "Vendor.dll": {} } } } }
+            }
+            """);
+        var stamp = File.GetLastWriteTimeUtc(assets);
+        Assert.Empty(Scan(project).Edges);
+
+        Emit(project, "packages/vendor/1.0/Vendor.dll", "namespace Vendor; public class Entity { }");
+
+        Assert.Equal(stamp, File.GetLastWriteTimeUtc(assets));
+        Assert.Contains(Scan(project).Edges, edge => edge.To == "x:Vendor");
+    }
+
+    [Fact]
+    public void RemovingAPackageUsesTheNextPackageFolderWithoutRewritingAssets()
+    {
+        using var project = new TempProject(("App/App.csproj", "<Project />"), ("App/Order.cs", """
+            namespace Shop;
+            public class OriginalOrder : Vendor.Original { }
+            public class RevisedOrder : Vendor.Revised { }
+            """));
+        Emit(project, "first/vendor/1.0/Vendor.dll", "namespace Vendor; public class Original { }");
+        Emit(project, "second/vendor/1.0/Vendor.dll", "namespace Vendor; public class Revised { }");
+        var first = Path.Combine(project.Root, "first").Replace('\\', '/');
+        var second = Path.Combine(project.Root, "second").Replace('\\', '/');
+        project.Write("App/obj/project.assets.json", $$"""
+            {
+              "packageFolders": { "{{first}}": {}, "{{second}}": {} },
+              "libraries": { "Vendor/1.0": { "path": "vendor/1.0" } },
+              "targets": { "net10.0": { "Vendor/1.0": { "type": "package", "compile": { "Vendor.dll": {} } } } }
+            }
+            """);
+        Assert.Equal("Shop.OriginalOrder", Assert.Single(Scan(project).Edges).From);
+
+        File.Delete(Path.Combine(first, "vendor", "1.0", "Vendor.dll"));
+
+        Assert.Equal("Shop.RevisedOrder", Assert.Single(Scan(project).Edges).From);
+    }
+
     private static CodeModel Scan(TempProject project, Action<string>? progress = null) =>
         new CSharpScanner().Scan(new ScanRequest(project.Root, Path.Combine(project.Root, "App"), [], "Shop", ["Vendor"], "Shop"), progress);
 

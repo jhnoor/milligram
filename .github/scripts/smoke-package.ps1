@@ -144,7 +144,16 @@ namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } 
         Wait-Until 'folder move updates live source locations' {
             (Invoke-RestMethod ($address + 'api/type?id=Smoke.Domain.Order')).spans[0].file -eq 'src/Renamed/Class1.cs'
         }
-        Write-Output "Package $Version passed: installed tool, dnx, first-run layers, proposals, mail round-trip, coverage import, live edits, folder moves, source and embedded assets."
+        $modelFile = Join-Path $projectRoot '.milligram/model.json'
+        $scanned = (Get-Content -LiteralPath $modelFile -Raw | ConvertFrom-Json).generatedAt
+        $projectFile = Join-Path $projectRoot 'src/Renamed/Smoke.csproj'
+        $projectText = [IO.File]::ReadAllText($projectFile).Replace('<ImplicitUsings>enable</ImplicitUsings>', '<ImplicitUsings>disable</ImplicitUsings>')
+        [IO.File]::WriteAllText($projectFile, $projectText)
+        Wait-Until 'project edit triggers a new scan' { (Get-Content -LiteralPath $modelFile -Raw | ConvertFrom-Json).generatedAt -ne $scanned }
+        $scanned = (Get-Content -LiteralPath $modelFile -Raw | ConvertFrom-Json).generatedAt
+        Invoke-DotNet restore $projectFile
+        Wait-Until 'restore triggers a new scan' { (Get-Content -LiteralPath $modelFile -Raw | ConvertFrom-Json).generatedAt -ne $scanned }
+        Write-Output "Package $Version passed: installed tool, dnx, first-run layers, proposals, mail round-trip, coverage import, live edits, folder moves, project edits, restore, source and embedded assets."
     } finally {
         if (!$server.HasExited) { $server.Kill($true) }
         $server.WaitForExit()
