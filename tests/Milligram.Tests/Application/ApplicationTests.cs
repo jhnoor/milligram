@@ -59,6 +59,22 @@ public class JsonFileTests
     /// <summary>Opens a file the way a virus scanner or an editor might: reading, and sharing neither writes nor deletes.</summary>
     private static FileStream HoldOpen(string path) => new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
 
+    /// <summary>
+    /// Lets go of the file after 200 ms on a thread of its own. A thread-pool timer can fire a second late while
+    /// parallel scans in other tests keep the pool busy, which is past the retries and made these tests flaky.
+    /// </summary>
+    private static Thread ReleaseSoon(FileStream held)
+    {
+        var thread = new Thread(() =>
+        {
+            Thread.Sleep(200);
+            held.Dispose();
+        })
+        { IsBackground = true };
+        thread.Start();
+        return thread;
+    }
+
     [Fact]
     public void AWriteReplacesTheFileAndLeavesNoTemporaryFileBehind()
     {
@@ -72,33 +88,31 @@ public class JsonFileTests
     }
 
     [WindowsFact]
-    public async Task AWriteWaitsBrieflyForAReaderToLetGo()
+    public void AWriteWaitsBrieflyForAReaderToLetGo()
     {
         using var project = new TempProject(("a.json", "old"));
         var path = Path.Combine(project.Root, "a.json");
         // Even a reader that shares deletes, as Milligram's own do, blocks a rename over the file on Windows.
-        var held = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        var release = Task.Delay(200).ContinueWith(_ => held.Dispose(), TaskScheduler.Default);
+        var release = ReleaseSoon(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
 
         JsonFile.WriteText(path, "new");
 
-        await release;
+        release.Join();
         Assert.Equal("new", JsonFile.ReadText(path));
         Assert.Equal([path], Directory.GetFiles(project.Root));
     }
 
     [WindowsFact]
-    public async Task AReplaceWaitsBrieflyForAScannerToLetGoOfTheNewFile()
+    public void AReplaceWaitsBrieflyForAScannerToLetGoOfTheNewFile()
     {
         using var project = new TempProject(("a.json", "old"), ("a.json.new.tmp", "new"));
         var path = Path.Combine(project.Root, "a.json");
         // A scanner reading the new file makes the rename fail with a sharing violation, not access denied.
-        var held = HoldOpen(path + ".new.tmp");
-        var release = Task.Delay(200).ContinueWith(_ => held.Dispose(), TaskScheduler.Default);
+        var release = ReleaseSoon(HoldOpen(path + ".new.tmp"));
 
         JsonFile.Replace(path + ".new.tmp", path);
 
-        await release;
+        release.Join();
         Assert.Equal("new", File.ReadAllText(path));
         Assert.Equal([path], Directory.GetFiles(project.Root));
     }
