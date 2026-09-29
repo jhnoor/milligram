@@ -10,7 +10,7 @@ namespace Milligram.Analysis.CSharp;
 /// Source dependencies between top-level types: every name a type mentions that binds to another
 /// project type (or a listed foreign library). Base lists give inheritance and implementation.
 /// </summary>
-internal sealed class DependencyCollector(IReadOnlyDictionary<INamedTypeSymbol, TypeAccumulator> types, IReadOnlyList<string> foreignPrefixes)
+internal sealed class DependencyCollector(IReadOnlyDictionary<INamedTypeSymbol, TypeAccumulator> types, IReadOnlyList<string> foreignPrefixes, bool discoverForeign = false)
 {
     private readonly Dictionary<(string From, string To), (EdgeKind Kind, int Count)> edges = [];
     private readonly Dictionary<string, ForeignNode> foreign = [];
@@ -78,10 +78,11 @@ internal sealed class DependencyCollector(IReadOnlyDictionary<INamedTypeSymbol, 
 
     private string? ForeignOf(INamedTypeSymbol type)
     {
-        if (foreignPrefixes.Count == 0 || type.Locations.Any(l => l.IsInSource)) return null;
+        if (type.Locations.Any(l => l.IsInSource)) return null;
         var ns = SymbolNames.Namespace(type);
         var name = NamePath.Join(ns, type.Name);
         var match = foreignPrefixes.Where(p => p.Length > 0 && NamePath.Covers(p, name)).MaxBy(p => p.Length);
+        if (match is null && discoverForeign && ns.Length > 0) match = ns;
         if (match is null) return null;
         var id = CodeModel.ForeignIdPrefix + match;
         foreign.TryAdd(id, new ForeignNode(id, match));

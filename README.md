@@ -59,6 +59,12 @@ the levels it chose. Edit `levels` to match the architecture you intend. Every r
 serves the viewer at `http://localhost:5170/` (loopback only), opens your browser, and starts the
 agent in a terminal. Edit code or `milligram.json` and the diagram updates by itself.
 
+Initialization also selects up to eight external libraries for the `foreign` ovals, ranked by
+how many of your types use them. It groups namespaces at two segments (three for `System.*`),
+keeps choices such as `System.Text.Json`, and leaves out routine collections, LINQ, threading,
+compiler services and nullability annotations. These are namespace names, not package ids.
+Restore your projects first so package references bind; edit `foreign` to choose what matters.
+
 To get metrics, run `milligram crap` (tests with coverage) and `milligram mutate` (Stryker), or use
 the buttons in the viewer.
 

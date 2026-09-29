@@ -9,7 +9,8 @@ public sealed record ScanRequest(
     IReadOnlyList<string> Exclude,
     string Prefix,
     IReadOnlyList<string> Foreign,
-    string Title);
+    string Title,
+    bool DiscoverForeign = false);
 
 /// <summary>Reads a source tree and emits the topology: types, members, and dependencies.</summary>
 public interface ILanguageScanner

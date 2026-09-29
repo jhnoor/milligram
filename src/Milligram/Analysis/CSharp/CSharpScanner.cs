@@ -55,7 +55,7 @@ public sealed class CSharpScanner : ILanguageScanner
         var binding = new ScanStage(report, "Bound", trees.Count, "files");
         var types = new TypeCollector(compilation, request.Root).Collect(trees, binding.Tick);
         var linking = new ScanStage(report, "Linked", types.Count, "types");
-        var dependencies = new DependencyCollector(types, request.Foreign);
+        var dependencies = new DependencyCollector(types, request.Foreign, request.DiscoverForeign);
         foreach (var type in types.Values) { dependencies.Collect(type); linking.Tick(); }
 
         var edges = dependencies.Edges;

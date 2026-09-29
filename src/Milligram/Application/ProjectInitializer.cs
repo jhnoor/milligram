@@ -12,8 +12,10 @@ public sealed record Initialization(Policy Policy, IReadOnlyList<DependencyEdge>
     /// <summary>What init decided, for the console: the levels, and which arrows start out red.</summary>
     public IReadOnlyList<string> Describe()
     {
-        if (Policy.Levels.Count == 0) return [];
-        var lines = new List<string> { "Levels, inferred from the dependencies (inner first; edit them in milligram.json):" };
+        var lines = new List<string>();
+        if (Policy.Foreign.Count > 0) lines.Add($"Library ovals, inferred from usage (edit foreign in milligram.json): {string.Join(", ", Policy.Foreign)}.");
+        if (Policy.Levels.Count == 0) return lines;
+        lines.Add("Levels, inferred from the dependencies (inner first; edit them in milligram.json):");
         lines.AddRange(Policy.Levels.Select((names, level) => $"  L{level}  {string.Join(", ", names)}"));
         if (Outward.Count == 0)
         {
@@ -45,11 +47,20 @@ public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scan
         var exclude = Policy.DefaultExclude.Concat(testDirectories).Distinct().ToList();
         var title = Path.GetFileName(paths.Root);
 
-        var model = scanner.Scan(new ScanRequest(paths.Root, paths.Absolute(src), exclude, "", [], title));
+        var model = scanner.Scan(new ScanRequest(paths.Root, paths.Absolute(src), exclude, "", [], title, DiscoverForeign: true));
         var prefix = CommonPrefix(model.Types.Select(t => t.Namespace).Where(n => n.Length > 0).Distinct().ToList());
         var layers = Layering.TopLevel(model, prefix);
         var order = layers.Levels.Reverse().SelectMany(names => names).ToList();
-        var policy = new Policy { Title = title, Src = src, Exclude = exclude, Prefix = prefix, Order = order, Levels = layers.Levels };
+        var policy = new Policy
+        {
+            Title = title,
+            Src = src,
+            Exclude = exclude,
+            Prefix = prefix,
+            Order = order,
+            Levels = layers.Levels,
+            Foreign = ForeignLibraries.Suggest(model),
+        };
         return new Initialization(policy, layers.Outward);
     }
 

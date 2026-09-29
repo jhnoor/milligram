@@ -61,7 +61,7 @@ public static class AgentBriefing
         | `prefix` | Stripped from every namespace. The remaining dots are the component tree. |
         | `order` | Box order of existing top-level namespace segments. |
         | `levels` | Groups of namespace paths, **inner (level 0) first**. Same group = same level. Drives red arrows. |
-        | `foreign` | Namespace prefixes of libraries to draw as ovals, e.g. `"Microsoft.EntityFrameworkCore"`. |
+        | `foreign` | Namespace prefixes of libraries to draw as ovals, e.g. `"Microsoft.EntityFrameworkCore"`. Init suggests up to eight from usage; edit to choose what matters. |
         | `omit` | Namespace paths or type names left off the diagram. |
         | `edgeKinds` | `[{"from":…,"to":…,"kind":"association"}]`: an association is never a violation. |
         | `omitEdges` | `[{"from":…,"to":…}]`: drop those dependencies from the drawing. |

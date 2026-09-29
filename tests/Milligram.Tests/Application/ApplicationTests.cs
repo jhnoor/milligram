@@ -388,6 +388,37 @@ public class WorkspaceTests
 
 public class ProjectInitializerTests
 {
+    [Fact]
+    public void InitialPolicyIncludesUsedLibrariesAndTheNextScanDrawsTheirOvals()
+    {
+        using var project = new TempProject(("A.cs", """
+            namespace Shop;
+            class A
+            {
+                Microsoft.CodeAnalysis.SyntaxTree? syntax;
+                Microsoft.AspNetCore.Http.HttpContext? context;
+                string Save() => System.Text.Json.JsonSerializer.Serialize(new System.Collections.Generic.List<int>());
+            }
+            """));
+        var paths = new ProjectPaths(project.Root);
+        var initialization = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator()).Initialize(force: false)!;
+        string[] expected = ["Microsoft.AspNetCore", "Microsoft.CodeAnalysis", "System.Text.Json"];
+        Assert.Equal(expected, initialization.Policy.Foreign);
+        Assert.Equal(expected, JsonFile.Read<Policy>(paths.PolicyFile)!.Foreign);
+        Assert.Equal("Library ovals, inferred from usage (edit foreign in milligram.json): Microsoft.AspNetCore, Microsoft.CodeAnalysis, System.Text.Json.", initialization.Describe()[0]);
+
+        var workspace = new Workspace(paths, new CSharpScanner());
+        workspace.Load();
+        Assert.Equal(expected, workspace.Generate().Foreign.Select(n => n.Label));
+    }
+
+    [Fact]
+    public void LibrarySuggestionsAreDescribedEvenWithoutLayers()
+    {
+        Assert.Equal(["Library ovals, inferred from usage (edit foreign in milligram.json): System.Text.Json."],
+            new Initialization(new Policy { Foreign = ["System.Text.Json"] }, []).Describe());
+    }
+
     [Theory]
     [InlineData(new[] { "Shop.Domain", "Shop.Web.Pages" }, "Shop")]
     [InlineData(new[] { "Shop.Domain.Model", "Shop.Domain.Rules" }, "Shop.Domain")]

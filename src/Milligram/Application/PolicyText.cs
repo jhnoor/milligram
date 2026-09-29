@@ -34,7 +34,7 @@ public static class PolicyText
               // Inferred from the dependencies: edit to match the architecture you intend. Inner (level 0) first;
               // a group shares a level. A dependency from an inner level to an outer one is drawn red.
               "levels": {{levels}},
-              // Namespaces of libraries to draw as ovals, such as "Microsoft.EntityFrameworkCore".
+              // Libraries used by the most types, excluding routine BCL namespaces. Edit the ovals to draw.
               "foreign": {{Value(policy.Foreign)}}
             }
 
