@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.CodeAnalysis.CSharp;
 using Milligram.Analysis.CSharp;
 using Milligram.Application;
@@ -197,6 +198,95 @@ public class CSharpScannerTests
         using var first = new TempProject(("A.cs", "namespace Shop; class A { int M() => 1; }"));
         using var second = new TempProject(("A.cs", "namespace Shop; class A { int M() => 2; }"));
         Assert.NotEqual(Scan(first).Types[0].Members[0].Hash, Scan(second).Types[0].Members[0].Hash);
+    }
+
+    [Fact]
+    public void ProgressReportsEveryStageAndEndsWithTheTotals()
+    {
+        using var project = new TempProject(("Domain.cs", Domain), ("Services.cs", Services));
+        var lines = new List<string>();
+        var model = new CSharpScanner().Scan(
+            new ScanRequest(project.Root, project.Root, ["**/bin/**", "**/obj/**"], "Shop", [], "Shop"),
+            lines.Add);
+
+        Assert.Equal("Scanning 2 source file(s).", lines[0]);
+        Assert.Contains("Parsed 2/2 files.", lines);
+        Assert.Contains("Bound 2/2 files.", lines);
+        Assert.Contains($"Linked {model.Types.Count}/{model.Types.Count} types.", lines);
+        Assert.StartsWith($"Scanned {model.Types.Count} types and {model.Edges.Count} dependencies in ", lines[^1]);
+    }
+
+    /// <summary>A source directory below the root is worth naming; the root itself would read "under ..".</summary>
+    [Fact]
+    public void ProgressNamesTheSourceDirectoryWhenItIsNotTheRoot()
+    {
+        using var project = new TempProject(("src/Domain.cs", Domain));
+        var lines = new List<string>();
+        new CSharpScanner().Scan(new ScanRequest(project.Root, Path.Combine(project.Root, "src"), [], "Shop", [], "Shop"), lines.Add);
+        Assert.Equal("Scanning 1 source file(s) under src.", lines[0]);
+    }
+
+    [Fact]
+    public void ScanningWithoutProgressIsFine()
+    {
+        using var project = new TempProject(("Domain.cs", Domain));
+        Assert.NotEmpty(new CSharpScanner().Scan(new ScanRequest(project.Root, project.Root, [], "Shop", [], "Shop")).Types);
+    }
+}
+
+public class ElapsedTests
+{
+    [Theory]
+    [InlineData(0, "0 ms")]
+    [InlineData(999, "999 ms")]
+    [InlineData(1000, "1.0 s")]
+    [InlineData(84213, "84.2 s")]
+    public void SwitchesToSecondsAtOneSecond(int milliseconds, string expected) =>
+        Assert.Equal(expected, CSharpScanner.Elapsed(TimeSpan.FromMilliseconds(milliseconds)));
+
+    /// <summary>A comma-decimal culture must not change the log, or the same scan reads differently per machine.</summary>
+    [Fact]
+    public void IgnoresTheCurrentCulture()
+    {
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("nb-NO");
+            Assert.Equal("1.5 s", CSharpScanner.Elapsed(TimeSpan.FromMilliseconds(1500)));
+        }
+        finally { CultureInfo.CurrentCulture = original; }
+    }
+}
+
+public class ScanStageTests
+{
+    [Fact]
+    public void ReportsOnlyTheLastItemOfAShortStage()
+    {
+        var lines = new List<string>();
+        var stage = new ScanStage(lines.Add, "Parsed", 3, "files");
+        for (var i = 0; i < 3; i++) stage.Tick();
+        Assert.Equal(["Parsed 3/3 files."], lines);
+    }
+
+    [Fact]
+    public void ReportsEvery250ItemsAndThenTheTotal()
+    {
+        var lines = new List<string>();
+        var stage = new ScanStage(lines.Add, "Bound", 600, "files");
+        for (var i = 0; i < 600; i++) stage.Tick();
+        Assert.Equal(["Bound 250/600 files.", "Bound 500/600 files.", "Bound 600/600 files."], lines);
+    }
+
+    /// <summary>Parsing runs in parallel, so ticks arrive from many threads; counts must stay exact and ordered.</summary>
+    [Fact]
+    public void CountsEveryTickFromParallelCallersInOrder()
+    {
+        var lines = new List<string>();
+        var gate = new Lock();
+        var stage = new ScanStage(line => { lock (gate) lines.Add(line); }, "Parsed", 1000, "files");
+        Parallel.For(0, 1000, _ => stage.Tick());
+        Assert.Equal(["Parsed 250/1000 files.", "Parsed 500/1000 files.", "Parsed 750/1000 files.", "Parsed 1000/1000 files."], lines);
     }
 }
 

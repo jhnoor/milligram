@@ -13,7 +13,7 @@ public sealed class MutationService(Workspace workspace, IProjectLocator locator
 {
     public async Task<MutationResult> RunAsync(IReadOnlyList<string> files, bool all, Action<string> log, CancellationToken cancellation)
     {
-        var model = workspace.Generate();
+        var model = workspace.Generate(log);
         var projects = locator.Find(workspace.Paths.Root);
         var targets = files.Count > 0 ? files.Select(Normalize).ToList() : model.Types.SelectMany(t => t.Files).Distinct().ToList();
         var skipped = new List<string>();

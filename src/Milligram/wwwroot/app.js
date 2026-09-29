@@ -681,6 +681,8 @@ function renderMetrics() {
   if (!metrics) return;
   $('#metrics').innerHTML = `<dl class="kv"><dt>Model</dt><dd>${ago(state.meta.generatedAt)}</dd>
     <dt>CRAP</dt><dd>${ago(metrics.crapAt)}</dd><dt>Mutation</dt><dd>${ago(metrics.mutationAt)}</dd></dl>`;
+  // Without CRAP every box grades as unknown, so say what to run rather than leaving a grey diagram unexplained.
+  $('#no-metrics').hidden = !!metrics.crapAt || !state.meta.types;
 }
 
 function renderJob() {
@@ -1063,6 +1065,8 @@ function wireInspector() {
   $('#regen').onclick = () => action('regen');
   $('#run-crap').onclick = () => action('refresh-crap');
   $('#run-mutate').onclick = () => action('refresh-mutate');
+  $('#banner-crap').onclick = () => action('refresh-crap');
+  $('#banner-mutate').onclick = () => action('refresh-mutate');
   $('#new-proposal').onclick = async () => {
     const result = await action('new-proposal');
     if (result.ok && result.data?.proposalId) navigate(result.data.proposalId, null);

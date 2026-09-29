@@ -63,7 +63,7 @@ public static class Program
         JsonFile.Write(c.Paths.ServerFile, new { url, pid = Environment.ProcessId, started = DateTimeOffset.UtcNow });
         var limit = c.WatchLimits.For(c.Paths.Root);
         using var watcher = new ProjectWatcher(c.Paths, c.Workspace, c.Actions, c.Events, windowsDrive: limit is not null);
-        c.Actions.Regenerate("Scan");
+        var scan = c.Actions.Regenerate("Scan");
 
         Console.WriteLine($"Milligram {Version} — {c.Paths.Root}");
         Console.WriteLine($"  Viewer: {url}");
@@ -76,6 +76,9 @@ public static class Program
         foreach (var banner in agent.Banner) Console.WriteLine("  " + banner);
         if (!line.Has("no-browser") && !Desktop.OpenUrl(url)) Console.WriteLine("  (Open the viewer URL in your browser.)");
         Console.WriteLine("  Ctrl+C stops the viewer.");
+
+        await scan;
+        foreach (var step in ScanSummary.Of(c.Workspace).Describe()) Console.WriteLine("  " + step);
 
         await app.WaitForShutdownAsync();
         if (agent.Started && !line.Has("keep-agent") && !c.Workspace.Policy.Agent.KeepOnExit) c.Companion.Stop();
@@ -98,8 +101,9 @@ public static class Program
     private static int Ir(Composition c)
     {
         c.Workspace.Load();
-        var model = c.Workspace.Generate();
-        Console.WriteLine($"{model.Types.Count} types, {model.Edges.Count} dependencies -> {c.Paths.Relative(c.Paths.ModelFile)}");
+        c.Workspace.Generate(Console.WriteLine);
+        Console.WriteLine($"Wrote {c.Paths.Relative(c.Paths.ModelFile)}");
+        foreach (var line in ScanSummary.Of(c.Workspace).Describe()) Console.WriteLine(line);
         return 0;
     }
 

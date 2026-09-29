@@ -14,7 +14,8 @@ public sealed record ScanRequest(
 /// <summary>Reads a source tree and emits the topology: types, members, and dependencies.</summary>
 public interface ILanguageScanner
 {
-    CodeModel Scan(ScanRequest request);
+    /// <summary><paramref name="progress"/> reports each stage as it advances, so a long scan never looks like a hang.</summary>
+    CodeModel Scan(ScanRequest request, Action<string>? progress = null);
 }
 
 /// <summary>Reads coverage reports into project-relative line hits.</summary>

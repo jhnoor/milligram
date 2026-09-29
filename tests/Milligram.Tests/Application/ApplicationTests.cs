@@ -59,6 +59,22 @@ public class JsonFileTests
     /// <summary>Opens a file the way a virus scanner or an editor might: reading, and sharing neither writes nor deletes.</summary>
     private static FileStream HoldOpen(string path) => new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
 
+    /// <summary>
+    /// Lets go of the file after 200 ms on a thread of its own. A thread-pool timer can fire a second late while
+    /// parallel scans in other tests keep the pool busy, which is past the retries and made these tests flaky.
+    /// </summary>
+    private static Thread ReleaseSoon(FileStream held)
+    {
+        var thread = new Thread(() =>
+        {
+            Thread.Sleep(200);
+            held.Dispose();
+        })
+        { IsBackground = true };
+        thread.Start();
+        return thread;
+    }
+
     [Fact]
     public void AWriteReplacesTheFileAndLeavesNoTemporaryFileBehind()
     {
@@ -72,33 +88,31 @@ public class JsonFileTests
     }
 
     [WindowsFact]
-    public async Task AWriteWaitsBrieflyForAReaderToLetGo()
+    public void AWriteWaitsBrieflyForAReaderToLetGo()
     {
         using var project = new TempProject(("a.json", "old"));
         var path = Path.Combine(project.Root, "a.json");
         // Even a reader that shares deletes, as Milligram's own do, blocks a rename over the file on Windows.
-        var held = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        var release = Task.Delay(200).ContinueWith(_ => held.Dispose(), TaskScheduler.Default);
+        var release = ReleaseSoon(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
 
         JsonFile.WriteText(path, "new");
 
-        await release;
+        release.Join();
         Assert.Equal("new", JsonFile.ReadText(path));
         Assert.Equal([path], Directory.GetFiles(project.Root));
     }
 
     [WindowsFact]
-    public async Task AReplaceWaitsBrieflyForAScannerToLetGoOfTheNewFile()
+    public void AReplaceWaitsBrieflyForAScannerToLetGoOfTheNewFile()
     {
         using var project = new TempProject(("a.json", "old"), ("a.json.new.tmp", "new"));
         var path = Path.Combine(project.Root, "a.json");
         // A scanner reading the new file makes the rename fail with a sharing violation, not access denied.
-        var held = HoldOpen(path + ".new.tmp");
-        var release = Task.Delay(200).ContinueWith(_ => held.Dispose(), TaskScheduler.Default);
+        var release = ReleaseSoon(HoldOpen(path + ".new.tmp"));
 
         JsonFile.Replace(path + ".new.tmp", path);
 
-        await release;
+        release.Join();
         Assert.Equal("new", File.ReadAllText(path));
         Assert.Equal([path], Directory.GetFiles(project.Root));
     }
@@ -151,6 +165,66 @@ public class MailboxTests
 
     [Fact]
     public void AMissingMailboxIsEmpty() => Assert.Empty(new Mailbox("/definitely/not/here").Take());
+}
+
+public class ScanSummaryTests
+{
+    private const string PolicyJson = """{ "prefix": "Shop", "levels": [["Domain"], ["Web"]] }""";
+
+    private static Workspace Scanned(TempProject project)
+    {
+        var workspace = new Workspace(new ProjectPaths(project.Root), new CSharpScanner());
+        workspace.Load();
+        workspace.Generate();
+        return workspace;
+    }
+
+    [Fact]
+    public void CountsTypesNamespacesAndRedArrowsAndAsksForCrapFirst()
+    {
+        using var project = new TempProject(
+            ("milligram.json", PolicyJson),
+            ("A.cs", """
+                namespace Shop.Domain { public class Order { Shop.Web.Page? page; } }
+                namespace Shop.Web { public class Page { } }
+                """));
+
+        var summary = ScanSummary.Of(Scanned(project));
+
+        Assert.Equal(new ScanSummary(2, 2, 1, HasCrap: false, HasMutation: false), summary);
+        Assert.Equal(
+            ["2 types in 2 namespaces, 1 red arrow.", "Next: `milligram crap` to colour the boxes by complexity × missing coverage (runs your tests)."],
+            summary.Describe());
+    }
+
+    [Fact]
+    public void ACleanDiagramSaysSoAndMovesOnToMutation()
+    {
+        var summary = new ScanSummary(9, 3, 0, HasCrap: true, HasMutation: false);
+        Assert.Equal(
+            ["9 types in 3 namespaces, no red arrows.", "Next: `milligram mutate` to score how well those tests kill mutants."],
+            summary.Describe());
+    }
+
+    [Fact]
+    public void WithBothMetricsItPointsAtTheWorstThingOnScreen()
+    {
+        Assert.Equal("Next: open the viewer and follow the red arrows: they point the wrong way.",
+            new ScanSummary(9, 3, 2, HasCrap: true, HasMutation: true).Describe().Last());
+        Assert.Equal("Next: open the viewer and start with the reddest boxes.",
+            new ScanSummary(9, 3, 0, HasCrap: true, HasMutation: true).Describe().Last());
+    }
+
+    /// <summary>The commonest first-run failure: "src" points somewhere with no C# in it.</summary>
+    [Fact]
+    public void AnEmptyScanSendsTheUserBackToTheConfiguration()
+    {
+        using var project = new TempProject(("milligram.json", """{ "src": "nope" }"""));
+        var summary = ScanSummary.Of(Scanned(project));
+
+        Assert.Equal(new ScanSummary(0, 0, 0, HasCrap: false, HasMutation: false), summary);
+        Assert.Equal(["No types found. Check \"src\" and \"exclude\" in milligram.json, then rerun."], summary.Describe());
+    }
 }
 
 public class WorkspaceTests

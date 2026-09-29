@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
@@ -33,10 +35,16 @@ public sealed class CSharpScanner : ILanguageScanner
         "Microsoft.Extensions.Hosting", "Microsoft.Extensions.Logging",
     ];
 
-    public CodeModel Scan(ScanRequest request)
+    public CodeModel Scan(ScanRequest request, Action<string>? progress = null)
     {
+        Action<string> report = progress ?? (_ => { });
+        var clock = Stopwatch.StartNew();
         var files = SourceFiles.Find(request.SourceDirectory, request.Root, request.Exclude);
-        var trees = files.AsParallel().AsOrdered().Select(Parse).ToList();
+        var src = SourceFiles.Relative(request.Root, request.SourceDirectory);
+        report($"Scanning {files.Count} source file(s)" + (src == "." ? "." : $" under {src}."));
+
+        var parsing = new ScanStage(report, "Parsed", files.Count, "files");
+        var trees = files.AsParallel().AsOrdered().Select(file => { var tree = Parse(file); parsing.Tick(); return tree; }).ToList();
         var projects = ProjectDirectories(files, request.Root);
         var compilation = CSharpCompilation.Create(
             "milligram-scan",
@@ -44,18 +52,28 @@ public sealed class CSharpScanner : ILanguageScanner
             References.For(projects),
             CompilationOptions);
 
-        var types = new TypeCollector(compilation, request.Root).Collect(trees);
+        var binding = new ScanStage(report, "Bound", trees.Count, "files");
+        var types = new TypeCollector(compilation, request.Root).Collect(trees, binding.Tick);
+        var linking = new ScanStage(report, "Linked", types.Count, "types");
         var dependencies = new DependencyCollector(types, request.Foreign);
-        foreach (var type in types.Values) dependencies.Collect(type);
+        foreach (var type in types.Values) { dependencies.Collect(type); linking.Tick(); }
 
+        var edges = dependencies.Edges;
+        report($"Scanned {types.Count} types and {edges.Count} dependencies in {Elapsed(clock.Elapsed)}.");
         return new CodeModel(
             request.Title,
             request.Prefix,
             DateTimeOffset.UtcNow,
             types.Values.Select(t => t.ToNode()).OrderBy(t => t.Id, StringComparer.Ordinal).ToList(),
             dependencies.Foreign,
-            dependencies.Edges);
+            edges);
     }
+
+    /// <summary>Formatted invariantly, so a scan reads the same on every machine.</summary>
+    internal static string Elapsed(TimeSpan taken) =>
+        taken.TotalSeconds < 1
+            ? $"{(int)taken.TotalMilliseconds} ms"
+            : $"{taken.TotalSeconds.ToString("F1", CultureInfo.InvariantCulture)} s";
 
     private static SyntaxTree Parse(string file) =>
         CSharpSyntaxTree.ParseText(SourceText.From(File.ReadAllText(file)), ParseOptions, file);
