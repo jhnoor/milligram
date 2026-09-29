@@ -97,6 +97,11 @@ keeps choices such as `System.Text.Json`, and leaves out routine collections, LI
 compiler services and nullability annotations. These are namespace names, not package ids.
 Restore your projects first so package references bind; edit `foreign` to choose what matters.
 
+The scanner uses one source compilation rather than evaluating MSBuild. It reads generated global
+usings from the latest build, or falls back to explicit, unconditional `ImplicitUsings` settings
+in project XML (`enable` or `true`). Imported and conditional settings and stale generated files
+can therefore differ from the actual build; project-input evaluation remains a known limit.
+
 To get metrics, run `milligram crap` (tests with coverage) and `milligram mutate` (Stryker), or use
 the buttons in the viewer.
 

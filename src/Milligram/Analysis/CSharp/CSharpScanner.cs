@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
@@ -124,9 +125,25 @@ public sealed class CSharpScanner : ILanguageScanner
 
     private static IEnumerable<string> DefaultUsings(string project)
     {
-        var csproj = Directory.EnumerateFiles(project, "*.csproj").First();
-        var text = File.ReadAllText(csproj);
-        if (!text.Contains("<ImplicitUsings>enable", StringComparison.OrdinalIgnoreCase)) return [];
-        return text.Contains("Microsoft.NET.Sdk.Web", StringComparison.OrdinalIgnoreCase) ? [.. SdkUsings, .. WebSdkUsings] : SdkUsings;
+        var csproj = Directory.EnumerateFiles(project, "*.csproj").Order(StringComparer.Ordinal).First();
+        try
+        {
+            var root = XDocument.Load(csproj).Root;
+            if (root is null) return [];
+            var enabled = root.Elements().Where(e => e.Name.LocalName == "PropertyGroup")
+                .Elements().Where(e => e.Name.LocalName.Equals("ImplicitUsings", StringComparison.OrdinalIgnoreCase) &&
+                    !e.AncestorsAndSelf().Any(a => !string.IsNullOrWhiteSpace(a.Attribute("Condition")?.Value)))
+                .LastOrDefault()?.Value;
+            if (!string.Equals(enabled, "enable", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(enabled, "true", StringComparison.OrdinalIgnoreCase)) return [];
+            var sdks = (root.Attribute("Sdk")?.Value ?? "").Split(';')
+                .Concat(root.Elements().Where(e => e.Name.LocalName == "Sdk").Select(e => e.Attribute("Name")?.Value ?? ""));
+            return sdks.Any(sdk => sdk.Split('/')[0].Trim().Equals("Microsoft.NET.Sdk.Web", StringComparison.OrdinalIgnoreCase))
+                ? [.. SdkUsings, .. WebSdkUsings] : SdkUsings;
+        }
+        catch (Exception e) when (e is System.Xml.XmlException or IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
     }
 }

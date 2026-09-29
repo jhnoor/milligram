@@ -87,7 +87,12 @@ These are proposed issue scopes, not completed features or already-created issue
 2. **Respect legacy Compile membership.** Evaluate explicit, linked and conditional source
    inputs and preprocessor symbols. Keep a documented source-only fallback when evaluation
    is unavailable. Acceptance: the unlisted probe disappears, included/linked files remain,
-   inactive configurations do not invent dependencies, and excludes still apply.
+   inactive configurations do not invent dependencies, and excludes still apply. Include SDK
+   generated-input membership: disabling `ImplicitUsings` can leave an old
+   `obj/Debug/net10.0/App.GlobalUsings.g.cs` on disk that the scanner still includes. Reproduced
+   with an unqualified `HttpClient` property: the dependency remains after disabling the setting.
+   File timestamps alone cannot fix this; the SDK writes generated usings only when their
+   content changes, so valid generated files can also be older than the project definition.
 3. **Prove legacy coverage collection.** Choose a real old-style test project that builds on
    Windows, record the VS Build Tools/runner/collector versions, and produce Cobertura.
    Add any supported runner through the process port. Acceptance: failing tests remain
