@@ -13,7 +13,7 @@ decide what to work on next, and then to get it done with an agent.
 Today it handles **C# only**. Roslyn scans the source into a model. The browser draws namespaces
 as components, using an ELK layout. Boxes are coloured by CRAP (complexity × missing coverage) and
 by Stryker.NET mutation score. A companion agent (Copilot CLI in tmux) talks to the viewer through
-file mailboxes. Version 0.1.0.
+file mailboxes. Local builds are `0.0.0-dev`; release versions come from tags.
 
 ## Current focus (decided September 2026)
 
@@ -158,3 +158,11 @@ Match the existing code. It is terse and consistent:
   file, so a CRLF checkout would change the agent's briefing and break tests.
 - Don't commit `.milligram/`, `artifacts/`, `StrykerOutput/`, `bin/`, or `obj/`. The `.gitignore`
   covers them.
+
+## Releasing
+
+See [RELEASING.md](RELEASING.md) for the NuGet Trusted Publishing setup and tag workflow.
+Keep the local version `0.0.0-dev`. CI checks the packed tool through installation and `dnx`
+on Linux, Windows and macOS; the release workflow checks the tagged package before publishing.
+The `release.yml` filename and `release` environment are part of the NuGet trust policy.
+Do not advertise a public NuGet command until the first package is published and verified.

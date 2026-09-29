@@ -38,10 +38,16 @@ The viewer, the editor integration, `crap` and `mutate` work the same everywhere
 ## Install
 
 ```bash
-git clone <this repo> && cd milligram
+git clone https://github.com/jhnoor/milligram && cd milligram
 dotnet pack src/Milligram -c Release
-dotnet tool install -g Milligram --add-source ./artifacts
+dotnet tool install -g Milligram --source ./artifacts --prerelease
 ```
+
+Local builds use version `0.0.0-dev`. The release workflow takes its version from a `v*` tag,
+tests the package on Linux, macOS and Windows, then publishes it. See [Releasing](RELEASING.md)
+for the one-time NuGet setup. Until the first stable release is published, use the source install
+above. After that, `dnx Milligram` will run it directly, or `dotnet tool install -g Milligram`
+will put it on your PATH.
 
 ## Use
 

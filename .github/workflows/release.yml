@@ -1,0 +1,93 @@
+name: Release
+
+# Pushing a tag like v0.2.0 runs CI on the tagged commit, then publishes the tool to nuget.org
+# with the version from the tag and attaches the package to a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish to nuget.org
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # nuget.org's Trusted Publishing policy names this workflow file and this environment.
+    environment: release
+    permissions:
+      contents: write # create the GitHub release
+      id-token: write # exchange GitHub's OIDC token for a short-lived nuget.org API key
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Version from the tag
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' is not vMAJOR.MINOR.PATCH[-prerelease]."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Pack
+        run: dotnet pack src/Milligram -c Release -warnaserror -p:Version=${{ steps.version.outputs.version }} -p:ContinuousIntegrationBuild=true
+
+      # nuget.org can't delete a version, so run the package the way users will before pushing it.
+      - name: Smoke test with dnx
+        shell: pwsh
+        run: ./.github/scripts/smoke-package.ps1 -PackageDirectory ./artifacts -Version '${{ steps.version.outputs.version }}'
+
+      - name: Check publishing configuration
+        env:
+          NUGET_USER: ${{ secrets.NUGET_USER }}
+        run: |
+          if [ -z "$NUGET_USER" ]; then
+            echo "::error::Set the NUGET_USER secret and configure the nuget.org Trusted Publishing policy described in RELEASING.md."
+            exit 1
+          fi
+
+      - name: Log in to nuget.org
+        id: nuget
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      # --skip-duplicate lets a failed run be re-run after the push itself succeeded.
+      - name: Push to nuget.org
+        env:
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
+        run: >
+          dotnet nuget push artifacts/Milligram.${{ steps.version.outputs.version }}.nupkg
+          --api-key "$NUGET_API_KEY"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "artifacts/Milligram.$VERSION.nupkg" --clobber
+          else
+            prerelease=$([[ "$VERSION" == *-* ]] && echo --prerelease || true)
+            gh release create "$GITHUB_REF_NAME" "artifacts/Milligram.$VERSION.nupkg" --verify-tag --generate-notes $prerelease
+          fi
