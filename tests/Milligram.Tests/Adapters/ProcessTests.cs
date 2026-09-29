@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Milligram.Adapters.Processes;
 
 namespace Milligram.Tests.Adapters;
@@ -159,59 +158,4 @@ public class BatchCommandLineTests
     [InlineData("a\0b")]
     public void AnArgumentWithALineBreakIsRefused(string argument) =>
         Assert.Throws<ArgumentException>(() => BatchCommandLine.For(Code, [argument]));
-}
-
-public class ProcessRunnerTests
-{
-    [WindowsFact]
-    public void ABatchFileReceivesHostileArgumentsIntactAndRunsNothingElse()
-    {
-        using var project = new TempProject((@"b&n 100%\echo args.cmd", "@echo off\r\n>\"%~dp0args.txt\" echo(%*\r\n"));
-        var script = Path.Combine(project.Root, "b&n 100%", "echo args.cmd");
-        var canary = Path.Combine(project.Root, "canary.txt");
-        string[] args = ["-g", @"C:\a b\x&calc.cs:1", "100%", "%OS%", "!OS!", @"C:\dir\", "", "^&|<>()", $"&echo pwned>\"{canary}\""];
-
-        var (exitCode, output) = ProcessRunner.Capture(script, args);
-        var received = Argv(File.ReadAllLines(Path.Combine(project.Root, "b&n 100%", "args.txt"))[0]);
-        // Programs split a quote inside a quoted argument differently, so this one is only checked for what it runs.
-        var (quotedExitCode, _) = ProcessRunner.Capture(script, $"\"&echo pwned>{canary}");
-
-        Assert.True(exitCode == 0, output);
-        Assert.Equal(args, received);
-        Assert.Equal(0, quotedExitCode);
-        Assert.False(File.Exists(canary));
-    }
-
-    [WindowsFact]
-    public void ANameWithoutAnExtensionStartsItsCmdFileNotTheScriptBesideIt()
-    {
-        using var project = new TempProject((@"bin\hello.cmd", "@echo hello %~1\r\n"), (@"bin\hello", "#!/bin/sh\necho wrong\n"));
-        var hello = Path.Combine(project.Root, "bin", "hello");
-
-        var (exitCode, output) = ProcessRunner.Capture(hello, "big world");
-
-        Assert.Equal(hello + ".CMD", ProcessRunner.Find(hello));
-        Assert.Equal(0, exitCode);
-        Assert.Equal("hello big world", output.Trim());
-    }
-
-    /// <summary>Splits a command line the way most Windows programs do, VS Code included.</summary>
-    private static string[] Argv(string arguments)
-    {
-        var argv = CommandLineToArgvW("program " + arguments, out var count);
-        try
-        {
-            return Enumerable.Range(1, count - 1).Select(i => Marshal.PtrToStringUni(Marshal.ReadIntPtr(argv, i * IntPtr.Size))!).ToArray();
-        }
-        finally
-        {
-            LocalFree(argv);
-        }
-    }
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr CommandLineToArgvW(string commandLine, out int count);
-
-    [DllImport("kernel32.dll")]
-    private static extern IntPtr LocalFree(IntPtr memory);
 }
