@@ -40,6 +40,26 @@ public class CrapServiceTests
         ["src/App/A.cs"] = new Dictionary<int, int> { [4] = 3, [5] = 0 },
     });
 
+    [Fact]
+    public async Task LegacyCoverageFailsBeforeScanningButExistingReportsCanBeImported()
+    {
+        using var fixture = new ServiceFixture();
+        var locator = new FakeProjectLocator(fixture.AppProject, fixture.TestProject with { IsSdkStyle = false });
+        var processes = new FakeProcessRunner();
+        var service = new CrapService(fixture.Workspace, locator, processes, new FakeCoverageReader(Hits));
+
+        var error = await Assert.ThrowsAsync<MilligramException>(() => service.RunAsync(null, _ => { }, CancellationToken.None));
+        Assert.Contains("SDK-style", error.Message);
+        Assert.Contains("milligram crap --coverage", error.Message);
+        Assert.Contains("tests/App.Tests/App.Tests.csproj", error.Message);
+        Assert.Empty(fixture.Workspace.Model.Types);
+        Assert.Empty(processes.Calls);
+
+        var imported = await service.RunAsync(["legacy.cobertura.xml"], _ => { }, CancellationToken.None);
+        Assert.Equal(2, imported.Members);
+        Assert.Empty(processes.Calls);
+    }
+
     /// <summary>Plays `dotnet test --collect`: drops a Cobertura file in the results directory.</summary>
     private static int WriteCoverage(string command, IReadOnlyList<string> args, string directory)
     {

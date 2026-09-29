@@ -39,6 +39,7 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
             await StrykerAsync(cancellation),
             Agent(),
         ];
+        if (ProjectFormat(projects) is { } format) checks.Insert(1, format);
         if (watching.For(workspace.Paths.Root) is { } limit) checks.Add(Check.Skipped("Watching", limit.Detail, limit.Fix));
         return checks;
     }
@@ -61,12 +62,26 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
     private Check Restored(IReadOnlyList<BuildProject> projects)
     {
         if (projects.Count == 0) return Check.Skipped("Restore", "no .csproj files under the project root");
+        projects = projects.Where(p => p.IsSdkStyle).ToList();
+        if (projects.Count == 0) return Check.Skipped("Restore", "legacy restore state is not checked; these projects do not use project.assets.json");
         var missing = projects.Where(p => !p.IsRestored).ToList();
         return missing.Count == 0
             ? Check.Ok("Restore", $"{Count(projects.Count, "project")} restored")
             : Check.Failed("Restore",
                 $"{missing.Count} of {Count(projects.Count, "project")} not restored ({Names(missing.Select(p => p.Path))}), so types from their packages don't resolve and edges to libraries are missing",
                 "dotnet restore (on your solution), or build it once");
+    }
+
+    private Check? ProjectFormat(IReadOnlyList<BuildProject> projects)
+    {
+        var legacy = projects.Where(p => !p.IsSdkStyle).ToList();
+        var framework = projects.Where(p => p.TargetsNetFramework).ToList();
+        if (legacy.Count == 0 && framework.Count == 0) return null;
+        return Check.Skipped("Project format",
+            $"{Names(legacy.Concat(framework).Distinct().Select(p => p.Path))}: the scanner uses .NET 10 references and project.assets.json; .NET Framework and packages.config dependencies may be missing",
+            "the scanner reads every .cs file under src without evaluating Compile items or build conditions; use exclude in milligram.json for inactive files",
+            "for legacy test projects, collect Cobertura with your existing test tools and import it with milligram crap --coverage report.xml",
+            "Stryker on .NET Framework needs solution/MSBuild configuration in the source project's stryker-config.json (see README)");
     }
 
     private Check Tests(IReadOnlyList<string> tests) =>
@@ -79,6 +94,10 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
     {
         if (tests.Count == 0) return Check.Skipped("Coverage", "no test projects");
         var byPath = projects.ToDictionary(p => p.Path, StringComparer.Ordinal);
+        var legacy = tests.Where(t => byPath.TryGetValue(t, out var p) && !p.IsSdkStyle).ToList();
+        if (legacy.Count > 0)
+            return Check.Failed("Coverage", $"automatic coverage requires SDK-style test projects; {Names(legacy)} {(legacy.Count == 1 ? "is" : "are")} legacy",
+                "collect Cobertura using your existing test tools, then run milligram crap --coverage report.xml");
         var uses = tests.ToDictionary(t => t, t => byPath.TryGetValue(t, out var p) ? locator.UsesPackage(p, CrapService.CoverageCollector) : null);
         var lacking = uses.Where(u => u.Value == false).Select(u => u.Key).ToList();
         if (lacking.Count > 0)

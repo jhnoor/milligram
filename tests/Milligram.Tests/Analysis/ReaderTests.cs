@@ -105,6 +105,64 @@ public class StrykerReportReaderTests
 
 public class DotNetProjectLocatorTests
 {
+    [Theory]
+    [InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>", true, false)]
+    [InlineData("<Project><Sdk Name=\"Microsoft.NET.Sdk\" /><PropertyGroup><TargetFramework>net48</TargetFramework></PropertyGroup></Project>", true, true)]
+    [InlineData("<Project><Import Project=\"Sdk.props\" Sdk=\"Microsoft.NET.Sdk\" /><PropertyGroup><TargetFrameworks>net10.0; net472</TargetFrameworks></PropertyGroup></Project>", true, true)]
+    [InlineData("<Project xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\"><PropertyGroup><TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion></PropertyGroup><Import Project=\"Microsoft.CSharp.targets\" /></Project>", false, true)]
+    [InlineData("<Project><Import Project=\"shared.props\" /></Project>", false, false)]
+    [InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>NET35</TargetFramework></PropertyGroup></Project>", true, true)]
+    [InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>netstandard2.0</TargetFramework></PropertyGroup></Project>", true, false)]
+    [InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><Description>net48</Description></PropertyGroup></Project>", true, false)]
+    public void ReportsProjectFormatWithoutEvaluatingMsbuild(string xml, bool sdk, bool framework)
+    {
+        using var project = new TempProject(("App.csproj", xml));
+
+        var found = Assert.Single(new DotNetProjectLocator().Find(project.Root));
+
+        Assert.Equal(sdk, found.IsSdkStyle);
+        Assert.Equal(framework, found.TargetsNetFramework);
+    }
+
+    [Theory]
+    [InlineData("net11")]
+    [InlineData("net20")]
+    [InlineData("net35")]
+    [InlineData("net40")]
+    [InlineData("net403")]
+    [InlineData("net45")]
+    [InlineData("net451")]
+    [InlineData("net452")]
+    [InlineData("net46")]
+    [InlineData("net461")]
+    [InlineData("net462")]
+    [InlineData("net47")]
+    [InlineData("net471")]
+    [InlineData("net472")]
+    [InlineData("net48")]
+    [InlineData("net481")]
+    public void RecognizesTheFrameworkTargetMonikers(string framework)
+    {
+        using var project = new TempProject(("App.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>{framework}</TargetFramework></PropertyGroup></Project>"));
+        Assert.True(Assert.Single(new DotNetProjectLocator().Find(project.Root)).TargetsNetFramework);
+    }
+
+    [Theory]
+    [InlineData("<packages><package id=\"NUnit\" version=\"3.0\" /></packages>", true)]
+    [InlineData("<packages><package id=\"xunit\" /></packages>", true)]
+    [InlineData("<packages><package id=\"Newtonsoft.Json\" /></packages>", false)]
+    [InlineData("<packages><package version=\"1\" /></packages>", false)]
+    [InlineData("<broken", false)]
+    public void RecognizesLegacyTestsFromPackagesConfig(string packages, bool isTest)
+    {
+        using var project = new TempProject(("Legacy.csproj", "<Project />"), ("packages.config", packages));
+
+        var found = Assert.Single(new DotNetProjectLocator().Find(project.Root));
+
+        Assert.Equal(isTest, found.IsTest);
+        Assert.False(found.IsSdkStyle);
+    }
+
     [Fact]
     public void FindsProjectsReferencesAndTests()
     {

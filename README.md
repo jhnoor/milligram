@@ -35,6 +35,22 @@ The viewer, the editor integration, `crap` and `mutate` work the same everywhere
 | WSL2 (recommended on Windows) | tmux inside WSL. The agent opens in a Windows Terminal tab. On a Windows drive (`/mnt/c/…`), Linux isn't told about changes that Windows programs make, so Milligram also watches the project from Windows through `powershell.exe` (or polls, if WSL can't start Windows programs). A project in the Linux file system (for example `~/src`) scans faster and needs neither. |
 | Windows | Milligram can't start the agent yet: tmux doesn't run on native Windows ([#14](https://github.com/jhnoor/milligram/issues/14)). [Run your own](#run-the-agent-yourself). Copilot CLI needs PowerShell 7 (`winget install Microsoft.PowerShell`). |
 
+### Older .NET Framework projects
+
+The source diagram can be useful, but it is incomplete for these projects. The scanner binds
+against .NET 10 and `obj/project.assets.json`; it does not resolve `packages.config` or the
+.NET Framework reference assemblies. It also reads all `.cs` files under `src` without evaluating
+`Compile` items or build conditions. Use `exclude` for inactive files. `milligram doctor` flags
+these limitations and recognizes test frameworks listed in `packages.config`.
+
+Automatic coverage requires SDK-style test projects with `coverlet.collector`. SDK-style projects
+targeting .NET Framework still need a compatible Windows test environment. For old-style test
+projects, collect a Cobertura report with your existing tools and import it using
+`milligram crap --coverage report.xml`. Framework Stryker runs need solution/MSBuild settings
+that Milligram does not infer. Put those in the source project's `stryker-config.json` before
+running mutation. These legacy workflows still need validation on a real older codebase;
+see [#27](https://github.com/jhnoor/milligram/issues/27) for the remaining work.
+
 ## Install
 
 ```bash
