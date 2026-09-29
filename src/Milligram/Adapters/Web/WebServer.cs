@@ -56,7 +56,8 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
         app.MapGet("/api/type", (string? context, string id) => workspace.Card(context, id) is { } card ? Json(card) : Results.NotFound());
         app.MapGet("/api/source", (string file) => Source(file));
         // Typed as returning IResult: as a bare invocation, the lambda would bind to RequestDelegate and drop its result.
-        app.MapPost("/api/open", async Task<IResult> (HttpContext context) => Open(await Read<OpenRequest>(context)));
+        app.MapPost("/api/open", async Task<IResult> (HttpContext context) =>
+            await Read<OpenRequest>(context) is { } request ? Open(request) : Results.BadRequest());
         app.MapPost("/api/action", async (HttpContext context) =>
             await Read<ViewerAction>(context) is { } action
                 ? Json(await actions.HandleAsync(action, context.RequestAborted))
@@ -122,21 +123,32 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
         return Json(new { file = workspace.Paths.Relative(path), text = File.ReadAllText(path) });
     }
 
-    private IResult Open(OpenRequest? request)
+    private IResult Open(OpenRequest request)
     {
-        if (request is null || Resolve(request.File) is not { } path) return Results.NotFound();
+        if (Resolve(request.File) is not { } path) return Results.NotFound();
         var opened = Desktop.OpenEditor(workspace.Policy.Editor, path, Math.Max(1, request.Line));
         return Json(opened ? ActionResult.Done() : ActionResult.Fail("Could not start the editor. Set \"editor\" in milligram.json."));
     }
 
-    private string? Resolve(string relative)
+    private string? Resolve(string? relative)
     {
-        var path = workspace.Paths.Absolute(relative);
-        return workspace.Paths.Contains(path) && File.Exists(path) ? path : null;
+        if (string.IsNullOrWhiteSpace(relative)) return null;
+        try
+        {
+            var path = workspace.Paths.Absolute(relative);
+            return workspace.Paths.Contains(path) && File.Exists(path) ? path : null;
+        }
+        catch (ArgumentException) { return null; }
     }
 
-    private static async Task<T?> Read<T>(HttpContext context) =>
-        await JsonSerializer.DeserializeAsync<T>(context.Request.Body, MilligramJson.Compact, context.RequestAborted);
+    private static async Task<T?> Read<T>(HttpContext context)
+    {
+        try
+        {
+            return await JsonSerializer.DeserializeAsync<T>(context.Request.Body, MilligramJson.Compact, context.RequestAborted);
+        }
+        catch (JsonException) { return default; }
+    }
 
     private static IResult Json(object? value) => Results.Json(value, MilligramJson.Compact);
 }
