@@ -65,8 +65,8 @@ public sealed class MutationService(Workspace workspace, IProjectLocator locator
     private async Task<IReadOnlyList<Mutant>> RunStrykerAsync(
         BuildProject project, IReadOnlyList<BuildProject> tests, IReadOnlyList<string> patterns, Action<string> log, CancellationToken cancellation)
     {
-        var output = Path.Combine(workspace.Paths.RunDirectory, "stryker", $"{DateTime.UtcNow:yyyyMMddTHHmmss}-{project.Name}");
-        var args = new List<string> { "stryker" };
+        var output = Path.Combine(workspace.Paths.RunDirectory, "stryker", $"{DateTime.UtcNow:yyyyMMddTHHmmss}-{project.Name}-{Guid.NewGuid():N}");
+        var args = new List<string> { "stryker", "--project", Path.GetFileName(project.Path) };
         foreach (var test in tests) args.AddRange(["--test-project", test.Path]);
         args.AddRange(["--reporter", "json", "--reporter", "progress", "--output", output]);
         foreach (var pattern in patterns) args.AddRange(["--mutate", pattern]);
@@ -76,7 +76,9 @@ public sealed class MutationService(Workspace workspace, IProjectLocator locator
         var report = Path.Combine(output, "reports", "mutation-report.json");
         if (!File.Exists(report))
             throw new MilligramException(
-                $"Stryker exited {code} without a report. Install it with `dotnet tool install -g dotnet-stryker` (or a local tool manifest).");
+                $"Stryker exited {code} without a report for {project.Name}. Check the build and test output above, and {output}. " +
+                "Run `milligram doctor` to check prerequisites. If Stryker is missing, use `dotnet tool restore` for a local manifest " +
+                "or `dotnet tool install -g dotnet-stryker`.");
         return reports.Read(report, workspace.Paths.Root, project.Directory);
     }
 

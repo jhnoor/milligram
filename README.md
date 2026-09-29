@@ -155,6 +155,17 @@ Snapshots are written in sorted order, so diffs stay small.
   mutation's replacement code and jump to its source. Older snapshots keep their counts;
   refresh all mutation to add the details.
 
+If Stryker fails before producing a report, check the build/test output and run `milligram doctor`.
+When dogfooding Milligram on Windows, use the installed tool or publish a separate copy first:
+
+```bash
+dotnet publish src/Milligram -o .milligram/dogfood
+dotnet .milligram/dogfood/Milligram.dll crap
+dotnet .milligram/dogfood/Milligram.dll mutate
+```
+
+Running from `dotnet run` holds the same binaries that coverage and Stryker need to rebuild.
+
 A component takes the worst grade of anything inside it. Values dim on the card when the code has
 changed since they were measured. Adding an unmeasured method also marks the type's existing
 summary stale. A new type stays unknown even if another type in its file was already mutation-tested.

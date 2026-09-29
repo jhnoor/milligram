@@ -234,6 +234,7 @@ public class MutationServiceTests
         var (command, args, directory) = Assert.Single(processes.Calls);
         Assert.Equal("dotnet", command);
         Assert.Equal("stryker", args[0]);
+        Assert.Equal("App.csproj", FakeProcessRunner.After(args, "--project"));
         Assert.Equal(fixture.AppProject.Directory, directory);
         Assert.Equal(fixture.TestProject.Path, FakeProcessRunner.After(args, "--test-project"));
         Assert.Contains("json", FakeProcessRunner.AllAfter(args, "--reporter"));
@@ -404,7 +405,7 @@ public class MutationServiceTests
     }
 
     [Fact]
-    public async Task AMissingReportExplainsHowToInstallStryker()
+    public async Task AMissingReportPointsToDiagnosticsBeforeSuggestingInstallation()
     {
         using var fixture = new ServiceFixture();
         var service = new MutationService(fixture.Workspace, new FakeProjectLocator(fixture.AppProject, fixture.TestProject),
@@ -413,5 +414,71 @@ public class MutationServiceTests
         var error = await Assert.ThrowsAsync<MilligramException>(() => service.RunAsync(["src/App/A.cs"], false, _ => { }, CancellationToken.None));
 
         Assert.Contains("dotnet-stryker", error.Message);
+        Assert.Contains("Stryker exited 1 without a report for App", error.Message);
+        Assert.Contains("build and test output", error.Message);
+        Assert.Contains("milligram doctor", error.Message);
+        Assert.Contains(fixture.Workspace.Paths.RunDirectory, error.Message);
+    }
+
+    [Fact]
+    public async Task ATestProjectWithSeveralReferencesMutatesTheRequestedLibrary()
+    {
+        using var fixture = new ServiceFixture();
+        var library = new BuildProject(Path.Combine(fixture.Project.Root, "src/Library/Library.csproj"), "Library", false, []);
+        var tests = fixture.TestProject with { References = [library.Path, fixture.AppProject.Path] };
+        var unrelated = new BuildProject(Path.Combine(fixture.Project.Root, "tests/Other.Tests/Other.Tests.csproj"), "Other.Tests", true, [library.Path]);
+        var (service, processes) = Service(fixture, library, fixture.AppProject, tests, unrelated);
+
+        await service.RunAsync(["src/App/A.cs"], false, _ => { }, CancellationToken.None);
+
+        var call = Assert.Single(processes.Calls);
+        Assert.Equal("App.csproj", FakeProcessRunner.After(call.Args, "--project"));
+        Assert.Equal([tests.Path], FakeProcessRunner.AllAfter(call.Args, "--test-project"));
+    }
+
+    [Fact]
+    public async Task AFileBelongsToItsNearestProject()
+    {
+        using var fixture = new ServiceFixture();
+        var outer = new BuildProject(Path.Combine(fixture.Project.Root, "src/Outer.csproj"), "Outer", false, []);
+        var tests = fixture.TestProject with { References = [outer.Path, fixture.AppProject.Path] };
+        var (service, processes) = Service(fixture, outer, fixture.AppProject, tests);
+
+        await service.RunAsync(["src/App/A.cs"], false, _ => { }, CancellationToken.None);
+
+        var call = Assert.Single(processes.Calls);
+        Assert.Equal(fixture.AppProject.Directory, call.Directory);
+        Assert.Equal("App.csproj", FakeProcessRunner.After(call.Args, "--project"));
+    }
+
+    [Fact]
+    public async Task ARunCannotReuseAReportFromAnEarlierRun()
+    {
+        using var fixture = new ServiceFixture();
+        var calls = 0;
+        var processes = new FakeProcessRunner((command, args, directory) => ++calls == 1 ? WriteReport(command, args, directory) : 1);
+        var service = new MutationService(fixture.Workspace, new FakeProjectLocator(fixture.AppProject, fixture.TestProject),
+            processes, new FakeMutationReader(Mutants));
+        await service.RunAsync([], true, _ => { }, CancellationToken.None);
+        var previous = fixture.Workspace.Metrics.Mutation;
+
+        await Assert.ThrowsAsync<MilligramException>(() => service.RunAsync([], true, _ => { }, CancellationToken.None));
+
+        Assert.NotEqual(FakeProcessRunner.After(processes.Calls[0].Args, "--output"), FakeProcessRunner.After(processes.Calls[1].Args, "--output"));
+        Assert.Same(previous, fixture.Workspace.Metrics.Mutation);
+    }
+
+    [Fact]
+    public async Task AReportStillCountsWhenStrykerFailsItsScoreThreshold()
+    {
+        using var fixture = new ServiceFixture();
+        var processes = new FakeProcessRunner((command, args, directory) => { WriteReport(command, args, directory); return 1; });
+        var service = new MutationService(fixture.Workspace, new FakeProjectLocator(fixture.AppProject, fixture.TestProject),
+            processes, new FakeMutationReader(Mutants));
+
+        var result = await service.RunAsync([], false, _ => { }, CancellationToken.None);
+
+        Assert.Equal(3, result.Mutants);
+        Assert.True(fixture.Workspace.Metrics.Mutation.Tested("src/App/A.cs"));
     }
 }
