@@ -199,6 +199,16 @@ public class CSharpScannerTests
     }
 
     [Fact]
+    public void SdkImplicitUsingsResolveLibraryDependenciesBeforeTheProjectIsBuilt()
+    {
+        using var project = new TempProject(("App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><ImplicitUsings>enable</ImplicitUsings></PropertyGroup></Project>
+            """), ("Client.cs", "namespace Shop; public class Client { public HttpClient Http { get; } = new(); }"));
+
+        Assert.Contains(Scan(project, "System.Net.Http").Edges, edge => edge.From == "Shop.Client" && edge.To == "x:System.Net.Http");
+    }
+
+    [Fact]
     public void TopLevelStatementsBecomeAProgramType()
     {
         using var project = new TempProject(("Program.cs", """

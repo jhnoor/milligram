@@ -38,8 +38,11 @@ The viewer, the editor integration, `crap` and `mutate` work the same everywhere
 ### Older .NET Framework projects
 
 The source diagram can be useful, but it is incomplete for these projects. The scanner binds
-against .NET 10 and `obj/project.assets.json`; it does not resolve `packages.config` or the
-.NET Framework reference assemblies. It also reads all `.cs` files under `src` without evaluating
+against .NET 10, `obj/project.assets.json` and explicit assembly `HintPath` entries in `.csproj`
+files. Restored `packages.config` libraries bind when these entries point to their DLLs. Missing
+or invalid assemblies are reported during scans; conditional or property-based paths are reported
+as needing MSBuild evaluation. The scanner does not resolve .NET Framework reference assemblies.
+It also reads all `.cs` files under `src` without evaluating
 `Compile` items or build conditions. Use `exclude` for inactive files. `milligram doctor` flags
 these limitations and recognizes test frameworks listed in `packages.config`.
 
@@ -52,8 +55,8 @@ MSBuild automatically; its `--msbuild-path` override is a CLI option that Millig
 currently forward. See [Stryker's setup](https://stryker-mutator.io/docs/stryker-net/getting-started/)
 and [configuration](https://stryker-mutator.io/docs/stryker-net/configuration/).
 
-The [legacy investigation](LEGACY.md) reproduces missing references and extra scanned files on
-an actual MVC 4 / .NET Framework 4.5 application. Building it, collecting coverage and running
+The [legacy investigation](LEGACY.md) measures recovered library edges and extra scanned files
+on an actual MVC 4 / .NET Framework 4.5 application. Building it, collecting coverage and running
 mutation remain unverified; [#27](https://github.com/jhnoor/milligram/issues/27) tracks that work.
 
 ## Install

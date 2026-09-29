@@ -78,8 +78,9 @@ build and test run; changing the target framework is not part of this investigat
 
 These are proposed issue scopes, not completed features or already-created issues.
 
-1. **Resolve legacy references.** Read project HintPath/package references and the target
-   framework's reference assemblies, with explicit diagnostics for missing inputs. Avoid
+1. **Resolve legacy references.** Explicit, unconditional HintPaths now work (see below).
+   Resolve conditional/property-based package references and the target framework's reference
+   assemblies, with explicit diagnostics for missing inputs. Avoid
    mixing incompatible core libraries in the scanner's single compilation. Acceptance:
    the sample's Controller and DbContext dependencies bind, and modern SDK projects retain
    their existing results. Test missing packages and solutions mixing target frameworks.
@@ -96,3 +97,17 @@ These are proposed issue scopes, not completed features or already-created issue
    Decide whether Milligram needs a documented MSBuild override. Acceptance: a configured
    run succeeds, missing prerequisites produce useful diagnostics, and full/differential
    results and source links agree.
+
+## Follow-up measurement: explicit HintPaths
+
+The scanner now loads managed assemblies from explicit, unconditional Reference/HintPath
+entries, including the Windows separators used by old projects. This reads metadata without
+executing application code. It reports absent/invalid assemblies and paths that require MSBuild
+property or condition evaluation. Runtime framework references and restored NuGet assets retain
+precedence; the scanner still uses one compilation and cannot reconcile incompatible targets.
+
+With the same two DLLs, source and `foreign` settings from the investigation, the scan now
+finds **32 types and 95 dependencies**. It restores **12 System.Web edges and 11
+System.Data.Entity edges**, including HomeController → Controller and MusicStoreEntities →
+DbContext inheritance. Remaining packages were not restored, and their missing paths are now
+reported. This does not prove that every dependency binds or remove the other limits above.

@@ -24,6 +24,7 @@ public class DoctorTests
         var format = checks.Single(c => c.Name == "Project format");
         Assert.Contains(".NET 10 references", format.Detail);
         Assert.Contains("packages.config", format.Detail);
+        Assert.Contains("explicit HintPaths", format.Detail);
         Assert.Contains("src/App/App.csproj", format.Detail);
         Assert.Contains("tests/App.Tests/App.Tests.csproj", format.Detail);
         Assert.Contains(format.Fixes, f => f.Contains("Compile items", StringComparison.Ordinal));

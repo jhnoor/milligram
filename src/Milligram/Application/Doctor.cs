@@ -78,7 +78,7 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
         var framework = projects.Where(p => p.TargetsNetFramework).ToList();
         if (legacy.Count == 0 && framework.Count == 0) return null;
         return Check.Skipped("Project format",
-            $"{Names(legacy.Concat(framework).Distinct().Select(p => p.Path))}: the scanner uses .NET 10 references and project.assets.json; .NET Framework and packages.config dependencies may be missing",
+            $"{Names(legacy.Concat(framework).Distinct().Select(p => p.Path))}: the scanner uses .NET 10 references, project.assets.json and explicit HintPaths; .NET Framework and unevaluated packages.config references may be missing",
             "the scanner reads every .cs file under src without evaluating Compile items or build conditions; use exclude in milligram.json for inactive files",
             "for legacy test projects, collect Cobertura with your existing test tools and import it with milligram crap --coverage report.xml",
             "Stryker on .NET Framework needs a solution in the source project's stryker-config.json and working MSBuild/NuGet tools (see README)");

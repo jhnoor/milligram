@@ -49,7 +49,7 @@ public sealed class CSharpScanner : ILanguageScanner
         var compilation = CSharpCompilation.Create(
             "milligram-scan",
             trees.Concat(GlobalUsings(projects)),
-            References.For(projects),
+            References.For(projects, report),
             CompilationOptions);
 
         var binding = new ScanStage(report, "Bound", trees.Count, "files");
