@@ -34,6 +34,7 @@ public sealed class ProjectWatcher : IDisposable
         Watch(paths.Root, "milligram.json", recursive: false);
         Watch(paths.StateDirectory, "*", recursive: true);
         Watch(paths.Root, "*.cs", recursive: true);
+        Watch(paths.Root, "*", recursive: true, directories: true);
         if (windowsDrive)
         {
             windowsSide = WindowsSideWatcher.Start(paths.Root, OnChange, RefreshAll, TimeSpan.FromSeconds(15));
@@ -57,7 +58,7 @@ public sealed class ProjectWatcher : IDisposable
             .Concat(ChangePoller.Files(paths.ToViewerDirectory, _ => true, recurse: false));
 
     /// <summary>When changes came too fast to list, everything they could have touched is refreshed.</summary>
-    private void RefreshAll()
+    internal void RefreshAll()
     {
         debounce.Run("policy", 300, PolicyChanged);
         debounce.Run("model", 300, ModelChanged);
@@ -66,17 +67,19 @@ public sealed class ProjectWatcher : IDisposable
         debounce.Run("source", 800, SourceChanged);
     }
 
-    private void Watch(string directory, string filter, bool recursive)
+    private void Watch(string directory, string filter, bool recursive, bool directories = false)
     {
         var watcher = new FileSystemWatcher(directory, filter)
         {
             IncludeSubdirectories = recursive,
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
+            NotifyFilter = directories ? NotifyFilters.DirectoryName : NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
         };
-        watcher.Changed += (_, e) => OnChange(e.FullPath);
-        watcher.Created += (_, e) => OnChange(e.FullPath);
-        watcher.Deleted += (_, e) => OnChange(e.FullPath);
-        watcher.Renamed += (_, e) => { OnChange(e.OldFullPath); OnChange(e.FullPath); };
+        Action<string> changed = directories ? DirectoryChanged : OnChange;
+        watcher.Changed += (_, e) => changed(e.FullPath);
+        watcher.Created += (_, e) => changed(e.FullPath);
+        watcher.Deleted += (_, e) => changed(e.FullPath);
+        watcher.Renamed += (_, e) => { changed(e.OldFullPath); changed(e.FullPath); };
+        watcher.Error += (_, _) => RefreshAll();
         watcher.EnableRaisingEvents = true;
         watchers.Add(watcher);
     }
@@ -90,15 +93,25 @@ public sealed class ProjectWatcher : IDisposable
         else if (relative.StartsWith(".milligram/metrics/", StringComparison.Ordinal)) debounce.Run("metrics", 300, MetricsChanged);
         else if (relative.StartsWith(".milligram/mail/to-viewer/", StringComparison.Ordinal)) debounce.Run("mail", 150, DeliverMail);
         else if (relative.EndsWith(".cs", StringComparison.Ordinal) && IsScanned(relative)) debounce.Run("source", 800, SourceChanged);
+        else if (IsScanned(relative, directory: true) && (Directory.Exists(fullPath) ||
+            workspace.Model.Types.Any(type => type.Spans.Any(span => span.File.StartsWith(relative + "/", StringComparison.Ordinal)))))
+            DirectoryChanged(fullPath);
     }
 
-    private bool IsScanned(string relative)
+    /// <summary>A folder move may raise no events for the source files it carries.</summary>
+    private void DirectoryChanged(string fullPath)
+    {
+        if (IsScanned(paths.Relative(fullPath), directory: true)) debounce.Run("source", 800, SourceChanged);
+    }
+
+    internal bool IsScanned(string relative, bool directory = false)
     {
         var policy = workspace.Policy;
-        var src = policy.Src.Trim('/').Replace('\\', '/');
-        if (src is not ("." or "") && !relative.StartsWith(src + "/", StringComparison.Ordinal)) return false;
+        var src = paths.Relative(paths.Absolute(policy.Src)).TrimEnd('/');
+        if (src != "." && !relative.StartsWith(src + "/", StringComparison.Ordinal) &&
+            !(directory && (relative == src || src.StartsWith(relative + "/", StringComparison.Ordinal)))) return false;
         if (relative.Split('/').Any(Unscanned.Contains)) return false;
-        return !policy.Exclude.Any(glob => Glob.Matches(glob, relative));
+        return !policy.Exclude.Any(glob => Glob.Matches(glob, directory ? relative + "/" : relative));
     }
 
     private void PolicyChanged()
