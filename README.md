@@ -153,7 +153,8 @@ Snapshots are written in sorted order, so diffs stay small.
   Survived or uncovered mutants are test gaps.
 
 A component takes the worst grade of anything inside it. Values dim on the card when the code has
-changed since they were measured.
+changed since they were measured. Adding an unmeasured method also marks the type's existing
+summary stale. A new type stays unknown even if another type in its file was already mutation-tested.
 
 ## The agent
 

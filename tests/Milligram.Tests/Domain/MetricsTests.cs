@@ -202,4 +202,131 @@ public class GradingTests
         Assert.Equal(5, summary.Sites);
         Assert.Equal(0.8, summary.Score);
     }
+
+    [Fact]
+    public void AddingAnExecutableMemberMakesExistingSummariesStale()
+    {
+        var measured = Build.Member("App.A", "Measured");
+        var added = Build.Member("App.A", "Added");
+        var type = Build.Type("App.A", measured, added);
+        var crap = new CrapSnapshot(DateTimeOffset.UnixEpoch, new Dictionary<string, CrapEntry>
+        {
+            [measured.Id] = new(1, 1, 1, 1, 1, measured.Hash),
+        });
+        var mutation = new MutationSnapshot(DateTimeOffset.UnixEpoch, new Dictionary<string, MutationEntry>
+        {
+            [measured.Id] = new(2, 0, 0, 0, measured.Hash),
+        }, new Dictionary<string, DateTimeOffset> { [measured.Span.File] = DateTimeOffset.UnixEpoch });
+
+        Assert.True(TypeMetrics.Crap(type, crap)!.Stale);
+        Assert.True(TypeMetrics.Mutation(type, mutation)!.Stale);
+        Assert.False(TypeMetrics.Crap(type with { Members = [measured] }, crap)!.Stale);
+        Assert.False(TypeMetrics.Mutation(type with { Members = [measured] }, mutation)!.Stale);
+        Assert.Equal(1, TypeMetrics.Crap(type, crap)!.Count);
+        Assert.Equal(2, TypeMetrics.Mutation(type, mutation)!.Sites);
+    }
+
+    [Fact]
+    public void ANewTypeInATestedFileIsUnknownRatherThanPerfect()
+    {
+        var type = Build.Type("App.New", Build.Member("App.New", "Added", file: "shared.cs"));
+        var mutation = new MutationSnapshot(DateTimeOffset.UnixEpoch, new Dictionary<string, MutationEntry>
+        {
+            ["App.Old.Measured()"] = new(2, 0, 0, 0, "h"),
+        }, new Dictionary<string, DateTimeOffset> { ["shared.cs"] = DateTimeOffset.UnixEpoch });
+
+        Assert.Null(TypeMetrics.Mutation(type, mutation));
+        Assert.Null(Grading.ForType(type, new MetricsSet(CrapSnapshot.Empty, mutation), Defaults).Mutation);
+        Assert.Null(TypeMetrics.Mutation(type with { Members = [] }, mutation));
+    }
+
+    [Fact]
+    public void AMeasuredMethodWithoutMutationSitesStillHasABestGrade()
+    {
+        var member = Build.Member("App.A", "Measured");
+        var type = Build.Type("App.A", member);
+        var mutation = new MutationSnapshot(DateTimeOffset.UnixEpoch,
+            new Dictionary<string, MutationEntry> { [member.Id] = MutationEntry.None(member.Hash) },
+            new Dictionary<string, DateTimeOffset> { [member.Span.File] = DateTimeOffset.UnixEpoch });
+
+        Assert.Equal(10, Grading.MutationGrade(TypeMetrics.Mutation(type, mutation), Defaults));
+        Assert.False(TypeMetrics.Mutation(type, mutation)!.Stale);
+    }
+
+    [Fact]
+    public void MembersWithoutCodeDoNotMakeSummariesStaleButMeasuredFieldsDo()
+    {
+        var method = Build.Member("App.A", "Measured");
+        var field = Build.Member("App.A", "Field", complexity: null);
+        var type = Build.Type("App.A", method, field);
+        var crap = new CrapSnapshot(DateTimeOffset.UnixEpoch,
+            new Dictionary<string, CrapEntry> { [method.Id] = new(1, 1, 1, 1, 1, method.Hash) });
+        var entries = new Dictionary<string, MutationEntry> { [method.Id] = new(2, 0, 0, 0, method.Hash) };
+        var mutation = new MutationSnapshot(DateTimeOffset.UnixEpoch, entries,
+            new Dictionary<string, DateTimeOffset> { [method.Span.File] = DateTimeOffset.UnixEpoch });
+
+        Assert.False(TypeMetrics.Crap(type, crap)!.Stale);
+        Assert.False(TypeMetrics.Mutation(type, mutation)!.Stale);
+        entries[field.Id] = new(0, 0, 1, 0, "before");
+        Assert.True(TypeMetrics.Mutation(type, mutation)!.Stale);
+        Assert.Equal(3, TypeMetrics.Mutation(type, mutation)!.Sites);
+    }
+
+    [Fact]
+    public void AnUninstrumentedMemberIsCurrentWhenItsHashMatches()
+    {
+        var method = Build.Member("App.A", "Measured");
+        var uninstrumented = Build.Member("App.A", "Uninstrumented");
+        var type = Build.Type("App.A", method, uninstrumented);
+        var entries = new Dictionary<string, CrapEntry>
+        {
+            [method.Id] = new(1, 1, 1, 1, 1, method.Hash),
+            [uninstrumented.Id] = new(1, null, null, 0, 0, uninstrumented.Hash),
+        };
+        var crap = new CrapSnapshot(DateTimeOffset.UnixEpoch, entries);
+
+        Assert.False(TypeMetrics.Crap(type, crap)!.Stale);
+        entries[uninstrumented.Id] = entries[uninstrumented.Id] with { Hash = "before" };
+        Assert.True(TypeMetrics.Crap(type, crap)!.Stale);
+        Assert.Null(TypeMetrics.Crap(type with { Members = [uninstrumented] }, crap));
+    }
+
+    [Fact]
+    public void PartialTypesKeepMeasuredResultsAndFlagTheirUnmeasuredParts()
+    {
+        var first = Build.Member("App.A", "First", file: "first.cs");
+        var second = Build.Member("App.A", "Second", file: "first.cs");
+        var added = Build.Member("App.A", "Added", file: "second.cs");
+        var type = Build.Type("App.A", first, second, added) with { Spans = [Build.Span("first.cs", 1, 5), Build.Span("second.cs", 1, 5)] };
+        var snapshot = new MutationSnapshot(DateTimeOffset.UnixEpoch, new Dictionary<string, MutationEntry>
+        {
+            [first.Id] = new(1, 1, 2, 3, first.Hash),
+            [second.Id] = new(4, 0, 5, 6, second.Hash),
+            [MutationMapper.InitializerId(type)] = new(2, 0, 1, 1, null),
+        }, new Dictionary<string, DateTimeOffset> { ["first.cs"] = DateTimeOffset.UnixEpoch });
+
+        Assert.Equal(new MutationSummary(8, 8, 10, 26, true), TypeMetrics.Mutation(type, snapshot));
+    }
+
+    [Fact]
+    public void CrapSpreadIncludesEveryMemberRatherThanJustTheNearestToTheMean()
+    {
+        var members = new[] { Build.Member("App.A", "A"), Build.Member("App.A", "B"), Build.Member("App.A", "C") };
+        double[] scores = [1, 2, 6];
+        var snapshot = new CrapSnapshot(DateTimeOffset.UnixEpoch,
+            members.Select((m, i) => (m.Id, Entry: new CrapEntry(1, 1, scores[i], 1, 1, m.Hash))).ToDictionary(x => x.Id, x => x.Entry));
+
+        var summary = TypeMetrics.Crap(Build.Type("App.A", members), snapshot)!;
+
+        Assert.Equal(3, summary.Mu);
+        Assert.Equal(6, summary.Max);
+        Assert.Equal(Math.Sqrt(14.0 / 3), summary.Sigma, 6);
+    }
+
+    [Theory]
+    [InlineData(4, 1)]
+    [InlineData(5, 10)]
+    [InlineData(6, 1)]
+    public void EqualThresholdsGiveOnlyTheirExactValueTheBestGrade(double value, int grade) =>
+        Assert.Equal(grade, Grading.Scale(value, 5, 5));
 }
