@@ -66,7 +66,7 @@ public class StrykerReportReaderTests
                 "Domain/Order.cs": {
                   "language": "cs",
                   "mutants": [
-                    { "id": "1", "mutatorName": "Equality mutation", "status": "Killed", "location": { "start": { "line": 12, "column": 17 }, "end": { "line": 12, "column": 19 } } },
+                    { "id": "1", "mutatorName": "Equality mutation", "status": "Killed", "replacement": ">=", "location": { "start": { "line": 12, "column": 17 }, "end": { "line": 12, "column": 19 } } },
                     { "id": "2", "mutatorName": "Boolean mutation", "status": "NoCoverage", "location": { "start": { "line": 20, "column": 5 }, "end": { "line": 20, "column": 9 } } },
                     { "id": "3", "mutatorName": "String mutation", "status": "Weird", "location": { "start": { "line": 1, "column": 1 }, "end": { "line": 1, "column": 2 } } }
                   ]
@@ -78,9 +78,28 @@ public class StrykerReportReaderTests
         var mutants = new StrykerReportReader().Read(report, project.Root, "/unused");
 
         Assert.Equal(3, mutants.Count);
-        Assert.Equal(new Mutant("src/App/Domain/Order.cs", 12, 17, MutantStatus.Killed, "Equality mutation"), mutants[0]);
+        Assert.Equal(new Mutant("src/App/Domain/Order.cs", 12, 17, MutantStatus.Killed, "Equality mutation")
+        { EndLine = 12, EndColumn = 19, Replacement = ">=" }, mutants[0]);
         Assert.Equal(MutantStatus.NoCoverage, mutants[1].Status);
         Assert.Equal(MutantStatus.Pending, mutants[2].Status);
+    }
+
+    [Theory]
+    [InlineData("", null)]
+    [InlineData(", \"replacement\": null", null)]
+    [InlineData(", \"replacement\": \"\"", "")]
+    public void OptionalMutationDetailsPreserveTheDifferenceBetweenUnknownAndRemovedCode(string extra, string? replacement)
+    {
+        using var project = new TempProject();
+        var report = project.Write("report.json", $$"""
+            { "files": { "A.cs": { "mutants": [
+              { "status": "survived", "mutatorName": null, "location": { "start": { "line": 1, "column": 2 } }{{extra}} }
+            ] } } }
+            """);
+
+        var mutant = Assert.Single(new StrykerReportReader().Read(report, project.Root, project.Root));
+
+        Assert.Equal(new Mutant("A.cs", 1, 2, MutantStatus.Survived, "") { Replacement = replacement }, mutant);
     }
 }
 

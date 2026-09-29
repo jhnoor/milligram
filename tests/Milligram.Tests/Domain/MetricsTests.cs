@@ -86,6 +86,9 @@ public class MutationMapperTests
         Assert.Equal(new MutationEntry(0, 0, 0, 1, "h2"), snapshot.Members[Second.Id]);
         Assert.Equal(1, snapshot.Members["App.A.<init>"].Killed);
         Assert.True(snapshot.Tested("a.cs"));
+        Assert.Equal([mutants[2] with { MemberStartLine = First.Span.StartLine }], snapshot.Gaps[First.Id]);
+        Assert.Equal([mutants[3] with { MemberStartLine = Second.Span.StartLine }], snapshot.Gaps[Second.Id]);
+        Assert.Equal(2, snapshot.Gaps.Count);
     }
 
     [Fact]
@@ -123,6 +126,72 @@ public class MutationMapperTests
         var changed = MutationMapper.Changed(snapshot, [First, Second, field, added]);
 
         Assert.Equal([Second.Id, added.Id], changed.Select(m => m.Id));
+    }
+
+    [Fact]
+    public void DifferentialRunsReplaceGapsAndPreserveTheMembersTheyDoNotRetest()
+    {
+        var firstGap = new Mutant("a.cs", 4, 5, MutantStatus.Survived, "Equality") { Replacement = ">=", MemberStartLine = 3 };
+        var secondGap = new Mutant("a.cs", 8, 5, MutantStatus.NoCoverage, "Boolean") { Replacement = "false", MemberStartLine = 7 };
+        var initial = MutationMapper.Merge(MutationSnapshot.Empty, Model, [firstGap, secondGap], [First.Id, Second.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        var replacement = firstGap with { Replacement = "<" };
+
+        var rerun = MutationMapper.Merge(initial, Model, [replacement], [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        Assert.Equal([replacement], rerun.Gaps[First.Id]);
+        Assert.Equal([secondGap], rerun.Gaps[Second.Id]);
+        Assert.Equal([firstGap], initial.Gaps[First.Id]);
+
+        var fixedFirst = MutationMapper.Merge(rerun, Model, [replacement with { Status = MutantStatus.Killed }], [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        Assert.False(fixedFirst.Gaps.ContainsKey(First.Id));
+        Assert.Equal([secondGap], fixedFirst.Gaps[Second.Id]);
+
+        var withoutSites = MutationMapper.Merge(rerun, Model, [], [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        Assert.False(withoutSites.Gaps.ContainsKey(First.Id));
+        Assert.Equal([secondGap], withoutSites.Gaps[Second.Id]);
+    }
+
+    [Fact]
+    public void GapsForVanishedMembersDisappearAndInitializerGapsAreReplaced()
+    {
+        var gap = new Mutant("a.cs", 11, 2, MutantStatus.Survived, "String") { Replacement = "\"\"" };
+        var initial = MutationMapper.Merge(MutationSnapshot.Empty, Model, [gap], [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        var initializer = MutationMapper.InitializerId(Model.Types[0]);
+        Assert.Equal([gap], initial.Gaps[initializer]);
+
+        var untouched = MutationMapper.Merge(initial, Model, [], [Second.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        Assert.Equal([gap], untouched.Gaps[initializer]);
+        Assert.Equal(1, untouched.Members[initializer].Survived);
+
+        var refreshed = MutationMapper.Merge(initial, Model, [gap with { Status = MutantStatus.Killed }], [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        Assert.Empty(refreshed.Gaps);
+        Assert.Empty(MutationMapper.Merge(initial, Build.Model([]), [], [], [], DateTimeOffset.UnixEpoch).Gaps);
+    }
+
+    [Fact]
+    public void SeveralGapsInOneMemberStaySeparateAndUnmappedMutantsAreIgnored()
+    {
+        var gap = new Mutant("a.cs", 4, 5, MutantStatus.Survived, "Equality") { Replacement = ">=", MemberStartLine = 3 };
+        var other = gap with { Replacement = "<" };
+        var result = MutationMapper.Merge(MutationSnapshot.Empty, Model, [gap, other, gap with { File = "outside.cs" }],
+            [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        Assert.Equal([gap, other], result.Gaps[First.Id]);
+        Assert.Equal(2, result.Members[First.Id].Survived);
+    }
+
+    [Theory]
+    [InlineData(MutantStatus.Ignored)]
+    [InlineData(MutantStatus.CompileError)]
+    [InlineData(MutantStatus.RuntimeError)]
+    [InlineData(MutantStatus.Pending)]
+    public void UntestedMutantsDoNotReplacePreviouslyMeasuredGaps(MutantStatus status)
+    {
+        var gap = new Mutant("a.cs", 4, 5, MutantStatus.Survived, "Equality");
+        var initial = MutationMapper.Merge(MutationSnapshot.Empty, Model, [gap], [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+
+        var refreshed = MutationMapper.Merge(initial, Model, [gap with { Status = status }], [Second.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(initial.Gaps[First.Id], refreshed.Gaps[First.Id]);
+        Assert.Equal(initial.Members[First.Id], refreshed.Members[First.Id]);
     }
 }
 

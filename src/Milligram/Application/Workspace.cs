@@ -130,7 +130,15 @@ public sealed class Workspace
 
     public void SaveMetrics(MutationSnapshot mutation)
     {
-        var sorted = mutation with { Members = Sorted(mutation.Members), Files = Sorted(mutation.Files) };
+        var sorted = mutation with
+        {
+            Members = Sorted(mutation.Members),
+            Files = Sorted(mutation.Files),
+            Gaps = Sorted(mutation.Gaps.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<Mutant>)kv.Value
+                .OrderBy(m => m.File, StringComparer.Ordinal).ThenBy(m => m.Line).ThenBy(m => m.Column)
+                .ThenBy(m => m.Mutator, StringComparer.Ordinal).ThenBy(m => m.Replacement, StringComparer.Ordinal)
+                .ThenBy(m => m.Status).ThenBy(m => m.EndLine).ThenBy(m => m.EndColumn).ToList())),
+        };
         Save(Paths.MutationFile, sorted, () => metrics = metrics with { Mutation = sorted });
     }
 

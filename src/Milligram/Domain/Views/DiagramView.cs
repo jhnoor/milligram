@@ -66,7 +66,10 @@ public sealed record CardMember(
     CrapEntry? Crap,
     bool CrapStale,
     MutationEntry? Mutation,
-    bool MutationStale);
+    bool MutationStale)
+{
+    public IReadOnlyList<Mutant> MutationGaps { get; init; } = [];
+}
 
 public sealed record CardDependency(string Id, string Label, EdgeKind Kind, bool Violating, int Count, bool IsForeign);
 

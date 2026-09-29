@@ -18,7 +18,7 @@ public static class TypeCardBuilder
             .Select(m => Member(m, metrics))
             .ToList();
         if (metrics.Mutation.Members.GetValueOrDefault(MutationMapper.InitializerId(type)) is { Sites: > 0 } init)
-            members.Add(Initializers(type, init));
+            members.Add(Initializers(type, init, metrics.Mutation));
 
         var edges = EdgeRules.Apply(model.Edges, policy, id => NameOf(model, policy, id));
         return new TypeCard(
@@ -48,12 +48,29 @@ public static class TypeCardBuilder
             member.Id, member.Name, member.Signature, member.Kind, member.Visibility, member.IsStatic, member.IsAbstract,
             member.Span.File, member.Span.StartLine, member.Span.EndLine, member.Complexity,
             crap, crap is not null && crap.Hash != member.Hash,
-            mutation, mutation is not null && mutation.Hash != member.Hash);
+            mutation, mutation is not null && mutation.Hash != member.Hash)
+        {
+            MutationGaps = Gaps(member, metrics.Mutation),
+        };
     }
 
-    private static CardMember Initializers(TypeNode type, MutationEntry entry) =>
+    private static IReadOnlyList<Mutant> Gaps(MemberNode member, MutationSnapshot snapshot) =>
+        snapshot.Gaps.GetValueOrDefault(member.Id, []).Select(gap => gap.MemberStartLine is { } start
+            ? gap with
+            {
+                File = member.Span.File,
+                Line = gap.Line + member.Span.StartLine - start,
+                EndLine = gap.EndLine + member.Span.StartLine - start,
+                MemberStartLine = member.Span.StartLine,
+            }
+            : gap).ToList();
+
+    private static CardMember Initializers(TypeNode type, MutationEntry entry, MutationSnapshot snapshot) =>
         new(MutationMapper.InitializerId(type), "(initializers)", "field and property initializers", MemberKind.Initializer,
-            Visibility.Private, false, false, type.File, type.Spans[0].StartLine, type.Spans[0].EndLine, null, null, false, entry, false);
+            Visibility.Private, false, false, type.File, type.Spans[0].StartLine, type.Spans[0].EndLine, null, null, false, entry, false)
+        {
+            MutationGaps = snapshot.Gaps.GetValueOrDefault(MutationMapper.InitializerId(type), []),
+        };
 
     private static List<CardDependency> Dependencies(
         IEnumerable<DependencyEdge> edges, Func<DependencyEdge, string> other, CodeModel model, Policy policy, DiagramTree tree) =>

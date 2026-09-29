@@ -33,6 +33,9 @@ public sealed record MutationSnapshot(
     IReadOnlyDictionary<string, MutationEntry> Members,
     IReadOnlyDictionary<string, DateTimeOffset> Files)
 {
+    /// <summary>Surviving and uncovered mutations from the last measurement of each member.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<Mutant>> Gaps { get; init; } = new Dictionary<string, IReadOnlyList<Mutant>>();
+
     public static readonly MutationSnapshot Empty =
         new(DateTimeOffset.MinValue, new Dictionary<string, MutationEntry>(), new Dictionary<string, DateTimeOffset>());
 
@@ -47,7 +50,15 @@ public sealed record MetricsSet(CrapSnapshot Crap, MutationSnapshot Mutation)
 public enum MutantStatus { Killed, Survived, NoCoverage, Timeout, CompileError, RuntimeError, Ignored, Pending }
 
 /// <summary>A mutant from a mutation report, located in a project-relative file.</summary>
-public sealed record Mutant(string File, int Line, int Column, MutantStatus Status, string Mutator);
+public sealed record Mutant(string File, int Line, int Column, MutantStatus Status, string Mutator)
+{
+    public int? EndLine { get; init; }
+    public int? EndColumn { get; init; }
+    public string? Replacement { get; init; }
+
+    /// <summary>The measured member's first line, so source links follow an unchanged member when earlier code moves.</summary>
+    public int? MemberStartLine { get; init; }
+}
 
 /// <summary>Per-file line hit counts from a coverage report, keyed by project-relative path.</summary>
 public sealed record LineHits(IReadOnlyDictionary<string, IReadOnlyDictionary<int, int>> Files)

@@ -813,6 +813,7 @@ function renderCard(card) {
         <tr><th></th><th class="name">member</th><th>CRAP</th><th>CC</th><th>Cov</th><th>killed</th><th>survived</th><th>uncovered</th></tr></thead>
         <tbody>${typeRow(card)}${rows}</tbody>
       </table>
+      ${mutationGapSections(card)}
       <h4 class="muted small">Depends on</h4>${chips(card.dependsOn)}
       <h4 class="muted small">Used by</h4>${chips(card.usedBy)}
     </div>`;
@@ -824,6 +825,28 @@ function renderCard(card) {
     const member = card.members[+row.dataset.index];
     row.onclick = () => openSource(member.file, member.line, member.endLine);
   });
+  panel.querySelectorAll('[data-gap-member]').forEach((button) => {
+    const gap = card.members[+button.dataset.gapMember].mutationGaps[+button.dataset.gapIndex];
+    button.onclick = () => openSource(gap.file, gap.line, gap.endLine ?? gap.line);
+  });
+}
+
+function mutationGapSections(card) {
+  const sections = card.members.map((member, index) => {
+    const gaps = member.mutationGaps ?? [];
+    if (!gaps.length) return '';
+    return `<details class="mutation-gaps"><summary>${html(member.signature)} <span class="muted">(${gaps.length})</span></summary>
+      ${member.mutationStale ? '<p class="warn">Code changed since this run. Refresh mutation before relying on these locations.</p>' : ''}
+      <ul>${gaps.map((gap, gapIndex) => `<li>
+        <div><span class="gap-status">${gap.status === 'survived' ? 'Survived' : 'Not covered'}</span> · ${html(gap.mutator)}
+          <button data-gap-member="${index}" data-gap-index="${gapIndex}" title="Open ${html(gap.file)}">Line ${gap.line}:${gap.column}</button></div>
+        ${gap.replacement === null || gap.replacement === undefined ? '<span class="muted">Replacement not included in this report.</span>'
+          : `<div class="small muted">Replacement${gap.replacement === '' ? ' (remove this code)' : ''}</div><pre><code>${html(gap.replacement)}</code></pre>`}
+      </li>`).join('')}</ul></details>`;
+  }).join('');
+  const missing = card.members.some((m) => (m.mutation?.survived ?? 0) + (m.mutation?.uncovered ?? 0) > (m.mutationGaps?.length ?? 0));
+  if (!sections && !missing) return '';
+  return `<h4>Test gaps</h4>${sections}${missing ? '<p class="muted small">Some locations are missing from this snapshot. Use Refresh all mutation to include them.</p>' : ''}`;
 }
 
 function typeRow(card) {

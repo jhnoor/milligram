@@ -107,6 +107,11 @@ public static class AgentBriefing
            members that changed. `--all` re-mutates whole files. Surviving or uncovered mutants are test
            gaps: say so, and offer to write the missing tests. Do not loop re-running mutation.
 
+        The type card's **Test gaps** and `.milligram/metrics/mutation.json` (`gaps`, keyed by member id)
+        contain surviving and uncovered replacements with their source locations. Use them to explain
+        the missing cases. Locations describe the measured code; remeasure stale members before relying
+        on them. Older snapshots have counts only; `mutate --all` adds the details.
+
         If `milligram crap` or `milligram mutate` fails because something is missing, run `milligram doctor`:
         it lists what the metrics need and the command that fixes each gap. Tell the user; don't install
         tools yourself.

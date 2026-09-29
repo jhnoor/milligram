@@ -178,4 +178,42 @@ public class TypeCardBuilderTests
         Assert.True(card.Members[0].CrapStale);
         Assert.True(card.Crap!.Stale);
     }
+
+    [Fact]
+    public void CardsExposeTheExactTestGapsIncludingInitializersAndStaleness()
+    {
+        var member = Build.Member("App.A", "M", file: "a.cs", startLine: 3, endLine: 5, hash: "before");
+        var type = Build.Type("App.A", member) with { Spans = [Build.Span("a.cs", 1, 8)] };
+        var model = Build.Model([type]);
+        var gap = new Mutant("a.cs", 4, 5, MutantStatus.Survived, "Equality") { Replacement = ">=", EndLine = 4, EndColumn = 7 };
+        var initializer = new Mutant("a.cs", 7, 2, MutantStatus.NoCoverage, "String") { Replacement = "\"\"" };
+        var mutation = MutationMapper.Merge(MutationSnapshot.Empty, model, [gap, initializer], [member.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        model = model with { Types = [type with { Members = [member with { Hash = "after" }] }] };
+        var policy = new Policy { Prefix = "App" };
+
+        var card = TypeCardBuilder.Build(model, policy, new MetricsSet(CrapSnapshot.Empty, mutation), TreeBuilder.Real(model, policy), type.Id)!;
+
+        Assert.Equal([gap with { MemberStartLine = 3 }], card.Members[0].MutationGaps);
+        Assert.True(card.Members[0].MutationStale);
+        Assert.Equal(MemberKind.Initializer, card.Members[1].Kind);
+        Assert.Equal([initializer], card.Members[1].MutationGaps);
+    }
+
+    [Fact]
+    public void GapLocationsFollowAnUnchangedMemberWhenEarlierLinesMove()
+    {
+        var member = Build.Member("App.A", "M", file: "a.cs", startLine: 3, endLine: 5);
+        var model = Build.Model([Build.Type("App.A", member)]);
+        var gap = new Mutant("a.cs", 4, 5, MutantStatus.Survived, "Equality") { EndLine = 4, EndColumn = 7, Replacement = ">=" };
+        var mutation = MutationMapper.Merge(MutationSnapshot.Empty, model, [gap], [member.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        var moved = member with { Span = member.Span with { File = "moved.cs", StartLine = 13, EndLine = 15 } };
+        model = Build.Model([Build.Type("App.A", moved)]);
+        var policy = new Policy { Prefix = "App" };
+
+        var card = TypeCardBuilder.Build(model, policy, new MetricsSet(CrapSnapshot.Empty, mutation), TreeBuilder.Real(model, policy), "App.A")!;
+
+        Assert.Equal([gap with { File = "moved.cs", Line = 14, EndLine = 14, MemberStartLine = 13 }], card.Members[0].MutationGaps);
+        Assert.False(card.Members[0].MutationStale);
+        Assert.Equal(4, mutation.Gaps[member.Id][0].Line);
+    }
 }
