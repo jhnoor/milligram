@@ -1,176 +1,634 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Milligram</title>
-<meta name="description" content="A live map of a C# codebase: architecture, mutants and CRAP, with an AI agent at your side.">
-<meta name="color-scheme" content="light dark">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M9 5 L23 16 L9 27' fill='none' stroke='%23e0342f' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #f8f9fb;
-    --ink: #1c1c1c;
-    --muted: #6b6f76;
-    --chevron: #e0342f;
-    --good: #4caf50;
-    --fair: #f47f7a;
-    --bad: #d93030;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #15171a;
-      --ink: #ecebe8;
-      --muted: #9a9ea5;
-      --chevron: #f0544e;
-      --good: #5cc462;
-      --fair: #f7928d;
-      --bad: #ee4a44;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #15171a;
-    --ink: #ecebe8;
-    --muted: #9a9ea5;
-    --chevron: #f0544e;
-    --good: #5cc462;
-    --fair: #f7928d;
-    --bad: #ee4a44;
-  }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta
+      name="description"
+      content="See the shape of your C# codebase. Find architectural risk, explore a better design, and work with an AI agent to make it real. Meet Milligram."
+    />
+    <meta
+      property="og:title"
+      content="Milligram — Big codebase. Clear picture."
+    />
+    <meta
+      property="og:description"
+      content="A living map of your C# codebase. Architecture, test confidence, and an agent to help you move forward."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://jhnoor.github.io/milligram/" />
+    <title>Milligram — See the big picture. Change it.</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;650;700;750;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <script src="site.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header wrap">
+      <a class="wordmark" href="#" aria-label="Milligram home"
+        ><svg viewBox="0 0 28 28" aria-hidden="true">
+          <path d="m6 5 10 9L6 23M17 5l7 9-7 9" /></svg
+        >milligram<span class="wordmark-period">.</span></a
+      >
+      <nav aria-label="Main navigation">
+        <a href="#how-it-works">The big picture</a
+        ><a href="#agents">Bring your agent</a
+        ><a class="nav-github" href="https://github.com/jhnoor/milligram"
+          >GitHub <span aria-hidden="true">↗</span></a
+        >
+      </nav>
+      <a class="button button-small" href="#start"
+        >Get started <span aria-hidden="true">↗</span></a
+      >
+    </header>
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <h1 id="hero-title">Big codebase.<br /><em>Clear picture.</em></h1>
+          <p class="hero-description">
+            See how your code fits together. Find what needs attention.
+            <strong>Bring your own agent</strong> to make it better.
+          </p>
+          <div class="hero-actions">
+            <a href="#how-it-works" class="button"
+              >See it in motion
+              <span class="play-icon" aria-hidden="true">↘</span></a
+            ><a class="text-link" href="https://github.com/jhnoor/milligram"
+              >Explore the source <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <p class="hero-note">
+            For C# &amp; .NET <span>·</span> Open source <span>·</span> Runs
+            locally
+          </p>
+        </div>
+        <div
+          class="hero-art"
+          role="group"
+          aria-label="An animated isometric map: code elements assemble into connected architecture layers, with one risky dependency highlighted in orange."
+        >
+          <canvas id="architecture-art" aria-hidden="true"></canvas>
+          <div class="art-label label-main">Main</div>
+          <div class="art-label label-adapters">Adapters</div>
+          <div class="art-label label-application">Application</div>
+          <div class="art-label label-domain">Domain</div>
+          <div class="art-callout">
+            <span class="risk-dot"></span
+            ><span>Risk.<br /><strong>In plain sight.</strong></span
+            ><span aria-hidden="true">↗</span>
+          </div>
+          <div class="art-bottomline">
+            <button
+              id="motion-toggle"
+              type="button"
+              aria-pressed="false"
+              aria-label="Pause animations"
+            >
+              <span aria-hidden="true">Ⅱ</span> Pause motion
+            </button>
+          </div>
+        </div>
+      </section>
+      <div class="foundation-strip wrap" aria-label="Product foundations">
+        <span><b class="strip-symbol">⌘</b> Roslyn analysis</span
+        ><span><b class="strip-symbol">◒</b> Coverage &amp; complexity</span
+        ><span><b class="strip-symbol">⤧</b> Mutation testing</span
+        ><span><b class="strip-symbol">✳</b> Your agent alongside you</span>
+      </div>
 
-  * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--ink);
-    font-family: "Source Serif 4", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-    line-height: 1.4;
-  }
-  main {
-    max-width: 44rem;
-    margin: 0 auto;
-    padding: clamp(2rem, 7vw, 4.5rem) 16px 3rem;
-  }
-  h1 {
-    font-size: clamp(3rem, 11vw, 4.25rem);
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    margin: 0 0 0.25em;
-  }
-  .tagline {
-    color: var(--muted);
-    font-size: 1.15rem;
-    margin: 0 0 2.25rem;
-    max-width: 30em;
-  }
+      <section class="intro wrap section-space" aria-labelledby="intro-title">
+        <div class="intro-grid">
+          <h2 id="intro-title">
+            You know the files.<br />Now meet <em>the system.</em>
+          </h2>
+          <div class="intro-copy">
+            <p>
+              A codebase grows one change at a time. Understanding it shouldn’t
+              mean holding every change in your head.
+            </p>
+            <p>
+              Milligram turns your C# source into a living map. Namespaces
+              become places. Dependencies become paths. The parts that need your
+              attention become impossible to miss.
+            </p>
+          </div>
+        </div>
+      </section>
 
-  ul { list-style: none; margin: 0; padding: 0 0 0 0.5rem; }
-  li {
-    display: grid;
-    grid-template-columns: 1.6rem 1fr;
-    column-gap: 0.5rem;
-    margin: 0 0 1.4rem;
-  }
-  li svg { width: 1.3rem; height: 1.6rem; margin-top: 0.35rem; }
-  .term { font-size: clamp(1.75rem, 6vw, 2.25rem); }
-  .what { grid-column: 2; color: var(--muted); font-size: 1.05rem; }
+      <section
+        id="how-it-works"
+        class="walkthrough"
+        aria-labelledby="walkthrough-title"
+      >
+        <div class="wrap">
+          <div class="walkthrough-heading">
+            <h2 id="walkthrough-title">
+              See it. Shape it. <em>Make it better.</em>
+            </h2>
+          </div>
+          <p class="story-intro">
+            One tangled dependency. One better design. Watch the whole change
+            unfold.
+          </p>
+          <div id="story" class="cinema" data-chapter="0">
+            <div class="cinema-toolbar">
+              <span class="cinema-project"
+                ><b aria-hidden="true">››</b> Northstar
+                <span>/ Commerce</span></span
+              >
+              <span id="story-context">Reading the source</span>
+              <span class="cinema-example">Illustrative C# project</span>
+            </div>
+            <div class="cinema-body">
+              <div
+                class="story-map"
+                role="img"
+                aria-label="Animated architecture story: C# source becomes a map. A pricing rule depends outward on Infrastructure. A proposal moves the pricing interface into Domain, reversing the dependency. The agent implements the design and strengthens the tests, then refreshed metrics show an illustrative improvement."
+              >
+                <div class="story-world" aria-hidden="true">
+                  <div class="source-scraps">
+                    <code>OrdersController.cs</code><code>PricingRule.cs</code
+                    ><code>IPriceRepository.cs</code>
+                  </div>
+                  <div class="scan-beam"></div>
+                  <svg
+                    class="story-wires"
+                    viewBox="0 0 720 620"
+                    preserveAspectRatio="none"
+                  >
+                    <defs>
+                      <marker
+                        id="story-arrow"
+                        viewBox="0 0 10 10"
+                        refX="8"
+                        refY="5"
+                        markerWidth="5"
+                        markerHeight="5"
+                        orient="auto-start-reverse"
+                      >
+                        <path d="M0 0 10 5 0 10z" fill="context-stroke" />
+                      </marker>
+                    </defs>
+                    <g class="story-base-wires">
+                      <path
+                        pathLength="1"
+                        d="M360 118V165Q360 183 342 183H151Q133 183 133 201V211"
+                      />
+                      <path
+                        pathLength="1"
+                        d="M360 118V165Q360 183 378 183H551Q569 183 569 201V211"
+                      />
+                      <path
+                        pathLength="1"
+                        d="M133 366V396Q133 416 153 416H274Q294 416 294 436V446"
+                      />
+                    </g>
+                    <path
+                      class="story-wrong-wire"
+                      pathLength="1"
+                      d="M526 483H678Q692 483 692 469V299Q692 285 678 285H668"
+                    />
+                    <path
+                      class="story-right-wire"
+                      pathLength="1"
+                      d="M569 366V396Q569 416 549 416H446Q426 416 426 436V446"
+                    />
+                    <circle class="story-traveller" r="5" />
+                  </svg>
+                  <div class="story-node story-api">
+                    <span class="story-node-symbol">⌘</span
+                    ><strong>Web API</strong><span>OrdersController</span>
+                  </div>
+                  <div class="story-node story-orders">
+                    <span class="story-node-symbol">◇</span
+                    ><strong>Application</strong><span>CheckoutService</span>
+                  </div>
+                  <div class="story-node story-infra">
+                    <span class="story-node-symbol">⊞</span
+                    ><strong>Infrastructure</strong><span>PriceRepository</span>
+                  </div>
+                  <div class="story-node story-domain">
+                    <span class="story-node-symbol">⬡</span
+                    ><strong>Domain</strong><span>PricingRule</span>
+                  </div>
+                  <div class="story-contract">
+                    <span>◇</span> Pricing contract
+                  </div>
+                  <div class="story-violation">↗ Wrong direction</div>
+                  <div class="story-resolution">
+                    ✓ The core owns the contract
+                  </div>
+                </div>
+                <div class="story-map-caption" id="story-map-caption">
+                  Source files become a system.
+                </div>
+              </div>
+              <aside class="story-narrative" aria-label="Animation explanation">
+                <span class="story-chapter-label" id="story-chapter-label"
+                  >01 / See it</span
+                >
+                <h3 id="story-title">Your code.<br />Connected.</h3>
+                <p id="story-description">
+                  Roslyn reads the C#. Milligram reveals the components and the
+                  dependencies between them.
+                </p>
+                <div class="story-panels">
+                  <div class="story-panel" data-panel="0">
+                    <div class="story-source">
+                      <span>Northstar.Commerce</span><span>├ Web</span
+                      ><span>├ Application</span><span>├ Infrastructure</span
+                      ><span>└ Domain</span>
+                    </div>
+                    <p class="story-note">
+                      A map from the code you actually have.
+                    </p>
+                  </div>
+                  <div class="story-panel" data-panel="1" hidden>
+                    <div class="story-finding">
+                      <span>Domain → Infrastructure</span
+                      ><strong
+                        >The business rule reaches outside its boundary.</strong
+                      >
+                    </div>
+                    <div class="story-mutation">
+                      <code>total <b>&gt;=</b> limit</code
+                      ><span>Mutant survived. A boundary test is missing.</span>
+                    </div>
+                  </div>
+                  <div class="story-panel" data-panel="2" hidden>
+                    <div class="story-message">
+                      <span>You</span>
+                      <p>“Keep pricing independent.”</p>
+                    </div>
+                    <div class="story-message agent-response">
+                      <span>✳ Your agent</span>
+                      <p id="story-agent-response">
+                        Move IPriceRepository into Domain. Keep the database
+                        adapter outside.
+                      </p>
+                    </div>
+                    <span class="story-proposal-tag"
+                      >Proposal · source unchanged</span
+                    >
+                  </div>
+                  <div class="story-panel" data-panel="3" hidden>
+                    <div class="story-check" data-check="0">
+                      <span>○</span> Implement the design
+                    </div>
+                    <div class="story-check" data-check="1">
+                      <span>○</span> Simplify pricing. Add boundary tests.
+                    </div>
+                    <div class="story-check" data-check="2">
+                      <span>○</span> Rerun coverage &amp; mutation
+                    </div>
+                    <div class="story-outcome">
+                      Better is something you can verify.
+                    </div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+            <div
+              class="story-metrics"
+              aria-label="Illustrative pricing metrics"
+            >
+              <div class="story-metrics-label">
+                <strong>Pricing, in focus</strong
+                ><span id="story-metric-status">Waiting for the signals</span>
+              </div>
+              <div class="story-metric">
+                <span>Dependency violations</span>
+                <div>
+                  <s id="baseline-violations" hidden>1</s
+                  ><strong id="metric-violations">—</strong>
+                </div>
+              </div>
+              <div class="story-metric">
+                <span>CRAP <i>↓ better</i></span>
+                <div>
+                  <s id="baseline-crap" hidden>46.3</s
+                  ><strong id="metric-crap">—</strong>
+                </div>
+              </div>
+              <div class="story-metric">
+                <span>Coverage</span>
+                <div>
+                  <s id="baseline-coverage" hidden>38%</s
+                  ><strong id="metric-coverage">—</strong>
+                </div>
+              </div>
+              <div class="story-metric">
+                <span>Mutation score</span>
+                <div>
+                  <s id="baseline-mutation" hidden>41%</s
+                  ><strong id="metric-mutation">—</strong>
+                </div>
+              </div>
+            </div>
+            <div class="story-transport">
+              <button
+                id="story-play"
+                type="button"
+                aria-label="Pause story"
+                aria-pressed="true"
+              >
+                Ⅱ <span>Pause</span>
+              </button>
+              <button id="story-replay" type="button" aria-label="Replay story">
+                ↺
+              </button>
+              <label class="sr-only" for="story-seek"
+                >Animation position in seconds</label
+              >
+              <input
+                id="story-seek"
+                type="range"
+                min="0"
+                max="44"
+                step="0.1"
+                value="0"
+                aria-valuetext="0 seconds of 44"
+              />
+              <span class="story-time" id="story-time">00:00 / 00:44</span>
+            </div>
+            <div class="story-chapters" aria-label="Jump to a chapter">
+              <button type="button" data-chapter="0" aria-pressed="true">
+                <span>01</span> See the system<i></i>
+              </button>
+              <button type="button" data-chapter="1" aria-pressed="false">
+                <span>02</span> Find the risk<i></i>
+              </button>
+              <button type="button" data-chapter="2" aria-pressed="false">
+                <span>03</span> Shape the change<i></i>
+              </button>
+              <button type="button" data-chapter="3" aria-pressed="false">
+                <span>04</span> Make it better<i></i>
+              </button>
+            </div>
+            <p id="story-status" class="sr-only" role="status"></p>
+          </div>
+          <p class="story-caption">
+            <strong>Same codebase. A clearer way forward.</strong
+            ><span>Fictional project and results. Sequence condensed.</span>
+          </p>
+          <noscript
+            ><p>
+              The animated example needs JavaScript. Milligram maps C# source,
+              exposes risky dependencies and test gaps, and helps you explore
+              and implement a better design with your agent.
+            </p></noscript
+          >
+        </div>
+      </section>
 
-  figure { margin: 2.5rem 0 0; padding-left: clamp(0rem, 14vw, 8.5rem); }
-  .sketch {
-    display: block;
-    width: 100%;
-    max-width: 26rem;
-    height: auto;
-    overflow: visible;
-  }
-  .sketch path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-  .sketch .line { stroke: var(--ink); stroke-width: 7; }
-  .sketch .fill { stroke-width: 7; }
-  .good { stroke: var(--good); }
-  .fair { stroke: var(--fair); }
-  .bad  { stroke: var(--bad); }
+      <section
+        class="signals wrap section-space"
+        aria-labelledby="signals-title"
+      >
+        <div class="section-heading">
+          <div>
+            <h2 id="signals-title">
+              Less guesswork.<br /><em>More signal.</em>
+            </h2>
+          </div>
+          <p>
+            The right next change starts with the right question. Milligram puts
+            three of them on the same map.
+          </p>
+        </div>
+        <div class="signal-grid">
+          <article class="signal-card">
+            <div class="signal-visual dependency-visual" aria-hidden="true">
+              <span class="mini-box box-core">Core</span
+              ><svg viewBox="0 0 260 100">
+                <path d="M58 48H196" />
+                <path class="bad-path" d="M58 60V82H196V60" />
+                <path class="arrow-tip" d="m191 68 5-8 5 8" /></svg
+              ><span class="mini-box box-outer">Adapters</span
+              ><span class="mini-annotation">↑ this points the wrong way</span>
+            </div>
+            <span class="card-index">01 / ARCHITECTURE</span>
+            <h3>What’s pulling us apart?</h3>
+            <p>
+              See the dependencies that cross your intended boundaries. Red
+              arrows show where inner layers reach out into the details they
+              should be independent of.
+            </p>
+            <div class="signal-tools">
+              <span>Under the hood</span><strong>Roslyn</strong>
+              <p>
+                C# symbols and references, checked against your architecture
+                rules.
+              </p>
+            </div>
+            <a
+              class="text-link"
+              href="https://github.com/jhnoor/milligram#configure-milligramjson"
+              >Understand the dependency rule
+              <span aria-hidden="true">↗</span></a
+            >
+          </article>
+          <article class="signal-card">
+            <div class="signal-visual complexity-visual" aria-hidden="true">
+              <div class="metric-number">46.3<span>CRAP</span></div>
+              <div class="metric-bars">
+                <i style="--bar: 26%"></i><i style="--bar: 42%"></i
+                ><i style="--bar: 36%"></i><i style="--bar: 65%"></i
+                ><i style="--bar: 49%"></i><i style="--bar: 80%"></i
+                ><i style="--bar: 100%"></i>
+              </div>
+              <span class="mini-annotation"
+                >complexity meets missing coverage</span
+              >
+            </div>
+            <span class="card-index">02 / CHANGE RISK</span>
+            <h3>Where will a change hurt?</h3>
+            <p>
+              Complex code gets riskier when tests don’t cover it. CRAP brings
+              complexity and coverage together so the places that deserve care
+              stand out.
+            </p>
+            <div class="signal-tools">
+              <span>Under the hood</span><strong>Roslyn + Coverlet</strong>
+              <p>Cyclomatic complexity meets real test coverage.</p>
+            </div>
+            <a
+              class="text-link"
+              href="https://github.com/jhnoor/milligram#metrics"
+              >Read the signals <span aria-hidden="true">↗</span></a
+            >
+          </article>
+          <article class="signal-card">
+            <div class="signal-visual mutation-visual" aria-hidden="true">
+              <div class="mutation-code">
+                <span>return</span> total <b class="mutation-original">&gt;</b
+                ><b class="mutation-changed">&gt;=</b> limit;
+              </div>
+              <div class="mutation-result">
+                <span class="mutation-light"></span>
+                <span class="mutation-caption"
+                  >Would your tests catch this?</span
+                >
+              </div>
+              <span class="mini-annotation"
+                >a small change. a revealing test.</span
+              >
+            </div>
+            <span class="card-index">03 / TEST CONFIDENCE</span>
+            <h3>Do the tests really protect it?</h3>
+            <p>
+              Coverage tells you what ran. Mutation testing changes the code and
+              asks if your tests noticed. Surviving mutants reveal the gaps a
+              green test suite can hide.
+            </p>
+            <div class="signal-tools">
+              <span>Under the hood</span><strong>Stryker.NET</strong>
+              <p>
+                Small code mutations put the strength of your tests to the test.
+              </p>
+            </div>
+            <a
+              class="text-link"
+              href="https://github.com/jhnoor/milligram#metrics"
+              >Look beyond coverage <span aria-hidden="true">↗</span></a
+            >
+          </article>
+        </div>
+      </section>
 
-  @media (prefers-reduced-motion: no-preference) {
-    .sketch .fill {
-      stroke-dasharray: 1200;
-      stroke-dashoffset: 1200;
-      animation: scribble 1.4s ease-out forwards;
-    }
-    .sketch .fair { animation-delay: 0.3s; }
-    .sketch .bad  { animation-delay: 0.6s; }
-  }
-  @keyframes scribble { to { stroke-dashoffset: 0; } }
+      <section
+        id="agents"
+        class="bring-agent section-space"
+        aria-labelledby="agent-title"
+      >
+        <div class="wrap">
+          <div class="agent-heading">
+            <h2 id="agent-title">Bring your<br /><em>own agent.</em></h2>
+            <div>
+              <p>You already have an agent. Give it the big picture.</p>
+              <p>
+                Milligram is the shared map: a place to point at a problem,
+                explore a design together, and see what changed.
+              </p>
+            </div>
+          </div>
+          <div class="agent-options" aria-label="Agent compatibility">
+            <article>
+              <span class="agent-glyph" aria-hidden="true">⌘</span>
+              <h3>GitHub Copilot</h3>
+              <span class="agent-availability available"
+                >Works today · Copilot CLI</span
+              >
+            </article>
+            <article>
+              <span class="agent-glyph claude-glyph" aria-hidden="true"
+                >✳</span
+              >
+              <h3>Claude Code</h3>
+              <span class="agent-availability">Planned integration</span>
+            </article>
+            <article>
+              <span class="agent-glyph codex-glyph" aria-hidden="true"
+                >&gt;_</span
+              >
+              <h3>Codex</h3>
+              <span class="agent-availability">Planned integration</span>
+            </article>
+          </div>
+          <div class="agent-bottom">
+            <strong>Your code. Your tools. Your call.</strong
+            ><a
+              class="text-link"
+              href="https://github.com/jhnoor/milligram#the-agent"
+              >Meet the companion workflow <span aria-hidden="true">↗</span></a
+            >
+          </div>
+        </div>
+      </section>
 
-  footer {
-    margin-top: 3rem;
-    font-size: 1.1rem;
-  }
-  a { color: var(--ink); text-underline-offset: 0.2em; text-decoration-color: var(--chevron); }
-  a:hover { color: var(--chevron); }
-  code {
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 0.9em;
-  }
-</style>
-</head>
-<body>
-<main>
-  <h1>Milligram</h1>
-  <p class="tagline">A live map of a C# codebase that shows where the risk is, with an AI agent at your side to fix it.</p>
-
-  <ul>
-    <li>
-      <svg viewBox="0 0 26 32" aria-hidden="true"><path d="M6 5 L20 16 L7 27" fill="none" stroke="var(--chevron)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span class="term">Architecture</span>
-      <span class="what">Namespaces drawn as components. Arrows that break the dependency rule turn red.</span>
-    </li>
-    <li>
-      <svg viewBox="0 0 26 32" aria-hidden="true"><path d="M7 4 L20 15 L6 26" fill="none" stroke="var(--chevron)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span class="term">Mutants</span>
-      <span class="what">Stryker.NET mutation score: do your tests notice when the code changes?</span>
-    </li>
-    <li>
-      <svg viewBox="0 0 26 32" aria-hidden="true"><path d="M6 6 L20 16 L8 27" fill="none" stroke="var(--chevron)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span class="term">CRAP</span>
-      <span class="what">Complexity × missing coverage. The code that is risky to touch.</span>
-    </li>
-  </ul>
-
-  <figure>
-    <svg class="sketch" viewBox="0 0 420 380" role="img" aria-label="Sketch of three components: a green, well-tested box depends on a pink one, and a red, risky box depends on both.">
-      <!-- top left: healthy -->
-      <path class="fill good" d="M22 30 L104 24 L26 40 L112 38 L24 52 L100 56 L28 66 L110 70 L22 80 L118 84"/>
-      <path class="line" d="M12 12 Q70 8 128 11 Q131 55 129 98 Q70 101 12 99 Q9 55 12 12 Z"/>
-
-      <!-- top right: so-so -->
-      <path class="fill fair" d="M262 24 L346 20 L266 30 L338 32 L262 40 L352 42 L266 52 L344 56 L264 64 L362 66 L262 80 L360 78"/>
-      <path class="line" d="M252 8 Q300 5 350 9 Q356 50 352 92 Q300 94 252 92 Q248 50 252 8 Z"/>
-
-      <!-- bottom left: risky -->
-      <path class="fill bad" d="M24 282 L128 280 L28 292 L118 296 L24 304 L132 306 L30 318 L126 320 L26 330 L130 334 L32 344 L110 346"/>
-      <path class="line" d="M10 266 Q78 262 142 268 Q146 312 140 358 Q76 362 14 356 Q7 310 10 266 Z"/>
-
-      <!-- top left -> top right -->
-      <path class="line" d="M146 58 Q190 55 234 57"/>
-      <path class="line" d="M214 40 L236 57 L212 74"/>
-
-      <!-- bottom -> top left -->
-      <path class="line" d="M64 248 Q62 185 68 124"/>
-      <path class="line" d="M50 140 L68 120 L92 136"/>
-
-      <!-- bottom -> top right -->
-      <path class="line" d="M112 244 Q180 176 262 118"/>
-      <path class="line" d="M232 116 L264 114 L256 144"/>
-    </svg>
-  </figure>
-
-  <footer>
-    <p><a href="https://github.com/jhnoor/milligram">Get it on GitHub</a>, then run <code>milligram</code> in any .NET repo.</p>
-  </footer>
-</main>
-</body>
+      <section
+        id="start"
+        class="start-section wrap section-space"
+        aria-labelledby="start-title"
+      >
+        <div>
+          <h2 id="start-title">Meet your codebase.<br /><em>Again.</em></h2>
+          <p>
+            Bring a C# project and a little curiosity.<br />Start with the map.
+            Follow what you find.
+          </p>
+          <a class="button" href="https://github.com/jhnoor/milligram#install"
+            >Get Milligram <span aria-hidden="true">↗</span></a
+          ><a
+            class="start-docs text-link"
+            href="https://github.com/jhnoor/milligram#readme"
+            >Read the docs <span aria-hidden="true">↗</span></a
+          >
+        </div>
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span><i></i><i></i><i></i></span><span>Run it in your repo</span
+            ><span>⌘</span>
+          </div>
+          <div class="terminal-body">
+            <span class="terminal-comment"
+              ># Once installed, inside your C# repo</span
+            >
+            <div class="terminal-command">
+              <span>$</span><code id="launch-command">milligram</code
+              ><button
+                id="copy-command"
+                type="button"
+                aria-label="Copy milligram command"
+              >
+                Copy <span aria-hidden="true">⧉</span>
+              </button>
+            </div>
+            <div class="terminal-output">
+              <span>↳</span> Your source. Your architecture.<br /><span>↳</span>
+              A map that moves with your code.<br /><span
+                class="terminal-cursor"
+                >_</span
+              >
+            </div>
+          </div>
+          <div class="terminal-footer">
+            <span>Early preview · .NET 10 SDK</span
+            ><a href="https://github.com/jhnoor/milligram#install"
+              >Installation guide ↗</a
+            >
+          </div>
+          <p class="copy-status" id="copy-status" role="status"></p>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer wrap">
+      <div>
+        <a class="wordmark" href="#" aria-label="Milligram home"
+          ><svg viewBox="0 0 28 28" aria-hidden="true">
+            <path d="m6 5 10 9L6 23M17 5l7 9-7 9" /></svg
+          >milligram<span class="wordmark-period">.</span></a
+        >
+        <p>A little perspective changes everything.</p>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/jhnoor/milligram">Source ↗</a
+        ><a href="https://github.com/jhnoor/milligram#readme"
+          >Documentation ↗</a
+        ><a href="https://github.com/jhnoor/milligram/issues"
+          >Join the conversation ↗</a
+        >
+      </div>
+      <span class="footer-note"
+        >Built in the open.<br />Made for the whole picture.</span
+      >
+    </footer>
+  </body>
 </html>
