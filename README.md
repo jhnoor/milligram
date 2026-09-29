@@ -46,10 +46,15 @@ these limitations and recognizes test frameworks listed in `packages.config`.
 Automatic coverage requires SDK-style test projects with `coverlet.collector`. SDK-style projects
 targeting .NET Framework still need a compatible Windows test environment. For old-style test
 projects, collect a Cobertura report with your existing tools and import it using
-`milligram crap --coverage report.xml`. Framework Stryker runs need solution/MSBuild settings
-that Milligram does not infer. Put those in the source project's `stryker-config.json` before
-running mutation. These legacy workflows still need validation on a real older codebase;
-see [#27](https://github.com/jhnoor/milligram/issues/27) for the remaining work.
+`milligram crap --coverage report.xml`. Framework Stryker runs need a solution path in the
+source project's `stryker-config.json`, plus working MSBuild and NuGet tools. Stryker discovers
+MSBuild automatically; its `--msbuild-path` override is a CLI option that Milligram does not
+currently forward. See [Stryker's setup](https://stryker-mutator.io/docs/stryker-net/getting-started/)
+and [configuration](https://stryker-mutator.io/docs/stryker-net/configuration/).
+
+The [legacy investigation](LEGACY.md) reproduces missing references and extra scanned files on
+an actual MVC 4 / .NET Framework 4.5 application. Building it, collecting coverage and running
+mutation remain unverified; [#27](https://github.com/jhnoor/milligram/issues/27) tracks that work.
 
 ## Install
 
