@@ -27,11 +27,17 @@ public sealed class MutationService(Workspace workspace, IProjectLocator locator
 
             var groupFiles = group.ToHashSet();
             var members = model.Types.SelectMany(t => t.Members).Where(m => groupFiles.Contains(m.Span.File)).ToList();
-            var chosen = all ? members.Where(m => m.Complexity is not null).ToList() : MutationMapper.Changed(workspace.Metrics.Mutation, members);
-            if (chosen.Count == 0) { log($"{group.Key.Name}: no changed members to mutate."); continue; }
+            var previous = workspace.Metrics.Mutation;
+            var candidates = MutationMapper.Candidates(previous, members).ToList();
+            var chosen = all ? candidates : MutationMapper.Changed(previous, members);
+            if (!all && chosen.Count == 0) { log($"{group.Key.Name}: no changed members to mutate."); continue; }
 
-            var mutants = await RunStrykerAsync(group.Key, tests, Patterns(group.Key, chosen, members), log, cancellation);
-            var snapshot = MutationMapper.Merge(workspace.Metrics.Mutation, model, mutants, chosen.Select(m => m.Id).ToList(), groupFiles, DateTimeOffset.UtcNow);
+            var testedFiles = all ? groupFiles : chosen.Select(m => m.Span.File).ToHashSet();
+            var wholeFiles = testedFiles.Where(f => all || candidates.Where(m => m.Span.File == f).All(chosen.Contains)).ToHashSet();
+            var testedIds = chosen.Select(m => m.Id).Concat(model.Types
+                .Where(t => t.Files.All(wholeFiles.Contains)).Select(MutationMapper.InitializerId)).ToList();
+            var mutants = await RunStrykerAsync(group.Key, tests, Patterns(group.Key, chosen, testedFiles, wholeFiles), log, cancellation);
+            var snapshot = MutationMapper.Merge(previous, model, mutants, testedIds, testedFiles, DateTimeOffset.UtcNow);
             workspace.SaveMetrics(snapshot);
             projectCount++;
             memberCount += chosen.Count;
@@ -43,15 +49,15 @@ public sealed class MutationService(Workspace workspace, IProjectLocator locator
     }
 
     /// <summary>Whole files when every member is chosen, otherwise Stryker character spans per member.</summary>
-    private IReadOnlyList<string> Patterns(BuildProject project, IReadOnlyList<MemberNode> chosen, IReadOnlyList<MemberNode> all)
+    private IReadOnlyList<string> Patterns(BuildProject project, IReadOnlyList<MemberNode> chosen,
+        IReadOnlySet<string> files, IReadOnlySet<string> wholeFiles)
     {
         var patterns = new List<string>();
-        foreach (var file in chosen.GroupBy(m => m.Span.File))
+        foreach (var file in files.Order(StringComparer.Ordinal))
         {
-            var glob = "**/" + Path.GetRelativePath(project.Directory, workspace.Paths.Absolute(file.Key)).Replace('\\', '/');
-            var everyMember = all.Where(m => m.Span.File == file.Key && m.Complexity is not null).All(m => file.Contains(m));
-            if (everyMember) patterns.Add(glob);
-            else patterns.AddRange(file.Select(m => $"{glob}{{{m.Span.Start}..{m.Span.End}}}"));
+            var glob = "**/" + Path.GetRelativePath(project.Directory, workspace.Paths.Absolute(file)).Replace('\\', '/');
+            if (wholeFiles.Contains(file)) patterns.Add(glob);
+            else patterns.AddRange(chosen.Where(m => m.Span.File == file).Select(m => $"{glob}{{{m.Span.Start}..{m.Span.End}}}"));
         }
         return patterns;
     }

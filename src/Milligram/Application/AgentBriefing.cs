@@ -104,7 +104,7 @@ public static class AgentBriefing
         1. Build and run the tests.
         2. `milligram crap` — reruns the tests with coverage and rescores CRAP.
         3. `milligram mutate <changed .cs files>` — differential mutation testing (Stryker.NET) on the
-           members that changed. `--all` re-mutates whole files. Surviving or uncovered mutants are test
+           members that changed, including initializers. `--all` re-mutates whole files. Surviving or uncovered mutants are test
            gaps: say so, and offer to write the missing tests. Do not loop re-running mutation.
 
         The type card's **Test gaps** and `.milligram/metrics/mutation.json` (`gaps`, keyed by member id)

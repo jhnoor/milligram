@@ -160,5 +160,10 @@ internal sealed class MemberReader(SemanticModel model, string root, string type
     /// <summary>Members of nested types keep their type path in the signature: "Cache.Clear(): void".</summary>
     private MemberNode Make(string id, string name, MemberKind kind, string signature, Visibility visibility,
         bool isStatic, bool isAbstract, SyntaxNode node, int? complexity) =>
-        new(id, name, kind, namePrefix + signature, visibility, isStatic, isAbstract, SpanOf(node, root), complexity, Hash(node.ToString()));
+        new(id, name, kind, namePrefix + signature, visibility, isStatic, isAbstract, SpanOf(node, root), complexity, Hash(node.ToString()))
+        {
+            HasInitializer = node is VariableDeclaratorSyntax { Initializer: not null }
+                or PropertyDeclarationSyntax { Initializer: not null }
+                or EnumMemberDeclarationSyntax { EqualsValue: not null },
+        };
 }

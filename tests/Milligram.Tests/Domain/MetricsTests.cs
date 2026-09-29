@@ -122,10 +122,11 @@ public class MutationMapperTests
             new Dictionary<string, DateTimeOffset>());
         var field = Build.Member("App.A", "field", complexity: null);
         var added = Build.Member("App.A", "Added", 1);
+        var initialized = field with { Id = "App.A.Initialized", HasInitializer = true };
 
-        var changed = MutationMapper.Changed(snapshot, [First, Second, field, added]);
+        var changed = MutationMapper.Changed(snapshot, [First, Second, field, added, initialized]);
 
-        Assert.Equal([Second.Id, added.Id], changed.Select(m => m.Id));
+        Assert.Equal([Second.Id, added.Id, initialized.Id], changed.Select(m => m.Id));
     }
 
     [Fact]
@@ -336,6 +337,7 @@ public class GradingTests
 
         Assert.False(TypeMetrics.Crap(type, crap)!.Stale);
         Assert.False(TypeMetrics.Mutation(type, mutation)!.Stale);
+        Assert.True(TypeMetrics.Mutation(type with { Members = [method, field with { HasInitializer = true }] }, mutation)!.Stale);
         entries[field.Id] = new(0, 0, 1, 0, "before");
         Assert.True(TypeMetrics.Mutation(type, mutation)!.Stale);
         Assert.Equal(3, TypeMetrics.Mutation(type, mutation)!.Sites);

@@ -275,6 +275,97 @@ public class MutationServiceTests
         Assert.Equal([$"**/A.cs{{{two.Start}..{two.End}}}"], FakeProcessRunner.AllAfter(processes.Calls[1].Args, "--mutate"));
     }
 
+    [Theory]
+    [InlineData("public int Value = 2;", "public int Value;")]
+    [InlineData("public int Value { get; set; } = 2;", "public int Value { get; set; }")]
+    [InlineData("public enum Values { Value = 2 }", "public enum Values { Value }")]
+    [InlineData("public event System.Action Value = () => System.Console.WriteLine(2);", "public event System.Action Value;")]
+    public async Task InitializersAreMeasuredChangedAndClearedWhenRemoved(string declaration, string removed)
+    {
+        using var fixture = new ServiceFixture();
+        var source = ServiceFixture.Source.Replace("public int One() => 1;", "public int One() => 1; " + declaration);
+        fixture.Project.Write("src/App/A.cs", source);
+        var (service, processes) = Service(fixture);
+
+        await service.RunAsync([], false, _ => { }, CancellationToken.None);
+        var value = fixture.Workspace.Model.Types.Single().Members.Single(m => m.Name.EndsWith("Value", StringComparison.Ordinal));
+        Assert.True(value.HasInitializer);
+        Assert.Null(value.Complexity);
+        Assert.Equal(value.Hash, fixture.Workspace.Metrics.Mutation.Members[value.Id].Hash);
+
+        fixture.Project.Write("src/App/A.cs", source.Replace(declaration, declaration.Replace("2", "3")));
+        await service.RunAsync([], false, _ => { }, CancellationToken.None);
+        var updated = fixture.Workspace.Model.Types.Single().Members.Single(m => m.Id == value.Id);
+        Assert.Equal([$"**/A.cs{{{updated.Span.Start}..{updated.Span.End}}}"], FakeProcessRunner.AllAfter(processes.Calls[1].Args, "--mutate"));
+
+        fixture.Project.Write("src/App/A.cs", source.Replace(declaration, removed));
+        await service.RunAsync([], false, _ => { }, CancellationToken.None);
+        var cleared = fixture.Workspace.Model.Types.Single().Members.Single(m => m.Id == value.Id);
+        Assert.False(cleared.HasInitializer);
+        Assert.Equal(MutationEntry.None(cleared.Hash), fixture.Workspace.Metrics.Mutation.Members[value.Id]);
+        await service.RunAsync([], false, _ => { }, CancellationToken.None);
+        Assert.Equal(3, processes.Calls.Count);
+    }
+
+    [Fact]
+    public async Task AllMutatesFilesWithoutBodiesAndClearsOldUnattributedMutants()
+    {
+        using var fixture = new ServiceFixture();
+        fixture.Project.Write("src/App/A.cs", "namespace App; public class A { }");
+        var gap = new Mutant("src/App/A.cs", 1, 30, MutantStatus.Survived, "Attribute");
+        fixture.Workspace.SaveMetrics(new MutationSnapshot(DateTimeOffset.UnixEpoch,
+            new Dictionary<string, MutationEntry> { ["App.A.<init>"] = new(0, 0, 1, 0, null) },
+            new Dictionary<string, DateTimeOffset> { ["src/App/A.cs"] = DateTimeOffset.UnixEpoch })
+        { Gaps = new Dictionary<string, IReadOnlyList<Mutant>> { ["App.A.<init>"] = [gap] } });
+        var processes = new FakeProcessRunner(WriteReport);
+        var service = new MutationService(fixture.Workspace, new FakeProjectLocator(fixture.AppProject, fixture.TestProject),
+            processes, new FakeMutationReader());
+
+        var result = await service.RunAsync([], true, _ => { }, CancellationToken.None);
+
+        Assert.Equal(1, result.Projects);
+        Assert.Equal(["**/A.cs"], FakeProcessRunner.AllAfter(Assert.Single(processes.Calls).Args, "--mutate"));
+        Assert.Empty(fixture.Workspace.Metrics.Mutation.Gaps);
+        Assert.Equal(0, fixture.Workspace.Metrics.Mutation.Members["App.A.<init>"].Sites);
+    }
+
+    [Fact]
+    public async Task DifferentialRunsDoNotMarkUnselectedFilesAsTested()
+    {
+        using var fixture = new ServiceFixture();
+        fixture.Project.Write("src/App/Empty.cs", "namespace App; public class Empty { }");
+        var (service, _) = Service(fixture);
+
+        await service.RunAsync([], false, _ => { }, CancellationToken.None);
+
+        Assert.False(fixture.Workspace.Metrics.Mutation.Tested("src/App/Empty.cs"));
+        Assert.False(fixture.Workspace.Metrics.Mutation.Members.ContainsKey("App.Empty.<init>"));
+    }
+
+    [Fact]
+    public async Task WholeFileRefreshPreservesUnmeasuredPartsAndOrdersItsPatterns()
+    {
+        using var fixture = new ServiceFixture();
+        fixture.Project.Write("src/App/A.cs", "namespace App; public partial class A { }");
+        fixture.Project.Write("src/App/B.cs", "namespace App; public partial class A { }");
+        var gap = new Mutant("src/App/A.cs", 1, 30, MutantStatus.Survived, "Attribute");
+        fixture.Workspace.SaveMetrics(new MutationSnapshot(DateTimeOffset.UnixEpoch,
+            new Dictionary<string, MutationEntry> { ["App.A.<init>"] = new(0, 0, 1, 0, null) },
+            new Dictionary<string, DateTimeOffset> { ["src/App/A.cs"] = DateTimeOffset.UnixEpoch })
+        { Gaps = new Dictionary<string, IReadOnlyList<Mutant>> { ["App.A.<init>"] = [gap] } });
+        var processes = new FakeProcessRunner(WriteReport);
+        var service = new MutationService(fixture.Workspace, new FakeProjectLocator(fixture.AppProject, fixture.TestProject),
+            processes, new FakeMutationReader());
+
+        await service.RunAsync(["src/App/B.cs"], true, _ => { }, CancellationToken.None);
+        Assert.Equal(["**/B.cs"], FakeProcessRunner.AllAfter(processes.Calls[0].Args, "--mutate"));
+        Assert.Equal([gap], fixture.Workspace.Metrics.Mutation.Gaps["App.A.<init>"]);
+
+        await service.RunAsync(["src/App/B.cs", "src/App/A.cs"], true, _ => { }, CancellationToken.None);
+        Assert.Equal(["**/A.cs", "**/B.cs"], FakeProcessRunner.AllAfter(processes.Calls[1].Args, "--mutate"));
+        Assert.Empty(fixture.Workspace.Metrics.Mutation.Gaps);
+    }
+
     [Fact]
     public async Task AllMutatesUnchangedFilesAnyway()
     {

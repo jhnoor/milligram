@@ -85,7 +85,7 @@ public static class TypeMetrics
         if (!type.Files.Any(snapshot.Tested)) return null;
         var members = type.Members
             .Select(m => (Member: m, Entry: snapshot.Members.GetValueOrDefault(m.Id)))
-            .Where(x => x.Member.Complexity is not null || x.Entry is not null)
+            .Where(x => x.Member.Complexity is not null || x.Member.HasInitializer || x.Entry is not null)
             .ToList();
         var entries = members.Select(x => x.Entry)
             .Append(snapshot.Members.GetValueOrDefault(MutationMapper.InitializerId(type)))

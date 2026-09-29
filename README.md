@@ -148,8 +148,9 @@ Snapshots are written in sorted order, so diffs stay small.
 
 - **CRAP** = complexity² × (1 − coverage)³ + complexity, for each method. Complexity comes from
   Roslyn and line coverage from coverlet.
-- **Mutation**: Stryker.NET runs on the files you pick. Later runs only mutate methods whose code
-  changed. After improving *tests*, use `--all` (or **Refresh all mutation**) to re-measure.
+- **Mutation**: Stryker.NET runs on the files you pick. Later runs only mutate members whose code
+  changed, including field and property initializers and explicit enum values. After improving
+  *tests*, use `--all` (or **Refresh all mutation**) to re-measure whole files, including attributes.
   Survived or uncovered mutants are test gaps. Open a type card's **Test gaps** to see each
   mutation's replacement code and jump to its source. Older snapshots keep their counts;
   refresh all mutation to add the details.
@@ -195,7 +196,7 @@ viewer, tell the agent to run `milligram mail`.
 | `milligram init [--force]` | Write `milligram.json` from the source, inferring levels from the dependencies. |
 | `milligram ir` | Rescan the source. |
 | `milligram crap [--coverage file.xml]` | Run the tests with coverage (or read a Cobertura file) and score CRAP. |
-| `milligram mutate [--all] [files…]` | Mutation-test changed methods (every file if you list none). |
+| `milligram mutate [--all] [files…]` | Mutation-test changed members, including initializers (every file if you list none). |
 | `milligram doctor` | Check the SDK, restore, test projects, coverage collector, Stryker, and the agent; print the fix for anything missing. Exits 1 if something is. |
 | `milligram mail [--peek]` | Print and remove mail for the agent. |
 | `milligram tell display <real\|proposalId>` / `tell notify "text"` | Send mail to the viewer. |

@@ -34,7 +34,11 @@ public sealed record MemberNode(
     bool IsAbstract,
     SourceSpan Span,
     int? Complexity,
-    string Hash);
+    string Hash)
+{
+    /// <summary>Initializer expressions can be mutated even when the member has no method body.</summary>
+    public bool HasInitializer { get; init; }
+}
 
 public sealed record TypeNode(
     string Id,
