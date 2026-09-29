@@ -15,6 +15,22 @@ function Invoke-DotNet {
     if ($LASTEXITCODE -ne 0) { throw "dotnet $args failed ($LASTEXITCODE)" }
 }
 
+function Wait-Until([string]$Description, [scriptblock]$Condition) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    do {
+        if (& $Condition) { return }
+        Start-Sleep -Milliseconds 200
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "Timed out: $Description"
+}
+
+function Invoke-Action([hashtable]$Body) {
+    $result = Invoke-RestMethod ($address + 'api/action') -Method Post -ContentType 'application/json' `
+        -Headers @{ 'X-Milligram' = '1' } -Body ($Body | ConvertTo-Json -Depth 10)
+    if (!$result.ok) { throw "Viewer action failed: $($result.message)" }
+    return $result
+}
+
 Invoke-DotNet tool install Milligram --tool-path $toolRoot --source $packageSource --version $Version
 $tool = Join-Path $toolRoot $(if ($IsWindows) { 'milligram.exe' } else { 'milligram' })
 Push-Location $projectRoot
@@ -51,7 +67,7 @@ namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } 
             if ($server.HasExited) { throw "Viewer exited $($server.ExitCode)" }
             if (Test-Path -LiteralPath $serverFile) {
                 try {
-                    $address = (Get-Content -LiteralPath $serverFile -Raw | ConvertFrom-Json).url
+                    $address = (Get-Content -LiteralPath $serverFile -Raw | ConvertFrom-Json).url.Replace('localhost', '127.0.0.1')
                     $view = Invoke-RestMethod ($address + 'api/view?context=real')
                     if ($view.nodes.Count -gt 0) { break }
                 } catch { $view = $null }
@@ -70,7 +86,65 @@ namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } 
         foreach ($file in @('milligram.json', '.milligram/agent.md', '.milligram/model.json')) {
             if (!(Test-Path -LiteralPath (Join-Path $projectRoot $file))) { throw "First run did not create $file" }
         }
-        Write-Output "Package $Version passed: installed tool, dnx, first-run policy, diagram, source and embedded assets."
+        $policyFile = Join-Path $projectRoot 'milligram.json'
+        $policyText = Get-Content -LiteralPath $policyFile -Raw
+        $policy = $policyText | ConvertFrom-Json
+        if ($policy.levels.Count -lt 2 -or $view.maxLevel -lt 1) { throw 'First-run diagram has no inferred layers' }
+
+        $proposal = (Invoke-Action @{ op = 'new-proposal'; name = 'Package smoke' }).data.proposalId
+        $proposalView = Invoke-RestMethod ($address + "api/view?context=$proposal")
+        if (!$proposalView.context.isProposal -or $proposalView.context.name -ne 'Package smoke') { throw 'Proposal was not drawn' }
+        Invoke-Action @{ op = 'rename-proposal'; context = $proposal; name = 'Renamed smoke' } | Out-Null
+        $contexts = (Invoke-RestMethod ($address + 'api/meta')).contexts
+        if (!($contexts | Where-Object { $_.id -eq $proposal -and $_.name -eq 'Renamed smoke' })) { throw 'Proposal rename was lost' }
+        $mail = @(& $tool mail --peek | ForEach-Object { $_ | ConvertFrom-Json })
+        if ($LASTEXITCODE -ne 0 -or !($mail | Where-Object { $_.op -eq 'context' -and $_.proposalId -eq $proposal })) { throw 'Proposal context did not reach the agent mailbox' }
+        Invoke-Action @{ op = 'delete-proposal'; context = $proposal } | Out-Null
+        if ((Invoke-RestMethod ($address + 'api/meta')).contexts.Count -ne 1) { throw 'Proposal deletion was lost' }
+        foreach ($comment in ($policyText -split "`n" | Where-Object { $_.TrimStart().StartsWith('//') })) {
+            if (!(Get-Content -LiteralPath $policyFile -Raw).Contains($comment.Trim())) { throw 'Viewer edits discarded policy comments' }
+        }
+        & $tool mail | Out-Null
+        if ($LASTEXITCODE -ne 0 -or (& $tool mail --peek) -ne 'No mail.') { throw 'Mail was not consumed' }
+
+        $coverageFile = Join-Path $projectRoot '.milligram/run/smoke-coverage.xml'
+        [IO.File]::WriteAllText($coverageFile, '<coverage><packages><package><classes><class filename="src/Smoke/Class1.cs"><lines><line number="1" hits="1"/></lines></class></classes></package></packages></coverage>')
+        & $tool crap --coverage $coverageFile
+        if ($LASTEXITCODE -ne 0) { throw 'Coverage import failed' }
+        Wait-Until 'coverage appears on the live type card' {
+            $card = Invoke-RestMethod ($address + 'api/type?id=Smoke.Domain.Order')
+            ($card.members | Where-Object { $_.name -eq 'Total' }).crap.coverage -eq 1
+        }
+
+        $http = [Net.Http.HttpClient]::new()
+        $stream = $http.GetStreamAsync($address + 'api/events').GetAwaiter().GetResult()
+        $reader = [IO.StreamReader]::new($stream)
+        $timeout = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds(30))
+        try {
+            & $tool tell notify 'Package smoke notification'
+            if ($LASTEXITCODE -ne 0) { throw 'Agent reply command failed' }
+            do {
+                $line = $reader.ReadLineAsync($timeout.Token).AsTask().GetAwaiter().GetResult()
+                if ($null -eq $line) { throw 'Viewer event stream closed' }
+            } until ($line.StartsWith('data: ') -and $line.Contains('Package smoke notification'))
+        } finally {
+            $timeout.Dispose()
+            $reader.Dispose()
+            $http.Dispose()
+        }
+
+        [IO.File]::AppendAllText((Join-Path $projectRoot 'src/Smoke/Class1.cs'), "`nnamespace Smoke.Domain { public class Added { } }")
+        Wait-Until 'source edit updates the live diagram' { (Invoke-RestMethod ($address + 'api/meta')).types -eq 3 }
+        $beforeMove = (Resolve-Path -LiteralPath (Join-Path $projectRoot 'src/Smoke')).Path
+        $afterMove = [IO.Path]::GetFullPath((Join-Path $projectRoot 'src/Renamed'))
+        $projectPrefix = [IO.Path]::GetFullPath($projectRoot) + [IO.Path]::DirectorySeparatorChar
+        if (!$beforeMove.StartsWith($projectPrefix, [StringComparison]::Ordinal) -or
+            !$afterMove.StartsWith($projectPrefix, [StringComparison]::Ordinal)) { throw 'Folder move escaped the smoke project' }
+        Move-Item -LiteralPath $beforeMove -Destination $afterMove
+        Wait-Until 'folder move updates live source locations' {
+            (Invoke-RestMethod ($address + 'api/type?id=Smoke.Domain.Order')).spans[0].file -eq 'src/Renamed/Class1.cs'
+        }
+        Write-Output "Package $Version passed: installed tool, dnx, first-run layers, proposals, mail round-trip, coverage import, live edits, folder moves, source and embedded assets."
     } finally {
         if (!$server.HasExited) { $server.Kill($true) }
         $server.WaitForExit()

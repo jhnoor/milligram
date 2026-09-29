@@ -31,7 +31,10 @@ git push origin v0.2.0
 The release workflow runs build, tests, format and package smoke checks, packs the tagged
 version, tests that exact package again, publishes it to NuGet, and attaches it to a GitHub
 release. Package checks run on Linux, macOS and Windows and cover both local installation
-and `dnx`, first-run configuration, HTTP endpoints and embedded viewer assets.
+and `dnx`, inferred layers, proposal edits, the mail round-trip, coverage import, live source
+edits and folder moves, HTTP endpoints and embedded viewer assets. The fixture has no agent
+or test runner: it imports a small coverage report and checks mail directly. Real Copilot,
+coverage collection and Stryker still need dogfooding in a configured project.
 
 NuGet versions cannot be overwritten. Fix a bad release with a new version. Rerunning a
 workflow after a successful push is safe: duplicate package uploads are skipped.
