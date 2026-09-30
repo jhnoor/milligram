@@ -250,7 +250,7 @@ internal static class Program
     {
         using var hangup = OperatingSystem.IsWindows() ? null : PosixSignalRegistration.Create(PosixSignal.SIGHUP, context => context.Cancel = true);
         using var terminate = OperatingSystem.IsWindows() ? null : PosixSignalRegistration.Create(PosixSignal.SIGTERM, context => context.Cancel = true);
-        await File.WriteAllTextAsync(pidFile, Environment.ProcessId.ToString());
+        JsonFile.Write(pidFile, Environment.ProcessId);
         await Task.Delay(Timeout.Infinite);
         return 0;
     }
