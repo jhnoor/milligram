@@ -218,8 +218,11 @@ internal static class Program
         while (true)
         {
             var key = Console.ReadKey(intercept: true);
-            if (key.KeyChar == '\u0003') { input.Clear(); Console.WriteLine("INTERRUPTED"); continue; }
-            if (key.Key != ConsoleKey.Enter) { if (key.KeyChar != '\0') input.Append(key.KeyChar); continue; }
+            // Unix Console.ReadKey maps the Ctrl+] byte to Ctrl+5 with an empty KeyChar.
+            var character = key.KeyChar == '\0' && key.Key == ConsoleKey.D5 && key.Modifiers.HasFlag(ConsoleModifiers.Control)
+                ? '\u001d' : key.KeyChar;
+            if (character == '\u0003') { input.Clear(); Console.WriteLine("INTERRUPTED"); continue; }
+            if (key.Key != ConsoleKey.Enter) { if (character != '\0') input.Append(character); continue; }
             var line = input.ToString();
             input.Clear();
             if (line == "exit") return 17;
