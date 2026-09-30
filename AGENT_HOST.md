@@ -258,7 +258,9 @@ an http(s) URL and confirmation of the actual destination. Terminal text never b
 File links support C# paths and line numbers, including wrapping and wide terminal cells;
 source/editor access still passes the server's project containment check, including nested
 filesystem links. An explicitly linked project root defines the boundary; nested targets outside
-it are rejected before they are followed. This check is not an atomic defense against a local
+it are rejected before they are followed. Ancestor aliases such as macOS `/var` resolve back to
+that boundary; the alias walk never descends into an ordinary outside directory or switches
+filesystem roots to probe another drive or network share. This check is not an atomic defense against a local
 process changing directory entries between checking and opening a file. Responses forbid
 framing with `Content-Security-Policy: frame-ancestors 'none'`.
 

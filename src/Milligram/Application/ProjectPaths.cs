@@ -55,20 +55,48 @@ public sealed class ProjectPaths(string root)
         {
             current = Path.GetFullPath(Path.Combine(current, part));
             if (boundary is not null && !AtOrWithin(current, boundary)) return null;
-            string? target = null;
-            try { target = new FileInfo(current).ResolveLinkTarget(returnFinalTarget: false)?.ToString(); }
-            catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { continue; }
+            var target = LinkTarget(current);
             if (target is null) continue;
             if (++links > 64) return null;
             if (boundary is not null)
             {
                 if (alias is not null && AtOrWithin(target, alias)) target = boundary + target[alias.Length..];
-                if (!AtOrWithin(target, boundary)) return null;
+                if (!AtOrWithin(target, boundary)) target = ResolveAncestorAlias(target, boundary, ref links);
+                if (target is null) return null;
             }
             current = boundary ?? Path.GetPathRoot(target)!;
             remaining = new Queue<string>(Segments(target[current.Length..]).Concat(remaining));
         }
         return current;
+    }
+
+    /// <summary>An ancestor alias such as macOS /var may name the physical root; never descend into an outside ordinary directory.</summary>
+    private static string? ResolveAncestorAlias(string path, string boundary, ref int links)
+    {
+        var volume = Path.GetPathRoot(boundary)!;
+        if (!string.Equals(Path.GetPathRoot(path), volume, StringComparison.Ordinal)) return null;
+        var current = volume;
+        var remaining = new Queue<string>(Segments(path[volume.Length..]));
+        while (remaining.TryDequeue(out var part))
+        {
+            current = Path.GetFullPath(Path.Combine(current, part));
+            var target = LinkTarget(current);
+            if (target is not null)
+            {
+                if (++links > 64 || !string.Equals(Path.GetPathRoot(target), volume, StringComparison.Ordinal)) return null;
+                current = volume;
+                remaining = new Queue<string>(Segments(target[volume.Length..]).Concat(remaining));
+            }
+            else if (AtOrWithin(current, boundary)) return Path.Join(current, string.Join(Path.DirectorySeparatorChar, remaining));
+            else if (!AtOrWithin(boundary, current)) return null;
+        }
+        return null;
+    }
+
+    private static string? LinkTarget(string path)
+    {
+        try { return new FileInfo(path).ResolveLinkTarget(returnFinalTarget: false)?.ToString(); }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { return null; }
     }
 
     private static string[] Segments(string path) =>

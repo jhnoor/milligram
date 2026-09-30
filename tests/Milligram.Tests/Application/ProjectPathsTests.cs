@@ -117,6 +117,27 @@ public class ProjectPathsTests
     }
 
     [UnixFact]
+    public void APhysicalRootAcceptsAnInternalLinkNamedThroughAnAncestorAlias()
+    {
+        using var project = new TempProject(("actual/project/Inside.cs", "inside"));
+        var actual = Path.Combine(project.Root, "actual", "project");
+        Directory.CreateSymbolicLink(Path.Combine(project.Root, "alias"), "actual");
+        Directory.CreateSymbolicLink(Path.Combine(project.Root, "chain"), "alias");
+        var aliasedRoot = Path.Combine(project.Root, "chain", "project");
+        Directory.CreateSymbolicLink(Path.Combine(actual, "cycle"), aliasedRoot);
+        File.CreateSymbolicLink(Path.Combine(actual, "internal.cs"), Path.Combine(aliasedRoot, "Inside.cs"));
+        var paths = new ProjectPaths(actual);
+        Assert.True(paths.Contains("cycle/Inside.cs"));
+        Assert.True(paths.Contains("internal.cs"));
+        Assert.Equal("inside", File.ReadAllText(paths.Absolute("internal.cs")));
+
+        using var outside = new TempProject();
+        Directory.CreateSymbolicLink(Path.Combine(outside.Root, "return"), actual);
+        File.CreateSymbolicLink(Path.Combine(actual, "outside.cs"), Path.Combine(outside.Root, "return", "Inside.cs"));
+        Assert.False(paths.Contains("outside.cs"));
+    }
+
+    [UnixFact]
     public void LinkTargetsAreCheckedAgainForEveryRequest()
     {
         using var project = new TempProject(("Inside.cs", "inside"));

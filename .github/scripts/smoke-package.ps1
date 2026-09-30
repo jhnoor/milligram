@@ -46,6 +46,9 @@ namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } 
     New-Item -ItemType Directory -Path $outsideRoot | Out-Null
     [IO.File]::WriteAllText((Join-Path $outsideRoot 'Outside.cs'), 'generated outside-project fixture')
     New-Item -ItemType $linkType -Path (Join-Path $projectRoot 'outside-link') -Target $outsideRoot | Out-Null
+    $projectAlias = Join-Path $smokeRoot 'project-alias'
+    New-Item -ItemType $linkType -Path $projectAlias -Target $projectRoot | Out-Null
+    New-Item -ItemType $linkType -Path (Join-Path $projectRoot 'alias-link') -Target (Join-Path $projectAlias 'src') | Out-Null
     $obj = Join-Path $projectRoot 'src/Smoke/obj'
     New-Item -ItemType Directory -Path $obj -Force | Out-Null
     New-Item -ItemType $linkType -Path (Join-Path $obj 'cycle') -Target $obj | Out-Null
@@ -96,6 +99,8 @@ namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } 
         if ($linkedSource.text -ne $source.text -or $linkedSource.file -ne 'cycle/src/Smoke/Class1.cs') {
             throw 'An internal directory link lost its source or requested path'
         }
+        $aliasedSource = Invoke-RestMethod ($address + 'api/source?file=alias-link/Smoke/Class1.cs')
+        if ($aliasedSource.text -ne $source.text) { throw 'An ancestor alias hid an internal source file' }
         $outsideSource = Invoke-WebRequest ($address + 'api/source?file=outside-link/Outside.cs') -SkipHttpErrorCheck
         $outsideOpen = Invoke-WebRequest ($address + 'api/open') -Method Post -ContentType 'application/json' `
             -Headers @{ 'X-Milligram' = '1' } -Body '{"file":"outside-link/Outside.cs","line":1}' -SkipHttpErrorCheck
