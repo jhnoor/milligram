@@ -5,7 +5,7 @@ namespace Milligram.Browser.Integration;
 
 internal sealed class FixtureCompanion : ICompanion, IAsyncDisposable
 {
-    private readonly string endpoint = "milligram-browser-" + Guid.NewGuid().ToString("N");
+    private readonly string endpoint = "mg-browser-" + Guid.NewGuid().ToString("N")[..16];
     private readonly HostHello greeting = new(HostProtocol.Version, "browser-fixture");
     private AgentSession? session;
     private AgentPipeServer? server;
