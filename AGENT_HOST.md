@@ -189,3 +189,5 @@ the public command inside a real terminal and checks Unicode in both directions,
 detach/reattach alongside another pipe client, agent exit, exact mode restoration and a subsequent
 shell read. Unix runners also exercise SIGTERM. Classic Windows console, WSL and real Copilot
 remain explicit acceptance checks.
+The mode comparison excludes Darwin's kernel-owned `PENDIN` state bit: its tty implementation
+sets this when returning to canonical input, independently of the restored configuration.

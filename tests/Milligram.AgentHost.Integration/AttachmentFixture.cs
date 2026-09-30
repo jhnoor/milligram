@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Text;
 using Milligram.Adapters.Companion;
@@ -16,7 +17,9 @@ internal static class AttachmentFixture
         _ = Console.WindowWidth;
         var before = Modes();
         var code = await Milligram.Main.Program.Main(["agent", "attach", "--project", project]);
-        Require(before.SequenceEqual(Modes()), "Attachment did not restore the console modes.");
+        var after = Modes();
+        Require(before.SequenceEqual(after), "Attachment did not restore the console modes: " +
+            string.Join(", ", Enumerable.Range(0, before.Length).Where(i => before[i] != after[i]).Select(i => $"{i}:{before[i]:x2}->{after[i]:x2}")));
         Console.WriteLine("RESTORED:" + code);
         Console.WriteLine("SHELL_READY");
         Console.WriteLine("AFTER:" + Console.ReadLine());
@@ -143,6 +146,12 @@ internal static class AttachmentFixture
         }
         var modes = new byte[256];
         Require(GetAttributes(0, modes) == 0, "Cannot read terminal modes.");
+        if (OperatingSystem.IsMacOS())
+        {
+            // Darwin sets PENDIN when restoring ICANON; this is pending-input state, not a saved mode.
+            var flags = BinaryPrimitives.ReadUInt64LittleEndian(modes.AsSpan(24));
+            BinaryPrimitives.WriteUInt64LittleEndian(modes.AsSpan(24), flags & ~0x20000000ul);
+        }
         return modes;
     }
 
