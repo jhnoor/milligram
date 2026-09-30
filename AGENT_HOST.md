@@ -92,8 +92,30 @@ Pipe names are `milligram-` followed by 20 ASCII hexadecimal characters derived 
 project root. Trailing separators are normalized, as is case on Windows. The host log path is
 `.milligram/run/agent-host.log`.
 
-Process-tree cleanup, detachment, companion integration and real-terminal checks
-remain part of the host implementation.
+## Native terminal adapter
+
+The opt-in implementation pins Porta.Pty 2.2.2. `ProcessRunner.StartTerminalAsync` uses the
+same executable lookup and batch quoting as other child processes, then supplies the terminal
+size, project working directory and the agent's shim on PATH. Unix launches receive
+`TERM=xterm-256color` and a UTF-8 locale. Async terminal I/O is selected except on Linux kernels
+older than 5.3, where the library's blocking mode is required.
+
+On Windows, the adapter preloads the packaged ConPTY DLL through an extended absolute path.
+This is the workaround measured at the path-length boundary in the spike; the library handle
+stays alive for the process lifetime. Explicit selection of the in-box backend is preserved.
+The adapter captures an owned Windows process handle for tree termination; disposing the
+connection also closes the library's kill-on-close job. Unix shutdown kills the process group
+created by `forkpty`, including a descendant whose agent parent has exited. A process that
+deliberately creates a different Unix session is outside that process group.
+
+`tests/Milligram.AgentHost.Integration` is a standalone fake-agent program, outside the fast
+test solution. It exercises the production adapter with a real terminal: controlling TTY,
+arguments, a Unicode project path, working directory, the actual `milligram` shim, split UTF-8,
+resize, Ctrl+C, doorbell submission and nonzero exit. Separate cases exercise forced descendant
+cleanup and cleanup after the parent exits. The native workflow runs on Linux, macOS and Windows,
+each with x64 and ARM64 runners. It does not start real Copilot.
+
+The detached host lifecycle and companion integration remain part of the implementation.
 The six-platform terminal evidence and Windows loader workaround are on the separate
 [`codex/pty-spike` branch](https://github.com/jhnoor/milligram/tree/codex/pty-spike/spikes/PtyProbe).
 Real Copilot login, xterm.js rendering, WSL and the rollout criteria remain separate acceptance work.
