@@ -13,7 +13,8 @@ using Milligram.Domain.Hierarchy;
 namespace Milligram.Adapters.Web;
 
 /// <summary>The local HTTP server behind the browser viewer. Binds to loopback only.</summary>
-public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQueue jobs, ICompanion companion, EventHub events)
+public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQueue jobs, ICompanion companion, EventHub events,
+    Func<bool>? terminalEnabled = null, Func<CancellationToken, Task<AgentPipeClient>>? connectTerminal = null)
 {
     private const long MaxSourceBytes = 4 * 1024 * 1024;
 
@@ -41,8 +42,10 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
         builder.Logging.ClearProviders();
         builder.WebHost.UseKestrel(o => o.Listen(IPAddress.Loopback, port));
         var app = builder.Build();
+        var terminal = new AgentWebSocket(port, terminalEnabled ?? (() => false), connectTerminal);
 
         app.Use((context, next) => Guard(context, next, port));
+        app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30), KeepAliveTimeout = TimeSpan.FromSeconds(15) });
         var files = new ManifestEmbeddedFileProvider(typeof(WebServer).Assembly, "wwwroot");
         app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
         app.UseStaticFiles(new StaticFileOptions
@@ -51,7 +54,13 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
             OnPrepareResponse = c => c.Context.Response.Headers.CacheControl = "no-cache",
         });
 
-        app.MapGet("/api/meta", () => Json(Meta()));
+        app.MapGet("/api/meta", (HttpContext context) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            context.Response.Headers.XContentTypeOptions = "nosniff";
+            return Json(Meta(terminal.Access));
+        });
+        app.MapGet("/api/agent/terminal", (HttpContext context) => terminal.HandleAsync(context, app.Lifetime.ApplicationStopping));
         app.MapGet("/api/view", (string? context, string? focus) => Json(workspace.View(context, focus)));
         app.MapGet("/api/type", (string? context, string id) => workspace.Card(context, id) is { } card ? Json(card) : Results.NotFound());
         app.MapGet("/api/source", (string file) => Source(file));
@@ -79,12 +88,18 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
         return Task.CompletedTask;
     }
 
-    private object Meta()
+    private object Meta(TerminalAccess terminal)
     {
         var policy = workspace.Policy;
         var model = workspace.Model;
         var metrics = workspace.Metrics;
         var available = companion.IsAvailable(out var reason);
+        var running = false;
+        if (available)
+        {
+            try { running = companion.IsRunning(); }
+            catch (MilligramException error) { available = false; reason = error.Message; }
+        }
         return new
         {
             title = policy.Title ?? (model.Title.Length > 0 ? model.Title : workspace.DefaultTitle),
@@ -101,10 +116,11 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
             {
                 available,
                 reason = available ? null : reason,
-                running = available && companion.IsRunning(),
+                running,
                 session = companion.SessionName,
                 attach = companion.AttachCommand,
                 pendingMail = workspace.ToAgent.Count,
+                terminal,
             },
             job = jobs.Status,
             thresholds = policy.Thresholds,

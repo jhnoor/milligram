@@ -104,6 +104,8 @@ Match the existing code. It is terse and consistent:
   progress with the `log` callback.
 - Keep the web server's safety guard: loopback host names only, POSTs must carry
   `X-Milligram: 1`, and file access must pass `ProjectPaths.Contains` (no path traversal).
+  Terminal WebSockets additionally require an exact bound-port Origin and the per-run secret
+  subprotocol from uncached `/api/meta`. Never enable CORS or put the token in a URL or log.
 - Start programs only through `ProcessRunner`. It resolves them with `ProgramPath` (PATHEXT on
   Windows), so lookup and launch agree, and runs `.cmd` and `.bat` files through `cmd.exe` with
   `BatchCommandLine`'s quoting, so a file name from the project can't run another command.

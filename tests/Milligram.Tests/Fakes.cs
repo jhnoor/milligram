@@ -56,6 +56,7 @@ internal sealed class FakeCompanion : ICompanion
 {
     public bool Available { get; set; } = true;
     public bool Running { get; set; }
+    public string? RunningError { get; set; }
     public bool TerminalOpens { get; set; }
     public bool CreatedSession { get; set; } = true;
     public int Rings { get; private set; }
@@ -70,7 +71,7 @@ internal sealed class FakeCompanion : ICompanion
         return Available;
     }
 
-    public bool IsRunning() => Running;
+    public bool IsRunning() => RunningError is { } error ? throw new MilligramException(error) : Running;
 
     public Task<bool> StartAsync(CancellationToken cancellation)
     {

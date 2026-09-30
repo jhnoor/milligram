@@ -7,12 +7,15 @@ using Milligram.Analysis.CSharp;
 using Milligram.Analysis.DotNet;
 using Milligram.Analysis.Mutation;
 using Milligram.Application;
+using Milligram.Domain.Policies;
 
 namespace Milligram.Main;
 
 /// <summary>The composition root: the only place that knows every concrete class.</summary>
 public sealed class Composition
 {
+    private readonly Func<CancellationToken, Task<AgentPipeClient>> connectTerminal;
+
     public Composition(string root, IReadOnlyList<string> selfCommand, string version)
     {
         Paths = new ProjectPaths(root);
@@ -34,8 +37,9 @@ public sealed class Composition
         Doctor = new Doctor(Workspace, Crap, locator, processes, Companion, WatchLimits);
         Agent = new AgentLauncher(Workspace, Companion);
         AgentHost = new AgentHost(Paths, () => Workspace.Policy, selfCommand, version, ProcessRunner.StartTerminalAsync, ProcessRunner.DetachHostSession);
-        Attachment = new AgentAttachment(token => AgentPipeClient.ConnectAsync(new AgentHostFiles(Paths).Endpoint,
-            new HostHello(HostProtocol.Version, version), token), LocalTerminal.Open);
+        connectTerminal = token => AgentPipeClient.ConnectAsync(new AgentHostFiles(Paths).Endpoint,
+            new HostHello(HostProtocol.Version, version), token);
+        Attachment = new AgentAttachment(connectTerminal, LocalTerminal.Open);
     }
 
     public ProjectPaths Paths { get; }
@@ -53,5 +57,5 @@ public sealed class Composition
     public AgentHost AgentHost { get; }
     public AgentAttachment Attachment { get; }
 
-    public WebServer WebServer() => new(Workspace, Actions, Jobs, Companion, Events);
+    public WebServer WebServer() => new(Workspace, Actions, Jobs, Companion, Events, () => Companion.Host == AgentHostKind.Milligram, connectTerminal);
 }

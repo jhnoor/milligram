@@ -191,3 +191,34 @@ shell read. Unix runners also exercise SIGTERM. Classic Windows console, WSL and
 remain explicit acceptance checks.
 The mode comparison excludes Darwin's kernel-owned `PENDIN` state bit: its tty implementation
 sets this when returning to canonical input, independently of the restored configuration.
+
+## Browser transport
+
+The native host exposes a browser attachment through `GET /api/agent/terminal`. The browser
+panel is separate work. `/api/meta` includes `agent.terminal.available` and, when available,
+`agent.terminal.protocol`. Availability describes the configured transport, not whether the
+agent is running. The tmux host has no browser transport.
+
+Every viewer run generates 32 random token bytes and includes their hex encoding in the
+`milligram-terminal.v1.<token>` WebSocket subprotocol. The browser must request that exact single
+subprotocol. Tokens never belong in URLs or logs. Metadata uses `Cache-Control: no-store` and
+`X-Content-Type-Options: nosniff`; no endpoint enables CORS. A connection must also pass the
+existing bound-port Host guard and supply exactly one Origin equal to the viewer's localhost
+or 127.0.0.1 HTTP origin. Origin and token checks happen before connecting to the host pipe.
+This protects against other websites. Loopback HTTP does not authenticate local OS users;
+other local processes able to read metadata are outside that browser-origin boundary.
+
+Each accepted browser has one same-user host connection. Binary messages carry terminal bytes
+unchanged in each direction, up to 16 KiB per message. Text controls are at most 512 bytes:
+`{"type":"resize","columns":80,"rows":24}` and `{"type":"status"}`. Server text messages are
+`{"type":"status","pid":123,"clients":1,"columns":80,"rows":24}` and
+`{"type":"exited","code":0}`. There are no stop or ring controls on this socket. Existing
+guarded viewer actions handle commands. Sizes retain the host protocol's 2–1000 bounds.
+
+Fragmented messages allow at most 128 receive chunks and have three seconds to finish after
+their first chunk. Idle connections remain open. Pipe greeting, individual pipe/socket writes
+and close handshakes also have three-second deadlines. The relay has no unbounded output queue;
+the host's existing per-client backpressure still applies. Exit follows the last output, then
+closes the socket. Detach, broken connections and viewer shutdown release the browser's pipe
+without sending stop. Loopback tests exercise all three authorization gates, relay ordering,
+concurrent clients, malformed frames, message limits, deadlines and shutdown.

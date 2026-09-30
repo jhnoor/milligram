@@ -67,6 +67,10 @@ public class WebServerTests : IAsyncLifetime
         }
         using var meta = JsonDocument.Parse(await client.GetStringAsync("api/meta"));
         Assert.Equal(1, meta.RootElement.GetProperty("types").GetInt32());
+        Assert.False(meta.RootElement.GetProperty("agent").TryGetProperty("reason", out _));
+        var terminal = meta.RootElement.GetProperty("agent").GetProperty("terminal");
+        Assert.False(terminal.GetProperty("available").GetBoolean());
+        Assert.False(terminal.TryGetProperty("protocol", out _));
         using var card = JsonDocument.Parse(await client.GetStringAsync("api/type?id=Shop.Order"));
         Assert.Equal("Order", card.RootElement.GetProperty("name").GetString());
         Assert.Equal("method", card.RootElement.GetProperty("members")[0].GetProperty("kind").GetString());
@@ -217,6 +221,19 @@ public class WebServerTests : IAsyncLifetime
         Assert.False(agent.GetProperty("available").GetBoolean());
         Assert.False(agent.GetProperty("running").GetBoolean());
         Assert.Equal("tmux is not installed.", agent.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task AnIncompatibleAgentDoesNotPreventTheViewerFromReadingItsMetadata()
+    {
+        companion.RunningError = "Agent host uses protocol 2; restart it with a matching Milligram version.";
+        using var meta = JsonDocument.Parse(await client.GetStringAsync("api/meta"));
+        var agent = meta.RootElement.GetProperty("agent");
+        Assert.False(agent.GetProperty("available").GetBoolean());
+        Assert.False(agent.GetProperty("running").GetBoolean());
+        Assert.Equal(companion.RunningError, agent.GetProperty("reason").GetString());
+        using var view = await client.GetAsync("api/view");
+        Assert.Equal(HttpStatusCode.OK, view.StatusCode);
     }
 
     [Fact]
