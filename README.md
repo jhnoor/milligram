@@ -33,7 +33,7 @@ The viewer, the editor integration, `crap` and `mutate` work the same everywhere
 | Linux | tmux, and a terminal emulator for its window (`x-terminal-emulator`, `gnome-terminal`, `konsole` or `xterm`). |
 | macOS | tmux from Homebrew (`brew install tmux`). The agent opens in Terminal. |
 | WSL2 (recommended on Windows) | tmux inside WSL. The agent opens in a Windows Terminal tab. On a Windows drive (`/mnt/c/…`), Linux isn't told about changes that Windows programs make, so Milligram also watches the project from Windows through `powershell.exe` (or polls, if WSL can't start Windows programs). A project in the Linux file system (for example `~/src`) scans faster and needs neither. |
-| Windows | The default tmux host is unavailable ([#14](https://github.com/jhnoor/milligram/issues/14)); native session control is experimental and interactive attachment is still in development. [Run your own](#run-the-agent-yourself). Install PowerShell 7 for Copilot CLI (`winget install Microsoft.PowerShell`). |
+| Windows | The default tmux host is unavailable ([#14](https://github.com/jhnoor/milligram/issues/14)); the experimental native host supports `milligram agent attach` in your terminal. You can also [run your own](#run-the-agent-yourself). Install PowerShell 7 for Copilot CLI (`winget install Microsoft.PowerShell`). |
 
 ### Older .NET Framework projects
 
@@ -252,15 +252,23 @@ viewer, tell the agent to run `milligram mail`.
 | `milligram doctor` | Check the SDK, restore, test projects, coverage collector, Stryker, and the agent; print the fix for anything missing. Exits 1 if something is. |
 | `milligram mail [--peek]` | Print and remove mail for the agent. |
 | `milligram tell display <real\|proposalId>` / `tell notify "text"` | Send mail to the viewer. |
-| `milligram agent status\|start\|stop\|attach` | Manage the session selected by `agent.host`. Native attachment is still in development. |
+| `milligram agent status\|start\|stop\|attach` | Manage the session selected by `agent.host`. Native `attach` uses the current terminal; Ctrl+] then d detaches. |
 
-The native host is under development in [AGENT_HOST.md](AGENT_HOST.md). To test its session
-control, set `"agent": { "host": "milligram" }`: `serve`, `agent start`, `agent status` and
-`agent stop` use the detached native host. Browser and terminal attachment are still being built;
-keep the default tmux host for an interactive companion until they are ready. Native support
+The native host is under development in [AGENT_HOST.md](AGENT_HOST.md). To try it, set
+`"agent": { "host": "milligram" }`: `serve`, `agent start`, `agent status`, `agent stop` and
+`agent attach` use the detached native host. The browser panel is still being built; native
+sessions currently need a separate terminal running `milligram agent attach`. Native support
 targets Linux with glibc, macOS and Windows 10 version 1809 or later, each on x64 or ARM64.
 `doctor` checks its native library and, on Windows, `pwsh`. Copilot needs PowerShell 6 or later;
 PowerShell 7 is the recommended install.
+
+Native `agent attach` relays the current terminal, including Ctrl+C and resizes. Press **Ctrl+]**,
+then **d** to detach while leaving the agent running. Press Ctrl+] twice to send a literal Ctrl+].
+You can reattach or attach another client to the same session. Input and output must be terminals,
+so use `ssh -t` for an SSH connection. The command returns the agent's exit code when it exits.
+Terminal modes are restored on detach, connection failure, and handled termination signals;
+forced process termination such as SIGKILL cannot run cleanup. Automatic opening through
+`agent.terminal` is currently available only with the tmux host.
 
 Stop the old session before changing `agent.host`, then restart the viewer. Each viewer keeps
 its initial backend so a policy reload cannot redirect its shutdown command. `--keep-agent`

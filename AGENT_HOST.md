@@ -2,8 +2,8 @@
 
 This branch builds the opt-in host tracked in #22. The default companion remains tmux.
 Framing, replay, the terminal session, same-user pipes, project lease, detached host and companion
-control are implemented. `agent.host: "milligram"` selects the native host for session commands;
-interactive attachment is still being built. This document describes a development wire contract.
+control are implemented. `agent.host: "milligram"` selects the native host for session commands
+and interactive terminal attachment. This document describes a development wire contract.
 
 ## Framing
 
@@ -164,8 +164,28 @@ doorbell has been submitted. Stop drains the pipe through EOF and waits for the 
 discovery or lease to be released; it also handles a host that is still initializing. Malformed
 greetings are not treated as running hosts, and incompatible protocol versions require restart.
 Selection is fixed for each viewer run after policy loading. Changing `agent.host` requires a
-viewer restart; stop an old session before switching hosts. User-facing terminal attachment
-remains part of the implementation.
+viewer restart; stop an old session before switching hosts.
 The six-platform terminal evidence and Windows loader workaround are on the separate
 [`codex/pty-spike` branch](https://github.com/jhnoor/milligram/tree/codex/pty-spike/spikes/PtyProbe).
 Real Copilot login, xterm.js rendering, WSL and the rollout criteria remain separate acceptance work.
+
+## Local terminal attachment
+
+`agent attach` connects to the selected native host, enters raw console mode and relays input,
+output and resize frames. It requires terminal input and output. Ctrl+] then d detaches; a doubled
+Ctrl+] sends one literal prefix. Detach never sends stop, and another attached client stays connected.
+The agent's exit frame becomes the command's exit code. A broken pipe produces an actionable error.
+
+Unix uses libc `tcgetattr`, `cfmakeraw`, `tcsetattr` and bounded `poll` calls; SIGWINCH schedules a
+resize. Windows uses VT input and Unicode console records, including window-size events, with
+bounded waits. Neither leaves a blocked standard-input reader after detach. A nested ConPTY's
+request to enable Win32 input mode is rewritten to disable it, keeping the attachment's detach
+key available; other output passes through, with decoding preserved across split UTF-8 chunks.
+
+All relay tasks finish before restoring the saved native console modes. Cleanup also resets the
+alternate screen, bracketed paste, cursor visibility and text attributes. Handled hangup/termination
+signals detach on Unix; uncatchable termination cannot restore a terminal. The native fixture runs
+the public command inside a real terminal and checks Unicode in both directions, Ctrl+C, resize,
+detach/reattach alongside another pipe client, agent exit, exact mode restoration and a subsequent
+shell read. Unix runners also exercise SIGTERM. Classic Windows console, WSL and real Copilot
+remain explicit acceptance checks.

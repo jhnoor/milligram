@@ -5,6 +5,7 @@ using Milligram.Adapters.Companion;
 using Milligram.Adapters.Files;
 using Milligram.Application;
 using Milligram.Domain.Mail;
+using Milligram.Domain.Policies;
 
 namespace Milligram.Main;
 
@@ -184,6 +185,11 @@ public static class Program
                 c.Companion.Stop();
                 return 0;
             case "attach":
+                if (c.Companion.Host == AgentHostKind.Milligram)
+                {
+                    Console.WriteLine("Attached terminal: Ctrl+] then d detaches; Ctrl+] twice sends Ctrl+] to the agent.");
+                    return await c.Attachment.RunAsync(CancellationToken.None);
+                }
                 if (!c.Companion.OpenTerminal()) Console.WriteLine(c.Companion.AttachCommand);
                 return 0;
             default:
@@ -236,6 +242,7 @@ public static class Program
                                   Send mail to the viewer.
           agent [status|start|stop|attach]
                                   Manage the companion agent session.
+                                  Native attach uses this terminal; Ctrl+] then d detaches.
 
         Global: --project DIR     Project root (default: nearest directory with milligram.json).
         """;
