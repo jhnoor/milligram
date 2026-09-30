@@ -59,7 +59,7 @@ One project, `src/Milligram`, packed as the `milligram` dotnet tool. One test pr
 | `Analysis` | 2 | Readers of the outside world: the Roslyn `CSharp` scanner, the Cobertura and Stryker report readers, and the .csproj locator. |
 | `Adapters` | 2 | Web server and SSE `EventHub`, tmux companion and `AgentLaunch` (how any companion starts the agent: command, arguments, conversation, and the `milligram` shim), file watcher (with `DrvFs`, `WindowsSideWatcher` and `ChangePoller` for a Windows drive under WSL), process runner (with `ProgramPath` and `BatchCommandLine` for Windows), CLI parsing. |
 | `Main` | 3 | `Program` (commands) and `Composition` (the only place that constructs concrete classes). |
-| `wwwroot/` | n/a | The viewer: vanilla JS with no build step (`app.js`, `index.html`, `style.css`), embedded in the assembly. `lib/elk.bundled.js` is vendored ELK (EPL-2.0). Do not edit it. |
+| `wwwroot/` | n/a | The viewer: vanilla JS with no build step, embedded in the assembly. `lib/elk.bundled.js` is vendored ELK (EPL-2.0); `lib/xterm/` contains pinned xterm.js and fit addon assets (MIT). Do not edit vendored files; preserve licenses and verify package integrity when upgrading. |
 | `docs/` | n/a | The landing page, served by GitHub Pages from `main`'s `/docs` folder. One static `index.html`, no build. Not part of the tool. |
 
 Data flow: `CSharpScanner` → `CodeModel` (written to `.milligram/model.json`) → `TreeBuilder`

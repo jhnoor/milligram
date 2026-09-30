@@ -33,7 +33,7 @@ The viewer, the editor integration, `crap` and `mutate` work the same everywhere
 | Linux | tmux, and a terminal emulator for its window (`x-terminal-emulator`, `gnome-terminal`, `konsole` or `xterm`). |
 | macOS | tmux from Homebrew (`brew install tmux`). The agent opens in Terminal. |
 | WSL2 (recommended on Windows) | tmux inside WSL. The agent opens in a Windows Terminal tab. On a Windows drive (`/mnt/c/…`), Linux isn't told about changes that Windows programs make, so Milligram also watches the project from Windows through `powershell.exe` (or polls, if WSL can't start Windows programs). A project in the Linux file system (for example `~/src`) scans faster and needs neither. |
-| Windows | The default tmux host is unavailable ([#14](https://github.com/jhnoor/milligram/issues/14)); the experimental native host supports `milligram agent attach` in your terminal. You can also [run your own](#run-the-agent-yourself). Install PowerShell 7 for Copilot CLI (`winget install Microsoft.PowerShell`). |
+| Windows | The default tmux host is unavailable ([#14](https://github.com/jhnoor/milligram/issues/14)); the experimental native host provides a browser panel and `milligram agent attach` in your terminal. You can also [run your own](#run-the-agent-yourself). Install PowerShell 7 for Copilot CLI (`winget install Microsoft.PowerShell`). |
 
 ### Older .NET Framework projects
 
@@ -153,7 +153,7 @@ Optional keys:
 | `omitEdges` | Leave specific dependencies out of the drawing. |
 | `tests` | `{ "projects": [...], "filter": "..." }` — which test projects to run. The default is every detected test project. |
 | `thresholds` | `crapGood` / `crapBad` (5 / 30) and `mutationGood` / `mutationBad` (0.9 / 0.5). |
-| `agent` | `enabled`, `host` (`"tmux"` by default; experimental `"milligram"`), `command`, `args`, `allowTools`, `model`, `terminal` (`"auto"`, `"none"`, or a command using `{session}`), `keepOnExit`. |
+| `agent` | `enabled`, `host` (`"tmux"` by default; experimental `"milligram"`), `command`, `args`, `allowTools`, `model`, `terminal` (`"auto"`, `"none"`, or a tmux-only command using `{session}`), `keepOnExit`. |
 | `editor` | Command for **Open in editor**. The default is `code -g {file}:{line}`. |
 
 The real diagram *is* your namespace tree. Milligram never invents components. For a grouping that
@@ -256,8 +256,8 @@ viewer, tell the agent to run `milligram mail`.
 
 The native host is under development in [AGENT_HOST.md](AGENT_HOST.md). To try it, set
 `"agent": { "host": "milligram" }`: `serve`, `agent start`, `agent status`, `agent stop` and
-`agent attach` use the detached native host. The browser panel is still being built; native
-sessions currently need a separate terminal running `milligram agent attach`. Native support
+`agent attach` use the detached native host. A terminal panel opens below the diagram when the
+agent is running. Native support
 targets Linux with glibc, macOS and Windows 10 version 1809 or later, each on x64 or ARM64.
 `doctor` checks its native library and, on Windows, `pwsh`. Copilot needs PowerShell 6 or later;
 PowerShell 7 is the recommended install.
@@ -267,8 +267,23 @@ then **d** to detach while leaving the agent running. Press Ctrl+] twice to send
 You can reattach or attach another client to the same session. Input and output must be terminals,
 so use `ssh -t` for an SSH connection. The command returns the agent's exit code when it exits.
 Terminal modes are restored on detach, connection failure, and handled termination signals;
-forced process termination such as SIGKILL cannot run cleanup. Automatic opening through
-`agent.terminal` is currently available only with the tmux host.
+forced process termination such as SIGKILL cannot run cleanup.
+
+The browser panel has Start, Stop, Restart and Pop out controls. Pop out opens `/agent.html` on
+the same session; closing or collapsing a panel detaches it without stopping the agent. Drag the
+divider, or focus it and use the arrow keys, to resize it. Height, collapse and screen-reader
+preferences are remembered in the browser. `agent.terminal: "auto"` opens the panel automatically;
+`"none"` keeps it collapsed until you open it. Custom terminal commands remain tmux-only.
+
+**Ctrl+backtick** focuses or collapses the panel. Terminal keys stay out of the diagram's shortcuts.
+**Ctrl+C** copies a selection, or interrupts when nothing is selected. Paste uses the terminal's
+bracketed-paste mode when the agent enables it. **Ctrl/Cmd+click** on a C# `file:line` or `file(line)`
+opens the source viewer (the configured editor in the popout); paths must remain inside the project.
+The Screen reader checkbox enables xterm's accessible output. Browser-reserved shortcuts, such as
+Ctrl+L and Ctrl+W, remain browser shortcuts; use `milligram agent attach` for a full terminal window.
+After a connection loss the panel retries with bounded backoff and replays recent output. A hidden
+browser tab detaches until visible again. Replay is bounded history, so it may not reconstruct an
+old full-screen terminal display exactly.
 
 Stop the old session before changing `agent.host`, then restart the viewer. Each viewer keeps
 its initial backend so a policy reload cannot redirect its shutdown command. `--keep-agent`

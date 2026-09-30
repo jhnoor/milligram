@@ -58,11 +58,13 @@ public class WebServerTests : IAsyncLifetime
     [Fact]
     public async Task ServesEmbeddedAssetsAndSourceWithTheSameJsonContractAsTheViewer()
     {
-        foreach (var path in new[] { "", "app.js", "style.css", "lib/elk.bundled.js" })
+        foreach (var path in new[] { "", "app.js", "style.css", "lib/elk.bundled.js", "agent.html", "agent.js", "agent-panel.js", "agent.css", "api.js", "terminal-links.js", "lib/xterm/xterm.mjs", "lib/xterm/addon-fit.mjs", "lib/xterm/xterm.css" })
         {
             using var asset = await client.GetAsync(path);
             Assert.Equal(HttpStatusCode.OK, asset.StatusCode);
             Assert.True(asset.Headers.CacheControl!.NoCache);
+            Assert.Equal("frame-ancestors 'none'", Assert.Single(asset.Headers.GetValues("Content-Security-Policy")));
+            Assert.Equal("nosniff", Assert.Single(asset.Headers.GetValues("X-Content-Type-Options")));
             Assert.NotEmpty(await asset.Content.ReadAsByteArrayAsync());
         }
         using var meta = JsonDocument.Parse(await client.GetStringAsync("api/meta"));
@@ -76,6 +78,28 @@ public class WebServerTests : IAsyncLifetime
         Assert.Equal("method", card.RootElement.GetProperty("members")[0].GetProperty("kind").GetString());
         using var source = JsonDocument.Parse(await client.GetStringAsync("api/source?file=Order.cs"));
         Assert.Contains("Total()", source.RootElement.GetProperty("text").GetString());
+    }
+
+    [Theory]
+    [InlineData("auto", true)]
+    [InlineData("none", false)]
+    [InlineData("custom-terminal", false)]
+    public async Task TerminalMetadataRespectsTheAutomaticPanelPreference(string preference, bool opens)
+    {
+        workspace.EditPolicy(p => p with { Agent = p.Agent with { Terminal = preference } });
+        using var meta = JsonDocument.Parse(await client.GetStringAsync("api/meta"));
+        Assert.Equal(opens, meta.RootElement.GetProperty("agent").GetProperty("terminal").GetProperty("autoOpen").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("", null)]
+    [InlineData("Cached project title", "Cached project title")]
+    public async Task MetadataKeepsTheCachedModelTitleOrFallsBackToTheProjectDirectory(string title, string? expected)
+    {
+        JsonFile.Write(workspace.Paths.ModelFile, workspace.Model with { Title = title });
+        workspace.ReloadModel();
+        using var meta = JsonDocument.Parse(await client.GetStringAsync("api/meta"));
+        Assert.Equal(expected ?? workspace.DefaultTitle, meta.RootElement.GetProperty("title").GetString());
     }
 
     [Theory]
@@ -219,7 +243,7 @@ public class WebServerTests : IAsyncLifetime
         Assert.Equal(measuredAt, meta.RootElement.GetProperty("metrics").GetProperty("mutationAt").GetDateTimeOffset());
         var agent = meta.RootElement.GetProperty("agent");
         Assert.False(agent.GetProperty("available").GetBoolean());
-        Assert.False(agent.GetProperty("running").GetBoolean());
+        Assert.True(agent.GetProperty("running").GetBoolean());
         Assert.Equal("tmux is not installed.", agent.GetProperty("reason").GetString());
     }
 

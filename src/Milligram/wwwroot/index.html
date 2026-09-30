@@ -6,6 +6,8 @@
   <title>Milligram</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='14' height='14' rx='3' fill='%237aa2ff'/><text x='8' y='12' font-size='10' text-anchor='middle' fill='%230f1320' font-family='sans-serif' font-weight='bold'>mg</text></svg>">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="lib/xterm/xterm.css">
+  <link rel="stylesheet" href="agent.css">
   <script src="lib/elk.bundled.js"></script>
   <script type="module" src="app.js"></script>
 </head>
@@ -96,6 +98,7 @@
         <svg id="legend" width="260" height="150"></svg>
       </section>
     </aside>
+    <section id="agent-panel" aria-label="Companion agent" hidden></section>
   </div>
 
   <div id="card" class="panel" hidden></div>

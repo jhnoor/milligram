@@ -1,0 +1,27 @@
+#app { grid-template-rows: 40px minmax(0, 1fr) auto; }
+#stage { min-height: 0; min-width: 0; }
+#agent-panel { grid-column: 1 / -1; grid-row: 3; min-width: 0; min-height: 0; height: var(--agent-height, 300px); display: flex; flex-direction: column; background: var(--bg); border-top: 1px solid var(--line); }
+#agent-panel.collapsed { height: auto; }
+.agent-resizer { flex: none; height: 6px; cursor: ns-resize; touch-action: none; background: var(--panel); }
+.agent-resizer:hover, .agent-resizer:focus-visible { background: var(--accent); outline: none; }
+.agent-header { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-height: 38px; padding: 5px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.agent-header h2 { font-size: 12px; margin: 0 3px 0 0; }
+.agent-status { display: flex; align-items: center; gap: 6px; min-width: 80px; margin-right: auto; }
+.agent-status[data-state="running"] .dot { background: var(--green); }
+.agent-status[data-state="error"] .dot { background: var(--red); }
+.agent-status[data-state="connecting"] .dot { background: var(--gold); }
+.agent-reader { display: inline-flex; gap: 4px; align-items: center; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.agent-reader input { accent-color: var(--accent); margin: 0; }
+.agent-body { flex: 1; min-height: 0; position: relative; overflow: hidden; padding: 6px 10px; }
+.agent-terminal { width: 100%; height: 100%; }
+.agent-empty { position: absolute; inset: 0; display: grid; place-content: center; padding: 20px; text-align: center; color: var(--muted); background: var(--bg); }
+.agent-notice { flex: none; padding: 4px 12px; color: var(--gold); background: var(--panel); overflow-wrap: anywhere; }
+#agent-panel.collapsed .agent-body, #agent-panel.collapsed .agent-resizer, #agent-panel.collapsed .agent-notice { display: none; }
+.agent-popout { overflow: hidden; }
+.agent-popout #agent-panel { height: 100dvh; border: none; }
+.agent-popout .agent-resizer, .agent-popout .agent-popout-button, .agent-popout .agent-toggle { display: none; }
+.agent-popout #agent-unavailable { padding: 16px; }
+@media (max-width: 700px) {
+  .agent-header { gap: 5px; padding-inline: 7px; }
+  .agent-reader { order: 1; }
+}

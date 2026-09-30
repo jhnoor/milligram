@@ -109,7 +109,7 @@ public sealed record AgentSettings
     public IReadOnlyList<string> AllowTools { get; init; } = DefaultAllowTools;
     public string? Model { get; init; }
 
-    /// <summary>"auto", "none", or a command with a {session} placeholder that attaches a terminal.</summary>
+    /// <summary>"auto" opens the selected host's terminal or browser panel; "none" leaves attachment manual. Custom commands are tmux-only.</summary>
     public string Terminal { get; init; } = "auto";
 
     public bool KeepOnExit { get; init; }

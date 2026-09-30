@@ -80,6 +80,8 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
     /// <summary>Loopback host names only (no DNS rebinding), and POSTs must carry a header no cross-site form can send.</summary>
     private static Task Guard(HttpContext context, RequestDelegate next, int port)
     {
+        context.Response.Headers.ContentSecurityPolicy = "frame-ancestors 'none'";
+        context.Response.Headers.XContentTypeOptions = "nosniff";
         var host = context.Request.Host;
         var local = host.Host is "localhost" or "127.0.0.1" && (host.Port ?? 80) == port;
         var trustedPost = !HttpMethods.IsPost(context.Request.Method) || context.Request.Headers["X-Milligram"] == "1";
@@ -95,11 +97,8 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
         var metrics = workspace.Metrics;
         var available = companion.IsAvailable(out var reason);
         var running = false;
-        if (available)
-        {
-            try { running = companion.IsRunning(); }
-            catch (MilligramException error) { available = false; reason = error.Message; }
-        }
+        try { running = companion.IsRunning(); }
+        catch (MilligramException error) { available = false; reason = error.Message; }
         return new
         {
             title = policy.Title ?? (model.Title.Length > 0 ? model.Title : workspace.DefaultTitle),
@@ -120,7 +119,7 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
                 session = companion.SessionName,
                 attach = companion.AttachCommand,
                 pendingMail = workspace.ToAgent.Count,
-                terminal,
+                terminal = new { terminal.Available, terminal.Protocol, autoOpen = policy.Agent.Terminal == "auto" },
             },
             job = jobs.Status,
             thresholds = policy.Thresholds,

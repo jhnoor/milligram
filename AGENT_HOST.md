@@ -3,7 +3,7 @@
 This branch builds the opt-in host tracked in #22. The default companion remains tmux.
 Framing, replay, the terminal session, same-user pipes, project lease, detached host and companion
 control are implemented. `agent.host: "milligram"` selects the native host for session commands
-and interactive terminal attachment. This document describes a development wire contract.
+and interactive attachment in the terminal or browser. This document describes a development wire contract.
 
 ## Framing
 
@@ -194,8 +194,8 @@ sets this when returning to canonical input, independently of the restored confi
 
 ## Browser transport
 
-The native host exposes a browser attachment through `GET /api/agent/terminal`. The browser
-panel is separate work. `/api/meta` includes `agent.terminal.available` and, when available,
+The native host exposes a browser attachment through `GET /api/agent/terminal`. `/api/meta`
+includes `agent.terminal.available`, the `autoOpen` policy preference and, when available,
 `agent.terminal.protocol`. Availability describes the configured transport, not whether the
 agent is running. The tmux host has no browser transport.
 
@@ -230,3 +230,30 @@ the host's existing per-client backpressure still applies. Exit follows the last
 closes the socket. Detach, broken connections and viewer shutdown release the browser's pipe
 without sending stop. Loopback tests exercise all three authorization gates, relay ordering,
 concurrent clients, malformed frames, message limits, deadlines and shutdown.
+
+## Browser panel
+
+The bottom dock and `/agent.html` use the same `AgentPanel` module and host session. Vendored
+xterm 6.0.0 and fit 0.11.0 need no JavaScript build or remote assets. Each attachment creates
+a fresh parser before replay; parsed-output callbacks return credit only to their own socket.
+Collapse, page hiding and page exit detach. Retry delays grow from 500 ms to 8 seconds, and
+metadata refresh supplies the current in-memory token. A change in project root requires a
+page reload instead of silently attaching to a different project on a reused port.
+
+The page bounds pending input at 256 KiB and sends it in 16 KiB frames. Oversized paste is
+rejected as a whole. OSC 52 clipboard requests are swallowed; OSC 8 links require Ctrl/Cmd+click,
+an http(s) URL and confirmation of the actual destination. Terminal text never becomes HTML.
+File links support C# paths and line numbers, including wrapping and wide terminal cells;
+source/editor access still passes the server's project containment check. Responses forbid
+framing with `Content-Security-Policy: frame-ancestors 'none'`.
+
+Start, stop and restart use the guarded action endpoint and serialize within the viewer.
+Restart checks policy and prerequisites before stopping. Stop remains available for a running
+session even if its startup prerequisites disappear. The inspector's selection and message
+mailbox remains independent of terminal input.
+
+The separate [browser fixture](tests/Milligram.Browser.Integration/README.md) exercises the
+real viewer, relay, pipe and session with a deterministic terminal peer. Its five-browser CI
+workflow is separate from the fast test suite and from the native PTY fixture. WebKit does
+not establish Safari acceptance; real Copilot, IME and OS clipboard behavior still need hands-on
+validation before changing the default host.

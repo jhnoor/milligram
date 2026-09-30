@@ -67,6 +67,7 @@ public static class AgentBriefing
         | `omitEdges` | `[{"from":…,"to":…}]`: drop those dependencies from the drawing. |
         | `proposals` | Named what-if groupings, below. |
         | `agent.host` | `"tmux"` (default) or the opt-in `"milligram"` native host. Restart the viewer after changing it; stop an old session before switching hosts. |
+        | `agent.terminal` | `"auto"` opens a terminal window with tmux or the browser panel with the native host; `"none"` leaves attachment manual. Custom terminal commands are tmux-only. |
 
         Rules:
 
