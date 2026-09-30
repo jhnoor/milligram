@@ -48,6 +48,7 @@ public static class Program
 
     private static async Task<int> ServeAsync(Composition c, CommandLine line)
     {
+        var preferredPort = line.Port(DefaultPort);
         var initialization = c.Initializer.Initialize(force: false);
         if (initialization is not null)
         {
@@ -63,7 +64,7 @@ public static class Program
         }
         if (c.Workspace.PolicyError is { } error) Console.Error.WriteLine(error);
 
-        var (app, url) = await c.WebServer().StartAsync(line.IntValue("port", DefaultPort), CancellationToken.None);
+        var (app, url) = await c.WebServer().StartAsync(preferredPort, CancellationToken.None);
         JsonFile.Write(c.Paths.ServerFile, new { url, pid = Environment.ProcessId, started = DateTimeOffset.UtcNow });
         var limit = c.WatchLimits.For(c.Paths.Root);
         using var watcher = new ProjectWatcher(c.Paths, c.Workspace, c.Actions, c.Events, windowsDrive: limit is not null);
@@ -229,7 +230,7 @@ public static class Program
 
           serve (default)         Start the viewer (and the companion agent) for this project.
                                   On exit, stop only the agent session this viewer started.
-              --port N            Preferred port (default 5170; the next free one is used).
+              --port N            Preferred port, 1-65535 (default 5170; tries up to 29 following ports).
               --no-agent          Do not start the companion agent.
               --no-browser        Do not open a browser.
               --keep-agent        Leave the companion session running on exit.

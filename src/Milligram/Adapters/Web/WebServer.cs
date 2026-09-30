@@ -20,8 +20,11 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
 
     public async Task<(WebApplication App, string Url)> StartAsync(int preferredPort, CancellationToken cancellation)
     {
-        for (var port = preferredPort; port < preferredPort + 30; port++)
+        if (preferredPort is < 1 or > 65535) throw new MilligramException("The preferred port must be from 1 to 65535.");
+        var lastPort = Math.Min(65535, preferredPort + 29);
+        for (var port = preferredPort; port <= lastPort; port++)
         {
+            cancellation.ThrowIfCancellationRequested();
             var app = Build(port);
             try
             {
@@ -31,9 +34,15 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
             catch (IOException)
             {
                 await app.DisposeAsync();
+                cancellation.ThrowIfCancellationRequested();
+            }
+            catch
+            {
+                await app.DisposeAsync();
+                throw;
             }
         }
-        throw new MilligramException($"No free port in {preferredPort}-{preferredPort + 29}.");
+        throw new MilligramException($"No free port in {preferredPort}-{lastPort}.");
     }
 
     private WebApplication Build(int port)

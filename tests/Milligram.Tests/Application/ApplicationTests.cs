@@ -709,8 +709,8 @@ public class CommandLineTests
         Assert.Equal("mutate", line.Command);
         Assert.True(line.Has("all"));
         Assert.Equal(["a.cs", "b.cs"], line.Arguments);
-        Assert.Equal(6000, line.IntValue("port", 1));
+        Assert.Equal(6000, line.Port(1));
         Assert.Equal(["x.xml", "y.xml"], line.Values("coverage"));
-        Assert.Equal(7, line.IntValue("missing", 7));
+        Assert.Equal(7, CommandLine.Parse([]).Port(7));
     }
 }

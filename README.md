@@ -249,7 +249,7 @@ viewer, tell the agent to run `milligram mail`.
 
 | Command | Does |
 |---------|------|
-| `milligram` | Viewer and agent. Options: `--port N`, `--no-agent`, `--no-browser`, `--keep-agent`, `--project DIR`. |
+| `milligram` | Viewer and agent. Options: `--port N` (1–65535, default 5170; tries up to 29 following ports), `--no-agent`, `--no-browser`, `--keep-agent`, `--project DIR`. |
 | `milligram init [--force]` | Write `milligram.json` from the source, inferring levels from the dependencies. |
 | `milligram ir` | Rescan the source. |
 | `milligram crap [--coverage file.xml]` | Run the tests with coverage (or read a Cobertura file) and score CRAP. |

@@ -1,4 +1,5 @@
 using Milligram.Adapters.Cli;
+using Milligram.Application;
 
 namespace Milligram.Tests.Adapters;
 
@@ -60,13 +61,26 @@ public class CommandLineTests
     }
 
     [Theory]
+    [InlineData("1", 1)]
     [InlineData("6000", 6000)]
-    [InlineData("invalid", 5170)]
-    public void NumericOptionsUseTheirFallbackOnlyWhenTheyCannotBeParsed(string value, int expected)
+    [InlineData("65535", 65535)]
+    public void PortsAcceptBothBoundariesAndOnlyDefaultWhenOmitted(string value, int expected)
     {
-        Assert.Equal(expected, CommandLine.Parse(["--port", value]).IntValue("port", 5170));
-        Assert.Equal(5170, CommandLine.Parse([]).IntValue("port", 5170));
+        Assert.Equal(expected, CommandLine.Parse(["--port", value]).Port(5170));
+        Assert.Equal(5170, CommandLine.Parse([]).Port(5170));
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("invalid")]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("65536")]
+    [InlineData("2147483648")]
+    [InlineData("--no-agent")]
+    public void InvalidPortsAreErrorsRatherThanAnUnrequestedDefault(string value) =>
+        Assert.Equal("--port must be an integer from 1 to 65535.",
+            Assert.Throws<MilligramException>(() => CommandLine.Parse(["--port", value]).Port(5170)).Message);
 
     [Fact]
     public void AGlobalProjectOptionDoesNotConsumeTheAgentSubcommand()

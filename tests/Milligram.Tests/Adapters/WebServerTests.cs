@@ -248,6 +248,77 @@ public class WebServerTests : IAsyncLifetime
         }
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(65536)]
+    [InlineData(int.MaxValue)]
+    [InlineData(int.MinValue)]
+    public async Task InvalidPortsFailBeforeBuildingAnApplication(int port)
+    {
+        WebApplication? unexpected = null;
+        try
+        {
+            var error = await Assert.ThrowsAsync<MilligramException>(async () =>
+                unexpected = (await server.StartAsync(port, CancellationToken.None)).App);
+            Assert.Equal("The preferred port must be from 1 to 65535.", error.Message);
+        }
+        finally
+        {
+            if (unexpected is not null)
+            {
+                await unexpected.StopAsync();
+                await unexpected.DisposeAsync();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TheLastPortCanBeUsedButCannotFallForwardPastTheValidRange()
+    {
+        var opened = new List<WebApplication>();
+        const string exhausted = "No free port in 65535-65535.";
+        try
+        {
+            try
+            {
+                var last = await server.StartAsync(65535, CancellationToken.None);
+                opened.Add(last.App);
+                Assert.Equal("http://localhost:65535/", last.Url);
+            }
+            catch (MilligramException error)
+            {
+                Assert.Equal(exhausted, error.Message);
+                return;
+            }
+            try
+            {
+                var duplicate = await server.StartAsync(65535, CancellationToken.None);
+                opened.Add(duplicate.App);
+                Assert.Fail("The occupied final port must report that the valid range is exhausted.");
+            }
+            catch (MilligramException error) { Assert.Equal(exhausted, error.Message); }
+        }
+        finally
+        {
+            foreach (var instance in opened)
+            {
+                await instance.StopAsync();
+                await instance.DisposeAsync();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task CancellationIsNotReportedAsAnExhaustedPortRange() =>
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => server.StartAsync(client.BaseAddress!.Port, new CancellationToken(true)));
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(65535)]
+    public async Task BothValidPortBoundariesHonorCancellation(int port) =>
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => server.StartAsync(port, new CancellationToken(true)));
+
     [Fact]
     public async Task MetadataShowsMeasuredTimesAndUnavailableAgentsAccurately()
     {
