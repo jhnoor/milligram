@@ -332,7 +332,49 @@ public class WorkspaceTests
 
         Assert.False(workspace.ReloadPolicy());
         Assert.Equal("Shop", workspace.Policy.Prefix);
-        Assert.NotNull(workspace.PolicyError);
+        Assert.StartsWith("milligram.json:", workspace.PolicyError);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AnOlderReloadCannotOverwriteAViewerEditOrItsClearedError(bool fails)
+    {
+        using var project = new TempProject(("milligram.json", """{ "title": "Original" }"""));
+        var workspace = Open(project);
+        using var reading = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        using var editing = new ManualResetEventSlim();
+        var reloading = Task.Factory.StartNew(() => workspace.ReloadPolicy(() =>
+        {
+            var loaded = JsonFile.Read<Policy>(workspace.Paths.PolicyFile);
+            reading.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Reload was not released.");
+            if (fails) throw new IOException("An older read failed.");
+            return loaded;
+        }), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        Task? edit = null;
+        try
+        {
+            Assert.True(reading.Wait(TimeSpan.FromSeconds(5)));
+            edit = Task.Factory.StartNew(() =>
+            {
+                editing.Set();
+                workspace.EditPolicy(policy => policy with { Title = "Edited" });
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            Assert.True(editing.Wait(TimeSpan.FromSeconds(5)));
+            Assert.NotSame(edit, await Task.WhenAny(edit, Task.Delay(100)));
+        }
+        finally
+        {
+            release.Set();
+            await reloading.WaitAsync(TimeSpan.FromSeconds(5));
+            if (edit is not null) await edit.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        Assert.Equal(!fails, await reloading);
+        Assert.Equal("Edited", workspace.Policy.Title);
+        Assert.Equal("Edited", JsonFile.Read<Policy>(workspace.Paths.PolicyFile)!.Title);
+        Assert.Null(workspace.PolicyError);
     }
 
     [Fact]
