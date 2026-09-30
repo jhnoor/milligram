@@ -552,7 +552,9 @@ public class AgentHostCompanionTests
         Assert.True(loser.Disposed);
         Assert.False(fixture.Running!.IsCompleted);
         Assert.Equal(0, fixture.Process!.Stops);
-        Assert.True(await Task.Run(companion.IsRunning));
+        await using var client = await AgentPipeClient.ConnectAsync(fixture.Files.Endpoint,
+            new HostHello(HostProtocol.Version, "test-version"), fixture.Token);
+        Assert.Equal(AgentHostLease.ReadDiscovery(fixture.Files)!.Instance, client.Greeting!.Instance);
     }
 
     [Fact]
