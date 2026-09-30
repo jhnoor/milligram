@@ -96,11 +96,14 @@ public sealed record TestSettings
     public string? Filter { get; init; }
 }
 
+public enum AgentHostKind { Tmux, Milligram }
+
 public sealed record AgentSettings
 {
     public static readonly IReadOnlyList<string> DefaultAllowTools = ["shell(milligram:*)"];
 
     public bool Enabled { get; init; } = true;
+    public AgentHostKind Host { get; init; } = AgentHostKind.Tmux;
     public string Command { get; init; } = "copilot";
     public IReadOnlyList<string> Args { get; init; } = [];
     public IReadOnlyList<string> AllowTools { get; init; } = DefaultAllowTools;

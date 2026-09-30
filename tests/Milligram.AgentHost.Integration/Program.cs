@@ -34,6 +34,7 @@ internal static class Program
         Console.WriteLine($"Native agent adapter: {RuntimeInformation.RuntimeIdentifier}; {RuntimeInformation.OSDescription}");
         try
         {
+            if (ProcessRunner.TerminalIssue() is { } issue) throw new InvalidOperationException(issue);
             foreach (var hosted in new[] { false, true })
             {
                 await Scenario(tree: false, parentExits: false, hosted);

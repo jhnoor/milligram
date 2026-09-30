@@ -24,6 +24,7 @@ internal static class DetachedHostFixture
         {
             Agent = new AgentSettings
             {
+                Host = AgentHostKind.Milligram,
                 Command = Program.Dotnet(),
                 Args = [Assembly.GetExecutingAssembly().Location, "--child", Program.Argument, marker],
             },
@@ -86,6 +87,33 @@ internal static class DetachedHostFixture
             hostProcess = null;
             Console.WriteLine("PASS: detached command, duplicate start, reconnect, stale discovery and restart");
             Console.WriteLine("PASS: native companion concurrent start, ownership, reuse, status, notification and stop");
+
+            var started = AgentCommand("start");
+            Require(started.ExitCode == 0, "The opt-in agent start command failed: " + started.Output);
+            hostProcess = Process.GetProcessById(AgentHostLease.ReadDiscovery(files)!.Pid);
+            _ = hostProcess.SafeHandle;
+            var status = AgentCommand("status");
+            Require(status.ExitCode == 0 && status.Output.Contains("running: milligram agent attach", StringComparison.Ordinal),
+                "The opt-in agent status command lost its host: " + status.Output);
+            var stopped = AgentCommand("stop");
+            Require(stopped.ExitCode == 0, "The opt-in agent stop command failed: " + stopped.Output);
+            await hostProcess.WaitForExitAsync(token);
+            Require(AgentHostLease.ReadDiscovery(files) is null, "The agent stop command returned before discovery was removed.");
+            hostProcess.Dispose();
+            hostProcess = null;
+            Console.WriteLine("PASS: opt-in agent start, status and stop commands");
+
+            var unknown = AgentCommand("unknown");
+            Require(unknown.ExitCode == 64, "An unknown agent command did not return usage: " + unknown.Output);
+            await File.WriteAllTextAsync(paths.PolicyFile, """{"agent":{"host":"unknown"}}""", token);
+            var invalid = AgentCommand("start");
+            Require(invalid.ExitCode == 1 && invalid.Output.Contains("milligram.json", StringComparison.Ordinal),
+                "An invalid host setting did not return a configuration error: " + invalid.Output);
+            Require(AgentHostLease.ReadDiscovery(files) is null, "An invalid host setting started an agent.");
+            Console.WriteLine("PASS: invalid agent commands and configuration cannot start a host");
+
+            (int ExitCode, string Output) AgentCommand(string command) => ProcessRunner.Capture(Program.Dotnet(),
+                typeof(ProcessRunner).Assembly.Location, "agent", command, "--project", fixture);
 
             int Launch()
             {

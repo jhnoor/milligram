@@ -22,7 +22,10 @@ public sealed class Composition
         var processes = new ProcessRunner();
         Workspace = new Workspace(Paths, scanner);
         Jobs = new JobQueue(Events);
-        Companion = new TmuxCompanion(Paths, () => Workspace.Policy, selfCommand);
+        Companion = new ConfiguredCompanion(() => Workspace.Policy.Agent.Host,
+            new TmuxCompanion(Paths, () => Workspace.Policy, selfCommand),
+            new AgentHostCompanion(Paths, () => Workspace.Policy, selfCommand, version,
+                ProcessRunner.OnPath, ProcessRunner.StartDetached, ProcessRunner.TerminalIssue));
         Crap = new CrapService(Workspace, locator, processes, new CoberturaReader());
         Mutation = new MutationService(Workspace, locator, processes, new StrykerReportReader());
         Actions = new ViewerActions(Workspace, new PolicyEditor(Workspace), Crap, Mutation, Jobs, Companion, Events);
@@ -37,7 +40,7 @@ public sealed class Composition
     public EventHub Events { get; }
     public Workspace Workspace { get; }
     public JobQueue Jobs { get; }
-    public ICompanion Companion { get; }
+    public ConfiguredCompanion Companion { get; }
     public CrapService Crap { get; }
     public MutationService Mutation { get; }
     public ViewerActions Actions { get; }

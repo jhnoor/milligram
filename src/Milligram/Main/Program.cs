@@ -169,12 +169,12 @@ public static class Program
 
     private static async Task<int> AgentAsync(Composition c, CommandLine line)
     {
+        if (!line.IsAgentCommand) return Usage("Use `milligram agent status|start|stop|attach` with at most one subcommand.");
         c.Workspace.ReloadPolicy();
+        if (c.Workspace.PolicyError is { } error) throw new MilligramException(error);
         switch (line.Subcommand ?? "status")
         {
             case "host":
-                if (line.Arguments.Count != 1) return Usage("The internal agent host command takes only --project DIR.");
-                if (c.Workspace.PolicyError is { } error) throw new MilligramException(error);
                 return await c.AgentHost.RunAsync(CancellationToken.None);
             case "start":
                 await c.Companion.StartAsync(CancellationToken.None);
@@ -225,7 +225,7 @@ public static class Program
               --port N            Preferred port (default 5170; the next free one is used).
               --no-agent          Do not start the companion agent.
               --no-browser        Do not open a browser.
-              --keep-agent        Leave the agent's tmux session running on exit.
+              --keep-agent        Leave the companion session running on exit.
           init [--force]          Write milligram.json from the namespaces in the source.
           ir                      Scan the source and write .milligram/model.json.
           crap [--coverage F]     Run tests with coverage (or read Cobertura file F) and score CRAP.

@@ -5,6 +5,15 @@ namespace Milligram.Tests.Application;
 
 public class DoctorTests
 {
+    [Fact]
+    public async Task NativeAgentDiagnosticsDoNotRequireTmux()
+    {
+        using var fixture = new ServiceFixture("""{ "prefix": "App", "agent": { "host": "milligram" } }""");
+        var checks = await Doctor(fixture, new FakeProjectLocator(), new FakeProcessRunner(), new FakeCompanion())
+            .RunAsync(CancellationToken.None);
+        Assert.Equal("Milligram terminal and copilot found", checks.Single(check => check.Name == "Agent").Detail);
+    }
+
     private static Doctor Doctor(ServiceFixture fixture, FakeProjectLocator locator, FakeProcessRunner processes, FakeCompanion companion, WatchLimit? limit = null) =>
         new(fixture.Workspace, new CrapService(fixture.Workspace, locator, processes, new FakeCoverageReader(new LineHits(new Dictionary<string, IReadOnlyDictionary<int, int>>()))),
             locator, processes, companion, new FakeWatchLimits(limit));

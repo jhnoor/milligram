@@ -6,7 +6,8 @@ namespace Milligram.Adapters.Companion;
 
 /// <summary>Controls a same-user host through its pipe; discovery PIDs never authorize killing a process.</summary>
 public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, IReadOnlyList<string> self, string version,
-    Func<string, bool> onPath, Func<string, IReadOnlyList<string>, string, IDetachedProcess?> launch) : ICompanion
+    Func<string, bool> onPath, Func<string, IReadOnlyList<string>, string, IDetachedProcess?> launch,
+    Func<string?>? terminalIssue = null) : ICompanion
 {
     private readonly AgentHostFiles files = new(paths);
     private readonly HostHello greeting = new(HostProtocol.Version, version);
@@ -23,7 +24,7 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
         var settings = policy().Agent;
         reason = !settings.Enabled ? "The agent is disabled in milligram.json (agent.enabled)."
             : !onPath(settings.Command) ? $"'{settings.Command}' is not on PATH."
-            : "";
+            : terminalIssue?.Invoke() ?? "";
         return reason.Length == 0;
     }
 

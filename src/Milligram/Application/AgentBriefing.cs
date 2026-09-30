@@ -66,6 +66,7 @@ public static class AgentBriefing
         | `edgeKinds` | `[{"from":…,"to":…,"kind":"association"}]`: an association is never a violation. |
         | `omitEdges` | `[{"from":…,"to":…}]`: drop those dependencies from the drawing. |
         | `proposals` | Named what-if groupings, below. |
+        | `agent.host` | `"tmux"` (default) or the opt-in `"milligram"` native host. Restart the viewer after changing it; stop an old session before switching hosts. |
 
         Rules:
 

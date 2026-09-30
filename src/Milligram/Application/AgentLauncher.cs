@@ -11,6 +11,7 @@ public sealed class AgentLauncher(Workspace workspace, ICompanion companion)
     {
         AgentBriefing.Write(workspace.Paths);
         if (!wanted) return NotStarted("--no-agent");
+        if (workspace.PolicyError is { } error) return NotStarted(error);
         if (!companion.IsAvailable(out var reason)) return NotStarted(reason);
         if (companion.IsRunning()) return new(false, [$"Agent: already running — {companion.AttachCommand}"]);
         var started = await companion.StartAsync(cancellation);

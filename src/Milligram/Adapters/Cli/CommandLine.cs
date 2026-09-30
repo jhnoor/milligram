@@ -17,6 +17,8 @@ public sealed class CommandLine
     public string Command { get; }
     public IReadOnlyList<string> Arguments { get; }
     public string? Subcommand => Arguments.FirstOrDefault();
+    public bool IsAgentCommand => Command == "agent" && Arguments.Count <= 1 &&
+        (Subcommand ?? "status") is "status" or "start" or "stop" or "attach" or "host";
 
     public static CommandLine Parse(IReadOnlyList<string> args)
     {

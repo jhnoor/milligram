@@ -159,6 +159,7 @@ public sealed class ViewerActions(
 
     private async Task<ActionResult> StartAgentAsync(CancellationToken cancellation)
     {
+        if (workspace.PolicyError is { } error) return ActionResult.Fail(error);
         if (!companion.IsAvailable(out var reason)) return ActionResult.Fail(reason);
         await companion.StartAsync(cancellation);
         events.Publish("agent");

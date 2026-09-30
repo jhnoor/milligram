@@ -1,3 +1,5 @@
+using Milligram.Domain.Policies;
+
 namespace Milligram.Application;
 
 public enum CheckStatus { Ok, Failed, Skipped }
@@ -124,7 +126,9 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
         var settings = workspace.Policy.Agent;
         if (!settings.Enabled) return Check.Skipped("Agent", "turned off in milligram.json (agent.enabled)");
         return companion.IsAvailable(out var reason)
-            ? Check.Ok("Agent", $"tmux and {settings.Command} found")
+            ? Check.Ok("Agent", settings.Host == AgentHostKind.Milligram
+                ? $"Milligram terminal and {settings.Command} found"
+                : $"tmux and {settings.Command} found")
             : Check.Failed("Agent", reason,
                 "install what the agent needs (see the README's Requirements for your platform)",
                 $"or run your own: {AgentBriefing.RunYourOwn(workspace.Paths, settings.Command)}",

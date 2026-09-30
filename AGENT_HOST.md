@@ -1,9 +1,9 @@
 # Agent host protocol (in development)
 
 This branch builds the opt-in host tracked in #22. The default companion remains tmux.
-Framing, replay, the terminal session, same-user pipes, project lease and detached host are implemented;
-the companion integration is not yet connected. This document describes
-their wire contract, not a released host.
+Framing, replay, the terminal session, same-user pipes, project lease, detached host and companion
+control are implemented. `agent.host: "milligram"` selects the native host for session commands;
+interactive attachment is still being built. This document describes a development wire contract.
 
 ## Framing
 
@@ -163,7 +163,9 @@ A notification sends ring followed by status and waits for the status response, 
 doorbell has been submitted. Stop drains the pipe through EOF and waits for the old owner's
 discovery or lease to be released; it also handles a host that is still initializing. Malformed
 greetings are not treated as running hosts, and incompatible protocol versions require restart.
-Native companion selection and user-facing terminal attachment remain part of the implementation.
+Selection is fixed for each viewer run after policy loading. Changing `agent.host` requires a
+viewer restart; stop an old session before switching hosts. User-facing terminal attachment
+remains part of the implementation.
 The six-platform terminal evidence and Windows loader workaround are on the separate
 [`codex/pty-spike` branch](https://github.com/jhnoor/milligram/tree/codex/pty-spike/spikes/PtyProbe).
 Real Copilot login, xterm.js rendering, WSL and the rollout criteria remain separate acceptance work.

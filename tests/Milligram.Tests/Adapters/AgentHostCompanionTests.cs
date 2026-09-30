@@ -10,6 +10,20 @@ namespace Milligram.Tests.Adapters;
 public class AgentHostCompanionTests
 {
     [Fact]
+    public async Task MissingNativeSupportIsReportedBeforeLaunchingAnAgent()
+    {
+        await using var fixture = new Fixture();
+        var companion = new AgentHostCompanion(fixture.Paths, () => fixture.Policy, ["unused"], "test-version", _ => true,
+            (_, _, _) => throw new InvalidOperationException("must not launch"), () => "terminal library is missing")
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(20),
+        };
+        Assert.False(companion.IsAvailable(out var reason));
+        Assert.Equal("terminal library is missing", reason);
+        Assert.Equal(reason, (await Assert.ThrowsAsync<MilligramException>(() => companion.StartAsync(fixture.Token))).Message);
+    }
+
+    [Fact]
     public async Task StartingTwiceReusesTheHostAndKeepsTheProjectSessionName()
     {
         await using var fixture = new Fixture();

@@ -209,6 +209,17 @@ public class ViewerActionsTests : IDisposable
     }
 
     [Fact]
+    public async Task StartingWithAnInvalidHostSettingDoesNotUseTheLastGoodConfiguration()
+    {
+        File.WriteAllText(workspace.Paths.PolicyFile, """{"agent":{"host":"unknown"}}""");
+        workspace.ReloadPolicy();
+        var result = await Do("start-agent");
+        Assert.False(result.Ok);
+        Assert.Equal(workspace.PolicyError, result.Message);
+        Assert.Equal(0, companion.Starts);
+    }
+
+    [Fact]
     public async Task OpeningATerminalFallsBackToTheAttachCommand()
     {
         var failed = await Do("open-terminal");
@@ -390,6 +401,17 @@ public class AgentLauncherTests : IDisposable
         Assert.Equal(new[] { "Agent: tmux attach -t milligram-test" }, outcome.Banner);
         Assert.True(outcome.Started);
         Assert.Equal(1, companion.Starts);
+    }
+
+    [Fact]
+    public async Task AnInvalidHostSettingPreventsAutomaticStartup()
+    {
+        File.WriteAllText(workspace.Paths.PolicyFile, """{"agent":{"host":"unknown"}}""");
+        workspace.ReloadPolicy();
+        var outcome = await Start();
+        Assert.False(outcome.Started);
+        Assert.Contains(workspace.PolicyError!, outcome.Banner[0]);
+        Assert.Equal(0, companion.Starts);
     }
 
     [Fact]

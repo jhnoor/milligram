@@ -5,6 +5,20 @@ namespace Milligram.Tests.Adapters;
 public class CommandLineTests
 {
     [Theory]
+    [InlineData("agent", true)]
+    [InlineData("agent status", true)]
+    [InlineData("agent start", true)]
+    [InlineData("agent stop", true)]
+    [InlineData("agent attach", true)]
+    [InlineData("agent host", true)]
+    [InlineData("agent typo", false)]
+    [InlineData("agent start stop", false)]
+    [InlineData("agent host extra", false)]
+    [InlineData("serve", false)]
+    public void AgentCommandsRejectUnknownOrExtraSubcommands(string command, bool valid) =>
+        Assert.Equal(valid, CommandLine.Parse(command.Split(' ')).IsAgentCommand);
+
+    [Theory]
     [InlineData("no-agent")]
     [InlineData("no-browser")]
     [InlineData("all")]
