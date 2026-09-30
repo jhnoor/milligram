@@ -173,6 +173,11 @@ public static class Program
     {
         if (!line.IsAgentCommand) return Usage("Use `milligram agent status|start|stop|attach` with at most one subcommand.");
         c.Workspace.ReloadPolicy();
+        if (line.Subcommand == "stop" && c.Workspace.PolicyError is not null)
+        {
+            c.Companion.StopWithoutPolicy();
+            return 0;
+        }
         if (c.Workspace.PolicyError is { } error) throw new MilligramException(error);
         switch (line.Subcommand ?? "status")
         {
@@ -244,6 +249,7 @@ public static class Program
                                   Send mail to the viewer.
           agent [status|start|stop|attach]
                                   Manage the companion agent session.
+                                  With an unreadable policy, stop checks both project backends.
                                   Native attach uses this terminal; Ctrl+] then d detaches.
 
         Global: --project DIR     Project root (default: nearest directory with milligram.json).

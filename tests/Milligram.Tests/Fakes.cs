@@ -63,6 +63,7 @@ internal sealed class FakeCompanion : ICompanion
     public int Starts { get; private set; }
     public int Stops { get; private set; }
     public Func<CancellationToken, Task>? Starting { get; set; }
+    public Action? Stopping { get; set; }
     public AgentOwnership? Ownership { get; private set; }
 
     public string SessionName => "milligram-test";
@@ -84,7 +85,7 @@ internal sealed class FakeCompanion : ICompanion
         return Ownership = CreatedSession ? new AgentOwnership(Stop) : null;
     }
 
-    public void Stop() { Stops++; Running = false; }
+    public void Stop() { Stops++; Stopping?.Invoke(); Running = false; }
     public void Ring() => Rings++;
     public bool OpenTerminal() => TerminalOpens;
 }

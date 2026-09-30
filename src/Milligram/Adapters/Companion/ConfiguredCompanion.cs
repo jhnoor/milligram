@@ -21,6 +21,12 @@ public sealed class ConfiguredCompanion(Func<AgentHostKind> host, ICompanion tmu
     public bool IsRunning() => Companion.IsRunning();
     public Task<AgentOwnership?> StartAsync(CancellationToken cancellation) => Companion.StartAsync(cancellation);
     public void Stop() => Companion.Stop();
+    /// <summary>An unreadable policy cannot select a backend; stop only this project's sessions through both control paths.</summary>
+    public void StopWithoutPolicy()
+    {
+        try { native.Stop(); }
+        finally { tmux.Stop(); }
+    }
     public void Ring() => Companion.Ring();
     public bool OpenTerminal() => Companion.OpenTerminal();
 }

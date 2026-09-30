@@ -7,6 +7,39 @@ namespace Milligram.Tests.Adapters;
 
 public class ConfiguredCompanionTests
 {
+    [Fact]
+    public void RecoveryStillAttemptsTmuxWhenTheNativeHostCannotBeStopped()
+    {
+        var tmux = new FakeCompanion { Running = true };
+        var native = new FakeCompanion { Stopping = () => throw new MilligramException("Host unavailable") };
+        var companion = new ConfiguredCompanion(() => throw new InvalidOperationException("Unreadable policy"), tmux, native);
+
+        Assert.Equal("Host unavailable", Assert.Throws<MilligramException>(companion.StopWithoutPolicy).Message);
+        Assert.False(tmux.Running);
+        Assert.Equal(1, tmux.Stops);
+        Assert.Equal(1, native.Stops);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void RecoveryStopsProjectSessionsWithoutReadingPolicyOrCheckingLaunchPrerequisites(bool tmuxRunning, bool nativeRunning)
+    {
+        var tmux = new FakeCompanion { Running = tmuxRunning, Available = false };
+        var native = new FakeCompanion { Running = nativeRunning, Available = false };
+        var companion = new ConfiguredCompanion(() => throw new InvalidOperationException("Unreadable policy"), tmux, native);
+
+        companion.StopWithoutPolicy();
+
+        Assert.False(tmux.Running);
+        Assert.False(native.Running);
+        Assert.Equal(1, tmux.Stops);
+        Assert.Equal(1, native.Stops);
+        Assert.Equal(0, tmux.Starts + native.Starts);
+    }
+
     [Theory]
     [InlineData(AgentHostKind.Tmux)]
     [InlineData(AgentHostKind.Milligram)]
@@ -41,6 +74,7 @@ public class ConfiguredCompanionTests
         Assert.Equal(1, selected.Rings);
         Assert.Equal(0, unused.Starts);
         Assert.Equal(0, unused.Rings);
+        Assert.Equal(0, unused.Stops);
         Assert.Equal(initial, companion.Host);
         Assert.Equal(1, reads);
     }

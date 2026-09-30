@@ -257,7 +257,7 @@ viewer, tell the agent to run `milligram mail`.
 | `milligram doctor` | Check the SDK, restore, test projects, coverage collector, Stryker, and the agent; print the fix for anything missing. Exits 1 if something is. |
 | `milligram mail [--peek]` | Print and remove mail for the agent. |
 | `milligram tell display <real\|proposalId>` / `tell notify "text"` | Send mail to the viewer. |
-| `milligram agent status\|start\|stop\|attach` | Manage the session selected by `agent.host`. Native `attach` uses the current terminal; Ctrl+] then d detaches. |
+| `milligram agent status\|start\|stop\|attach` | Manage the session selected by `agent.host`. With an unreadable policy, `stop` attempts both project backends. Native `attach` uses the current terminal; Ctrl+] then d detaches. |
 
 The native host is under development in [AGENT_HOST.md](AGENT_HOST.md). To try it, set
 `"agent": { "host": "milligram" }`: `serve`, `agent start`, `agent status`, `agent stop` and
@@ -316,6 +316,8 @@ Stop the old session before changing `agent.host`, then restart the viewer. Each
 its initial backend so a policy reload cannot redirect its shutdown command. On exit, a viewer
 stops only the session it originally started. A replacement started later, including through
 the Restart button, stays running. The Stop button and `agent stop` stop the current session.
+If `milligram.json` is unreadable, `agent stop` attempts both backends for this project; other
+agent commands still require a valid policy.
 `--keep-agent` and `agent.keepOnExit` leave the original session running too.
 The internal `agent host --project DIR [--instance ID]` entry point is for the detached launcher
 and integration fixtures; the launcher supplies the identity used for automatic cleanup.

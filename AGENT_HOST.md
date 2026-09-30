@@ -4,6 +4,8 @@ This branch builds the opt-in host tracked in #22. The default companion remains
 Framing, replay, the terminal session, same-user pipes, project lease, detached host and companion
 control are implemented. `agent.host: "milligram"` selects the native host for session commands
 and interactive attachment in the terminal or browser. This document describes a development wire contract.
+If the policy cannot be read, CLI `agent stop` uses both project backends without selecting one
+from the broken file. Native shutdown still uses the pipe and lease, never a discovery PID.
 
 ## Framing
 
