@@ -1,8 +1,8 @@
 # Agent host protocol (in development)
 
 This branch builds the opt-in host tracked in #22. The default companion remains tmux.
-Framing, replay, the terminal session, same-user pipes, project lease and native shutdown are implemented;
-the detached process command and companion integration are not yet connected. This document describes
+Framing, replay, the terminal session, same-user pipes, project lease and detached host are implemented;
+the companion integration is not yet connected. This document describes
 their wire contract, not a released host.
 
 ## Framing
@@ -79,8 +79,9 @@ before closing them; cancellation can interrupt idle readers and the listener.
 `AgentHostLease` holds `.milligram/run/agent-host.lock` open with exclusive sharing for the
 host's lifetime. It keeps the lock file after closing: deleting it would let competing Unix
 processes lock different file objects at the same path. A stale discovery file does not hold
-the lock. The future process host will publish discovery only after its terminal and listener
-are ready.
+the lock. The process host publishes discovery only after its terminal and listener are ready.
+It also takes ownership before opening its log or preparing the agent's conversation and shim;
+a duplicate start cannot change these files.
 
 Discovery at `.milligram/run/agent-host.json` is atomic JSON containing the host `pid`, pipe
 `endpoint`, `protocol`, Milligram `version` and `started` timestamp. The lease removes only the
@@ -129,7 +130,20 @@ cancellation closes stalled connections; terminal disposal releases the native h
 stop, drain or disposal steps are recorded without skipping later cleanup. Only after cleanup
 does the runtime write its exit and error messages to the host log.
 
-The detached host command and companion integration remain part of the implementation.
+## Detached process
+
+The internal `agent host --project DIR` command owns the lease, log and native runtime.
+`ProcessRunner.StartDetached` separates its standard streams and starts Windows hosts without a
+visible console. The caller disposes the returned process handle; that does not stop the host.
+On Unix, the host calls `setsid` before creating the agent terminal. Windows launches temporarily
+clear inheritance on the launcher's original standard handles, then restore it: redirecting all
+three streams alone still allowed the host to retain a captured launcher's output pipe in the
+real fixture. This kept the caller waiting even though its immediate child had already exited.
+
+The integration fixture now runs the actual hidden command through a short-lived launcher.
+It checks detachment, Unix session ownership, duplicate starts, replacement clients, doorbell,
+stop, stale discovery and restart. Native companion selection and user-facing control remain
+part of the implementation.
 The six-platform terminal evidence and Windows loader workaround are on the separate
 [`codex/pty-spike` branch](https://github.com/jhnoor/milligram/tree/codex/pty-spike/spikes/PtyProbe).
 Real Copilot login, xterm.js rendering, WSL and the rollout criteria remain separate acceptance work.

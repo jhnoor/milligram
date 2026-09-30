@@ -16,6 +16,7 @@ public sealed class CommandLine
 
     public string Command { get; }
     public IReadOnlyList<string> Arguments { get; }
+    public string? Subcommand => Arguments.FirstOrDefault();
 
     public static CommandLine Parse(IReadOnlyList<string> args)
     {

@@ -254,6 +254,10 @@ viewer, tell the agent to run `milligram mail`.
 | `milligram tell display <real\|proposalId>` / `tell notify "text"` | Send mail to the viewer. |
 | `milligram agent status\|start\|stop\|attach` | Manage the agent session. |
 
+The native host is under development in [AGENT_HOST.md](AGENT_HOST.md). Its internal
+`milligram agent host --project DIR` entry point is for the detached launcher and integration
+fixtures; the normal companion commands still select tmux until native companion wiring is complete.
+
 ## Develop
 
 ```bash

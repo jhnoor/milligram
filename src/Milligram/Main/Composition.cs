@@ -13,7 +13,7 @@ namespace Milligram.Main;
 /// <summary>The composition root: the only place that knows every concrete class.</summary>
 public sealed class Composition
 {
-    public Composition(string root, IReadOnlyList<string> selfCommand)
+    public Composition(string root, IReadOnlyList<string> selfCommand, string version)
     {
         Paths = new ProjectPaths(root);
         Events = new EventHub();
@@ -30,6 +30,7 @@ public sealed class Composition
         WatchLimits = new DrvFs();
         Doctor = new Doctor(Workspace, Crap, locator, processes, Companion, WatchLimits);
         Agent = new AgentLauncher(Workspace, Companion);
+        AgentHost = new AgentHost(Paths, () => Workspace.Policy, selfCommand, version, ProcessRunner.StartTerminalAsync, ProcessRunner.DetachHostSession);
     }
 
     public ProjectPaths Paths { get; }
@@ -44,6 +45,7 @@ public sealed class Composition
     public IWatchLimits WatchLimits { get; }
     public Doctor Doctor { get; }
     public AgentLauncher Agent { get; }
+    public AgentHost AgentHost { get; }
 
     public WebServer WebServer() => new(Workspace, Actions, Jobs, Companion, Events);
 }

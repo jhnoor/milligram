@@ -13,7 +13,7 @@ namespace Milligram.AgentHost.Integration;
 /// <summary>Real terminals and owned fixture processes; deliberately outside the fast unit-test solution.</summary>
 internal static class Program
 {
-    private const string Argument = "a \"quoted\" argument & 漢";
+    internal const string Argument = "a \"quoted\" argument & 漢";
     private const string Unicode = "Grüße ☃ 漢字 🐱";
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(15);
 
@@ -22,6 +22,13 @@ internal static class Program
         Console.OutputEncoding = new UTF8Encoding(false);
         if (args.FirstOrDefault() == "--child") return await Child(args);
         if (args.FirstOrDefault() == "--grandchild") return await Grandchild(args[1]);
+        if (args.FirstOrDefault() == "--launch-host")
+        {
+            using var host = ProcessRunner.StartDetached(Dotnet(), [typeof(ProcessRunner).Assembly.Location, "agent", "host", "--project", args[1]], args[1]);
+            if (host is null) return 1;
+            Console.WriteLine(host.Id);
+            return 0;
+        }
         var rid = Array.IndexOf(args, "--expected-rid");
         if (rid >= 0 && RuntimeInformation.RuntimeIdentifier != args[rid + 1]) throw new InvalidOperationException("Unexpected runner architecture.");
         Console.WriteLine($"Native agent adapter: {RuntimeInformation.RuntimeIdentifier}; {RuntimeInformation.OSDescription}");
@@ -33,6 +40,7 @@ internal static class Program
                 await Scenario(tree: true, parentExits: false, hosted);
                 await Scenario(tree: true, parentExits: true, hosted);
             }
+            await DetachedHostFixture.Run();
             Console.WriteLine("PASS: terminal controls and tree cleanup directly and through the host runtime and pipe");
             return 0;
         }
@@ -247,7 +255,7 @@ internal static class Program
         return 0;
     }
 
-    private static string Dotnet()
+    internal static string Dotnet()
     {
         var runtime = new DirectoryInfo(RuntimeEnvironment.GetRuntimeDirectory());
         return Path.Combine(runtime.Parent!.Parent!.Parent!.FullName, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
@@ -258,7 +266,7 @@ internal static class Program
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private sealed class Capture
+    internal sealed class Capture
     {
         private readonly Lock gate = new();
         private readonly StringBuilder received = new();

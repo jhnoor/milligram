@@ -19,7 +19,7 @@ public static class Program
         if (line.Has("help") || line.Command == "help") { Console.WriteLine(Help); return 0; }
         try
         {
-            var composition = new Composition(FindRoot(line.Value("project")), SelfCommand());
+            var composition = new Composition(FindRoot(line.Value("project")), SelfCommand(), Version);
             return line.Command switch
             {
                 "serve" => await ServeAsync(composition, line),
@@ -169,9 +169,13 @@ public static class Program
 
     private static async Task<int> AgentAsync(Composition c, CommandLine line)
     {
-        c.Workspace.Load();
-        switch (line.Arguments.FirstOrDefault() ?? "status")
+        c.Workspace.ReloadPolicy();
+        switch (line.Subcommand ?? "status")
         {
+            case "host":
+                if (line.Arguments.Count != 1) return Usage("The internal agent host command takes only --project DIR.");
+                if (c.Workspace.PolicyError is { } error) throw new MilligramException(error);
+                return await c.AgentHost.RunAsync(CancellationToken.None);
             case "start":
                 await c.Companion.StartAsync(CancellationToken.None);
                 Console.WriteLine(c.Companion.AttachCommand);
@@ -231,7 +235,7 @@ public static class Program
           tell display <ctx> [--focus id] | notify <text> | reload
                                   Send mail to the viewer.
           agent [status|start|stop|attach]
-                                  Manage the companion agent's tmux session.
+                                  Manage the companion agent session.
 
         Global: --project DIR     Project root (default: nearest directory with milligram.json).
         """;
