@@ -30,6 +30,8 @@ internal static class Program
         var capture = new Capture();
         var fixture = Path.Combine(Path.GetTempPath(), "Milligram PTY probe " + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(fixture);
+        var marker = Guid.NewGuid().ToString("N");
+        await File.WriteAllTextAsync(Path.Combine(fixture, "cwd-marker"), marker);
         IPtyConnection? terminal = null;
         var stopReading = new CancellationTokenSource();
         Task? reading = null;
@@ -54,7 +56,7 @@ internal static class Program
                 {
                     ["TERM"] = "xterm-256color",
                     ["LANG"] = OperatingSystem.IsMacOS() ? "en_US.UTF-8" : "C.UTF-8",
-                    ["MILLIGRAM_PTY_CWD"] = fixture,
+                    ["MILLIGRAM_PTY_MARKER"] = marker,
                     ["MILLIGRAM_PTY_VALUE"] = "value with spaces & Æ",
                 },
             };
@@ -92,9 +94,14 @@ internal static class Program
             await Check("resize and SIGWINCH", async () =>
             {
                 terminal.Resize(96, 31);
-                await Send("size\r");
-                await capture.Wait("SIZE:96x31");
                 if (!OperatingSystem.IsWindows()) await capture.Wait("SIGWINCH");
+                var started = Stopwatch.GetTimestamp();
+                while (!capture.Text.Contains("SIZE:96x31", StringComparison.Ordinal))
+                {
+                    if (Stopwatch.GetElapsedTime(started) > Deadline) throw new TimeoutException("The child did not observe resized dimensions");
+                    await Send("size\r");
+                    await Task.Delay(20);
+                }
             });
             await Check("Ctrl+C reaches the child without ending the session", async () =>
             {
@@ -215,7 +222,7 @@ internal static class Program
         }
         Console.WriteLine("TTY:" + attached);
         Console.WriteLine("ARG:" + (args.ElementAtOrDefault(1) == Argument));
-        Console.WriteLine("CWD:" + (Environment.CurrentDirectory == Environment.GetEnvironmentVariable("MILLIGRAM_PTY_CWD")));
+        Console.WriteLine("CWD:" + (File.Exists("cwd-marker") && File.ReadAllText("cwd-marker") == Environment.GetEnvironmentVariable("MILLIGRAM_PTY_MARKER")));
         Console.WriteLine("ENV:" + (Environment.GetEnvironmentVariable("MILLIGRAM_PTY_VALUE") == "value with spaces & Æ"));
         Console.WriteLine($"SIZE:{Console.WindowWidth}x{Console.WindowHeight}");
         Console.WriteLine("READY");
