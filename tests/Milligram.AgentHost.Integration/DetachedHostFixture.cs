@@ -71,10 +71,11 @@ internal static class DetachedHostFixture
             var policy = JsonFile.Read<Policy>(paths.PolicyFile)!;
             var companion = new AgentHostCompanion(paths, () => policy, [Program.Dotnet(), typeof(ProcessRunner).Assembly.Location],
                 "integration", ProcessRunner.OnPath, ProcessRunner.StartDetached);
-            await companion.StartAsync(token);
+            var starts = await Task.WhenAll(companion.StartAsync(token), companion.StartAsync(token));
+            Require(starts.Count(started => started) == 1, "Concurrent starters did not report exactly one owner.");
             hostProcess = Process.GetProcessById(AgentHostLease.ReadDiscovery(files)!.Pid);
             _ = hostProcess.SafeHandle;
-            await companion.StartAsync(token);
+            Require(!await companion.StartAsync(token), "A reused host incorrectly granted startup ownership.");
             Require(companion.IsRunning(), "The controller did not find the host it started.");
             await ReadClient(stop: true, companion);
             await hostProcess.WaitForExitAsync(token);
@@ -83,7 +84,7 @@ internal static class DetachedHostFixture
             hostProcess.Dispose();
             hostProcess = null;
             Console.WriteLine("PASS: detached command, duplicate start, reconnect, stale discovery and restart");
-            Console.WriteLine("PASS: native companion start, reuse, status, notification and stop");
+            Console.WriteLine("PASS: native companion concurrent start, ownership, reuse, status, notification and stop");
 
             int Launch()
             {
@@ -132,7 +133,22 @@ internal static class DetachedHostFixture
                 }
             }
         }
-        catch (Exception error) { failure = error; throw; }
+        catch (Exception error)
+        {
+            failure = error;
+            Console.Error.WriteLine($"Detached fixture failed: host exited = {hostProcess?.HasExited}, discovery = {AgentHostLease.ReadDiscovery(files)}");
+            try
+            {
+                using var log = new StreamReader(new FileStream(files.LogFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
+                Console.Error.WriteLine(await log.ReadToEndAsync());
+                using var probeDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                var watch = Stopwatch.StartNew();
+                await using var probe = await AgentPipeClient.ConnectAsync(files.Endpoint, new HostHello(HostProtocol.Version, "diagnostic"), probeDeadline.Token);
+                Console.Error.WriteLine($"Diagnostic async hello succeeded in {watch.ElapsedMilliseconds} ms.");
+            }
+            catch (Exception diagnostic) { Console.Error.WriteLine("Diagnostic probe failed: " + diagnostic.Message); }
+            throw;
+        }
         finally
         {
             if (hostProcess is not null)

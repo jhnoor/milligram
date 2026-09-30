@@ -29,16 +29,16 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
 
     public bool IsRunning() => ProbeAsync(CancellationToken.None).GetAwaiter().GetResult();
 
-    public async Task StartAsync(CancellationToken cancellation)
+    public async Task<bool> StartAsync(CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        if (await ReadyAsync(cancellation)) return;
+        if (await ReadyAsync(cancellation)) return false;
         cancellation.ThrowIfCancellationRequested();
         if (!IsAvailable(out var reason)) throw new MilligramException(reason);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         deadline.CancelAfter(StartupTimeout);
         IDetachedProcess? started = null;
-        var ready = false;
+        var owned = false;
         try
         {
             while (!await ReadyAsync(deadline.Token))
@@ -55,7 +55,8 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
                 }
                 await Task.Delay(RetryDelay, deadline.Token);
             }
-            ready = true;
+            owned = started is { HasExited: false } && AgentHostLease.ReadDiscovery(files)?.Pid == started.Id;
+            return owned;
         }
         catch (OperationCanceledException)
         {
@@ -68,7 +69,7 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
         }
         finally
         {
-            try { if (!ready && started is { HasExited: false }) started.Stop(); }
+            try { if (!owned && started is { HasExited: false }) started.Stop(); }
             finally { started?.Dispose(); }
         }
     }

@@ -63,7 +63,8 @@ public interface ICompanion
     string AttachCommand { get; }
     bool IsAvailable(out string reason);
     bool IsRunning();
-    Task StartAsync(CancellationToken cancellation);
+    /// <summary>True only when this call created the session; a reused session belongs to its original caller.</summary>
+    Task<bool> StartAsync(CancellationToken cancellation);
     void Stop();
     /// <summary>Wakes the agent to read its mail. The doorbell carries no content.</summary>
     void Ring();

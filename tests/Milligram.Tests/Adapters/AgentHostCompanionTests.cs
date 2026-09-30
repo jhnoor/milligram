@@ -13,8 +13,8 @@ public class AgentHostCompanionTests
     public async Task StartingTwiceReusesTheHostAndKeepsTheProjectSessionName()
     {
         await using var fixture = new Fixture();
-        await fixture.Companion.StartAsync(fixture.Token);
-        await fixture.Companion.StartAsync(fixture.Token);
+        Assert.True(await fixture.Companion.StartAsync(fixture.Token));
+        Assert.False(await fixture.Companion.StartAsync(fixture.Token));
         Assert.Equal(1, fixture.Launches);
         Assert.True(await Task.Run(fixture.Companion.IsRunning));
         Assert.Equal(TmuxCompanion.SessionNameFor(fixture.Paths.Root), fixture.Companion.SessionName);
@@ -247,7 +247,7 @@ public class AgentHostCompanionTests
             Assert.False(starting.IsCompleted);
             Assert.Equal(0, fixture.Launches);
             owner.Publish(new AgentHostDiscovery(Environment.ProcessId, fixture.Files.Endpoint, HostProtocol.Version, "test-version", DateTimeOffset.UtcNow));
-            await starting;
+            Assert.False(await starting);
             Assert.Equal(0, fixture.Launches);
         }
         finally { cancellation.Cancel(); await listening.WaitAsync(fixture.Token); }
@@ -315,6 +315,34 @@ public class AgentHostCompanionTests
         using var free = new AgentHostLease(fixture.Files);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ACompetingHostOwnsTheSessionAndOnlyTheLosingChildIsCleanedUp(bool childExited)
+    {
+        await using var fixture = new Fixture();
+        var exit = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (childExited) exit.TrySetResult(1);
+        var loser = new ProcessHandle(exit.Task, () => exit.TrySetResult(1)) { Id = int.MaxValue };
+        var companion = new AgentHostCompanion(fixture.Paths, () => fixture.Policy, ["dotnet-stub"], "test-version", _ => true,
+            (command, args, root) =>
+            {
+                fixture.Launch(command, args, root)!.Dispose();
+                return loser;
+            })
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(20),
+            RetryDelay = TimeSpan.FromMilliseconds(10),
+        };
+
+        Assert.False(await companion.StartAsync(fixture.Token));
+        Assert.Equal(childExited ? 0 : 1, loser.Stops);
+        Assert.True(loser.Disposed);
+        Assert.False(fixture.Running!.IsCompleted);
+        Assert.Equal(0, fixture.Process!.Stops);
+        Assert.True(await Task.Run(companion.IsRunning));
+    }
+
     private static NamedPipeServerStream Server(string endpoint) => new(endpoint, PipeDirection.InOut,
         NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 
@@ -360,7 +388,7 @@ public class AgentHostCompanionTests
             };
         }
 
-        private IDetachedProcess? Launch(string command, IReadOnlyList<string> args, string root)
+        public IDetachedProcess? Launch(string command, IReadOnlyList<string> args, string root)
         {
             Assert.Equal("dotnet-stub", command);
             Assert.Equal(Paths.Root, root);
@@ -390,7 +418,7 @@ public class AgentHostCompanionTests
 
     private sealed class ProcessHandle(Task<int> running, Action stop) : IDetachedProcess
     {
-        public int Id => Environment.ProcessId;
+        public int Id { get; init; } = Environment.ProcessId;
         public bool HasExited => running.IsCompleted;
         public int ExitCode => running.GetAwaiter().GetResult();
         public int Stops { get; private set; }

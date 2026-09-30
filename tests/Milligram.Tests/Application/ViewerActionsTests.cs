@@ -391,4 +391,16 @@ public class AgentLauncherTests : IDisposable
         Assert.True(outcome.Started);
         Assert.Equal(1, companion.Starts);
     }
+
+    [Fact]
+    public async Task AConcurrentStarterKeepsOwnershipOfItsAgent()
+    {
+        companion.CreatedSession = false;
+
+        var outcome = await Start();
+
+        Assert.False(outcome.Started);
+        Assert.Equal(new[] { "Agent: already running — tmux attach -t milligram-test" }, outcome.Banner);
+        Assert.Equal(1, companion.Starts);
+    }
 }

@@ -57,6 +57,7 @@ internal sealed class FakeCompanion : ICompanion
     public bool Available { get; set; } = true;
     public bool Running { get; set; }
     public bool TerminalOpens { get; set; }
+    public bool CreatedSession { get; set; } = true;
     public int Rings { get; private set; }
     public int Starts { get; private set; }
 
@@ -71,11 +72,11 @@ internal sealed class FakeCompanion : ICompanion
 
     public bool IsRunning() => Running;
 
-    public Task StartAsync(CancellationToken cancellation)
+    public Task<bool> StartAsync(CancellationToken cancellation)
     {
         Starts++;
         Running = true;
-        return Task.CompletedTask;
+        return Task.FromResult(CreatedSession);
     }
 
     public void Stop() => Running = false;

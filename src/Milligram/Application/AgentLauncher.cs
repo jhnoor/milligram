@@ -13,8 +13,8 @@ public sealed class AgentLauncher(Workspace workspace, ICompanion companion)
         if (!wanted) return NotStarted("--no-agent");
         if (!companion.IsAvailable(out var reason)) return NotStarted(reason);
         if (companion.IsRunning()) return new(false, [$"Agent: already running — {companion.AttachCommand}"]);
-        await companion.StartAsync(cancellation);
-        return new(true, [$"Agent: {companion.AttachCommand}"]);
+        var started = await companion.StartAsync(cancellation);
+        return new(started, [started ? $"Agent: {companion.AttachCommand}" : $"Agent: already running — {companion.AttachCommand}"]);
     }
 
     private Outcome NotStarted(string reason) => new(false,

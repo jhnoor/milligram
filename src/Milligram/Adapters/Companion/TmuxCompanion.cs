@@ -41,17 +41,22 @@ public sealed class TmuxCompanion(ProjectPaths paths, Func<Policy> policy, IRead
     /// <summary>Not native Windows: a tmux from MSYS2 or Cygwin can't run the bash launch script with Windows paths in it.</summary>
     private static bool Supported => !OperatingSystem.IsWindows();
 
-    public Task StartAsync(CancellationToken cancellation)
+    public Task<bool> StartAsync(CancellationToken cancellation)
     {
-        if (IsRunning()) return Task.CompletedTask;
+        cancellation.ThrowIfCancellationRequested();
+        if (IsRunning()) return Task.FromResult(false);
         if (!IsAvailable(out var reason)) throw new MilligramException(reason);
 
         AgentBriefing.Write(paths);
         var script = WriteLaunchScript();
         var code = Tmux("new-session", "-d", "-s", SessionName, "-c", paths.Root, "-x", "200", "-y", "50", $"bash {AgentLaunches.BashQuote(script)}");
-        if (code != 0) throw new MilligramException($"tmux could not start session {SessionName}.");
+        if (code != 0)
+        {
+            if (IsRunning()) return Task.FromResult(false);
+            throw new MilligramException($"tmux could not start session {SessionName}.");
+        }
         OpenTerminal();
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
     public void Stop()

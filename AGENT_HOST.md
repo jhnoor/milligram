@@ -152,6 +152,9 @@ real command: start, reuse, status, notification and stop.
 returning from startup. If a previous host is still releasing its lease, it waits before
 launching. An early startup failure includes a bounded log tail. Cancellation or a startup
 deadline can stop only the child handle returned by this launch, never a PID from discovery.
+Startup reports ownership only when its own live child published discovery. A concurrent caller
+reuses the winning host and cleans up its losing child, so two viewers cannot both acquire
+shutdown ownership. Tmux reports creation separately from reuse through the same companion port.
 
 A notification sends ring followed by status and waits for the status response, ensuring the
 doorbell has been submitted. Stop drains the pipe through EOF and waits for the old owner's
