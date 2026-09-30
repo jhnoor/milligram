@@ -14,7 +14,7 @@ internal static class DetachedHostFixture
 {
     public static async Task Run()
     {
-        var fixture = Path.Combine(Path.GetTempPath(), "Milligram detached & 漢 " + Guid.NewGuid().ToString("N")[..10]);
+        var fixture = Path.Combine(Path.GetTempPath(), "Milligram detached & 漢; " + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(fixture);
         var marker = Guid.NewGuid().ToString("N");
         await File.WriteAllTextAsync(Path.Combine(fixture, "cwd-marker"), marker);
@@ -98,10 +98,23 @@ internal static class DetachedHostFixture
             Console.WriteLine("PASS: detached command, duplicate start, reconnect, stale discovery and restart");
             Console.WriteLine("PASS: native companion concurrent start, generation ownership, reuse, status, notification and stop");
 
+            policy = policy with
+            {
+                Agent = policy.Agent with
+                {
+                    Terminal = $"\"{Program.Dotnet()}\" \"{Assembly.GetExecutingAssembly().Location}\" --record-terminal {{command}}",
+                },
+            };
+            JsonFile.Write(paths.PolicyFile, policy);
             var started = AgentCommand("start");
             Require(started.ExitCode == 0, "The opt-in agent start command failed: " + started.Output);
             hostProcess = Process.GetProcessById(AgentHostLease.ReadDiscovery(files)!.Pid);
             _ = hostProcess.SafeHandle;
+            var invocation = Path.Combine(paths.RunDirectory, "terminal-invocation.json");
+            await Until(() => File.Exists(invocation));
+            Require(JsonFile.Read<string[]>(invocation)!.SequenceEqual(
+                [Program.Dotnet(), typeof(ProcessRunner).Assembly.Location, "agent", "attach", "--project", fixture]),
+                "The custom terminal did not receive this build and project as separate arguments.");
             var status = AgentCommand("status");
             Require(status.ExitCode == 0 && status.Output.Contains("running: milligram agent attach", StringComparison.Ordinal),
                 "The opt-in agent status command lost its host: " + status.Output);
@@ -111,7 +124,7 @@ internal static class DetachedHostFixture
             Require(AgentHostLease.ReadDiscovery(files) is null, "The agent stop command returned before discovery was removed.");
             hostProcess.Dispose();
             hostProcess = null;
-            Console.WriteLine("PASS: opt-in agent start, status and stop commands");
+            Console.WriteLine("PASS: opt-in agent start, status, stop and custom terminal argument boundaries");
 
             var unknown = AgentCommand("unknown");
             Require(unknown.ExitCode == 64, "An unknown agent command did not return usage: " + unknown.Output);

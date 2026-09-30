@@ -155,7 +155,7 @@ Optional keys:
 | `omitEdges` | Leave specific dependencies out of the drawing. |
 | `tests` | `{ "projects": [...], "filter": "..." }` — which test projects to run. The default is every detected test project. |
 | `thresholds` | `crapGood` / `crapBad` (5 / 30) and `mutationGood` / `mutationBad` (0.9 / 0.5). |
-| `agent` | `enabled`, `host` (`"tmux"` by default; experimental `"milligram"`), `command`, `args`, `allowTools`, `model`, `terminal` (`"auto"`, `"none"`, or a tmux-only command using `{session}`), `keepOnExit`. |
+| `agent` | `enabled`, `host` (`"tmux"` by default; experimental `"milligram"`), `command`, `args`, `allowTools`, `model`, `terminal` (`"auto"`, `"none"`, or a command using `{session}` for tmux or `{command}` for native attach), `keepOnExit`. |
 | `editor` | Command for **Open in editor**. The default is `code -g {file}:{line}`. |
 
 The real diagram *is* your namespace tree. Milligram never invents components. For a grouping that
@@ -230,7 +230,7 @@ agent tokens.
 
 ### Run the agent yourself
 
-With `--no-agent`, or where Milligram can't start the agent (native Windows, or no tmux), run it in a
+With `--no-agent`, or where the selected host's prerequisites are missing, run the agent in a
 terminal of your own. Milligram writes `.milligram/agent.md` every time it starts, and the banner says
 so. In the project folder:
 
@@ -275,7 +275,25 @@ The browser panel has Start, Stop, Restart and Pop out controls. Pop out opens `
 the same session; closing or collapsing a panel detaches it without stopping the agent. Drag the
 divider, or focus it and use the arrow keys, to resize it. Height, collapse and screen-reader
 preferences are remembered in the browser. `agent.terminal: "auto"` opens the panel automatically;
-`"none"` keeps it collapsed until you open it. Custom terminal commands remain tmux-only.
+`"none"` keeps it collapsed until you open it.
+
+For an external native terminal, set `agent.terminal` to a command ending in a separate
+`{command}` argument, for example:
+
+| Terminal | `agent.terminal` |
+|----------|------------------|
+| Windows Terminal | `"wt.exe new-tab {command}"` |
+| GNOME Terminal | `"gnome-terminal -- {command}"` |
+| WezTerm | `"wezterm start -- {command}"` |
+
+The template runs when Milligram starts a new host; reusing an existing host does not open
+another window. `{command}` expands to the same build's `agent attach --project DIR` as separate
+arguments, preserving paths with spaces. Double quotes group template arguments. Choose a
+terminal that accepts an executable and its arguments, rather than a shell command string.
+Milligram escapes generated semicolons for Windows Terminal's command parser. `doctor` reports
+invalid templates or a missing terminal executable. If the window cannot start, use
+`milligram agent attach` in your terminal. That command always attaches in the current terminal.
+Custom templates leave the viewer panel collapsed until you open it.
 
 **Ctrl+backtick** focuses or collapses the panel. Terminal keys stay out of the diagram's shortcuts.
 **Ctrl+C** copies a selection, or interrupts when nothing is selected. Paste uses the terminal's

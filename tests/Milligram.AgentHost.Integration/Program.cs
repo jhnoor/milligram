@@ -21,6 +21,11 @@ internal static class Program
     {
         Console.OutputEncoding = new UTF8Encoding(false);
         if (args.FirstOrDefault() == "--child") return await Child(args);
+        if (args.FirstOrDefault() == "--record-terminal")
+        {
+            JsonFile.Write(Path.Combine(args[^1], ".milligram", "run", "terminal-invocation.json"), args[1..]);
+            return 0;
+        }
         if (args.FirstOrDefault() == "--grandchild") return await Grandchild(args[1]);
         if (args.FirstOrDefault() == "--attach-console") return await AttachmentFixture.Child(args[1]);
         if (args.FirstOrDefault() == "--attach-fixture") { await AttachmentFixture.Run(); return 0; }

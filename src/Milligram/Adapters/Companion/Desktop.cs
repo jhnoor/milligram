@@ -50,23 +50,25 @@ public static class Desktop
         return false;
     }
 
-    /// <summary>Splits a command template on spaces, honouring double quotes.</summary>
+    /// <summary>Splits a command template on whitespace, preserving quoted empty arguments.</summary>
     public static IReadOnlyList<string> Split(string command)
     {
         var words = new List<string>();
         var current = new System.Text.StringBuilder();
         var quoted = false;
+        var started = false;
         foreach (var c in command)
         {
-            if (c == '"') quoted = !quoted;
-            else if (c == ' ' && !quoted)
+            if (c == '"') { quoted = !quoted; started = true; }
+            else if (char.IsWhiteSpace(c) && !quoted)
             {
-                if (current.Length > 0) words.Add(current.ToString());
+                if (started) words.Add(current.ToString());
                 current.Clear();
+                started = false;
             }
-            else current.Append(c);
+            else { current.Append(c); started = true; }
         }
-        if (current.Length > 0) words.Add(current.ToString());
+        if (started) words.Add(current.ToString());
         return words;
     }
 }

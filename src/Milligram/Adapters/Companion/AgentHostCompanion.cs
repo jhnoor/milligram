@@ -15,6 +15,8 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
     internal TimeSpan StartupTimeout { get; init; } = TimeSpan.FromSeconds(20);
     internal TimeSpan CommandTimeout { get; init; } = TimeSpan.FromSeconds(20);
     internal TimeSpan RetryDelay { get; init; } = TimeSpan.FromMilliseconds(100);
+    internal Func<string, IReadOnlyList<string>, string, bool> LaunchTerminal { get; init; } =
+        (command, args, root) => ProcessRunner.Launch(command, args, root);
 
     public string SessionName { get; } = TmuxCompanion.SessionNameFor(paths.Root);
     public string AttachCommand => "milligram agent attach";
@@ -25,6 +27,14 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
         reason = !settings.Enabled ? "The agent is disabled in milligram.json (agent.enabled)."
             : !onPath(settings.Command) ? $"'{settings.Command}' is not on PATH."
             : terminalIssue?.Invoke() ?? "";
+        if (reason.Length > 0) return false;
+        try
+        {
+            var terminal = NativeTerminalCommand.Parse(settings.Terminal, self, paths.Root);
+            if (terminal is not null && !onPath(terminal.Command))
+                reason = $"'{terminal.Command}' from agent.terminal is not on PATH. Install it, choose another terminal, or use 'auto' for the viewer panel.";
+        }
+        catch (MilligramException error) { reason = error.Message; }
         return reason.Length == 0;
     }
 
@@ -36,6 +46,7 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
         if (await ReadyAsync(cancellation) is not null) return null;
         cancellation.ThrowIfCancellationRequested();
         if (!IsAvailable(out var reason)) throw new MilligramException(reason);
+        var terminal = NativeTerminalCommand.Parse(policy().Agent.Terminal, self, paths.Root);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         deadline.CancelAfter(StartupTimeout);
         IDetachedProcess? started = null;
@@ -60,6 +71,7 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
             }
             owned = started is { HasExited: false } && AgentHostLease.ReadDiscovery(files)?.Pid == started.Id
                 && string.Equals(ready.Instance, instance, StringComparison.Ordinal);
+            if (owned && terminal is not null) LaunchTerminal(terminal.Command, terminal.Args, paths.Root);
             return owned ? new AgentOwnership(() => StopAsync(instance).GetAwaiter().GetResult()) : null;
         }
         catch (OperationCanceledException)
@@ -80,7 +92,11 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
 
     public void Ring() => RingAsync().GetAwaiter().GetResult();
     public void Stop() => StopAsync(null).GetAwaiter().GetResult();
-    public bool OpenTerminal() => false;
+    public bool OpenTerminal()
+    {
+        var terminal = NativeTerminalCommand.Parse(policy().Agent.Terminal, self, paths.Root);
+        return terminal is not null && IsRunning() && LaunchTerminal(terminal.Command, terminal.Args, paths.Root);
+    }
 
     private async Task<HostHello?> ReadyAsync(CancellationToken cancellation)
     {

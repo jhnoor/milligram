@@ -9,6 +9,75 @@ namespace Milligram.Tests.Adapters;
 
 public class AgentHostCompanionTests
 {
+    [Theory]
+    [InlineData("auto")]
+    [InlineData("none")]
+    public async Task PanelAndManualPreferencesNeverLaunchAnExternalTerminal(string template)
+    {
+        await using var fixture = new Fixture();
+        fixture.Policy = fixture.Policy with { Agent = fixture.Policy.Agent with { Terminal = template } };
+        Assert.True(fixture.Companion.IsAvailable(out var reason));
+        Assert.Empty(reason);
+        Assert.False(fixture.Companion.OpenTerminal());
+        Assert.NotNull(await fixture.Companion.StartAsync(fixture.Token));
+        Assert.False(fixture.Companion.OpenTerminal());
+        Assert.Empty(fixture.TerminalLaunches);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ACustomWindowOpensOnceOnOwnedStartupAndCanBeOpenedAgain(bool opens)
+    {
+        await using var fixture = new Fixture();
+        fixture.Policy = fixture.Policy with { Agent = fixture.Policy.Agent with { Terminal = "terminal-stub -- {command}" } };
+        fixture.TerminalOpens = opens;
+        Assert.False(fixture.Companion.OpenTerminal());
+        Assert.Empty(fixture.TerminalLaunches);
+        var ownership = Assert.IsType<AgentOwnership>(await fixture.Companion.StartAsync(fixture.Token));
+        Assert.Null(await fixture.Companion.StartAsync(fixture.Token));
+        var launch = Assert.Single(fixture.TerminalLaunches);
+        Assert.Equal("terminal-stub", launch.Command);
+        Assert.Equal(fixture.Paths.Root, launch.Root);
+        Assert.Equal(["--", "dotnet-stub", "milligram-stub.dll", "agent", "attach", "--project", fixture.Paths.Root], launch.Args);
+        Assert.Equal(opens, fixture.Companion.OpenTerminal());
+        Assert.Equal(2, fixture.TerminalLaunches.Count);
+        ownership.Stop();
+        Assert.False(await Task.Run(fixture.Companion.IsRunning));
+    }
+
+    [Fact]
+    public async Task APolicyEditDuringStartupCannotLoseOwnershipAfterTheHostStarts()
+    {
+        await using var fixture = new Fixture();
+        fixture.Policy = fixture.Policy with { Agent = fixture.Policy.Agent with { Terminal = "terminal-stub {command}" } };
+        fixture.SpawnGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var starting = fixture.Companion.StartAsync(fixture.Token);
+        await fixture.Spawning.Task.WaitAsync(fixture.Token);
+        fixture.Policy = fixture.Policy with { Agent = fixture.Policy.Agent with { Terminal = "invalid template" } };
+        fixture.SpawnGate.SetResult();
+        var ownership = Assert.IsType<AgentOwnership>(await starting.WaitAsync(fixture.Token));
+        Assert.Equal("terminal-stub", Assert.Single(fixture.TerminalLaunches).Command);
+        ownership.Stop();
+        Assert.False(await Task.Run(fixture.Companion.IsRunning));
+    }
+
+    [Theory]
+    [InlineData("terminal-stub {session}", true, "separate {command}")]
+    [InlineData("terminal-stub {command}", false, "not on PATH")]
+    public async Task InvalidOrMissingCustomTerminalsAreReportedBeforeStartingAHost(string template, bool installed, string message)
+    {
+        await using var fixture = new Fixture();
+        fixture.TerminalInstalled = installed;
+        fixture.Policy = fixture.Policy with { Agent = fixture.Policy.Agent with { Terminal = template } };
+        Assert.False(fixture.Companion.IsAvailable(out var reason));
+        Assert.Contains("agent.terminal", reason);
+        Assert.Contains(message, reason);
+        Assert.Equal(reason, (await Assert.ThrowsAsync<MilligramException>(() => fixture.Companion.StartAsync(fixture.Token))).Message);
+        Assert.Equal(0, fixture.Launches);
+        Assert.Empty(fixture.TerminalLaunches);
+    }
+
     [Fact]
     public async Task MissingNativeSupportIsReportedBeforeLaunchingAnAgent()
     {
@@ -128,7 +197,7 @@ public class AgentHostCompanionTests
     public async Task DisabledOrMissingCommandsExplainWhyStartupIsUnavailable(bool disabled)
     {
         await using var fixture = new Fixture();
-        fixture.Policy = fixture.Policy with { Agent = fixture.Policy.Agent with { Enabled = !disabled } };
+        fixture.Policy = fixture.Policy with { Agent = fixture.Policy.Agent with { Enabled = !disabled, Terminal = "invalid template" } };
         fixture.Available = disabled;
         Assert.False(fixture.Companion.IsAvailable(out var reason));
         Assert.Contains(disabled ? "agent.enabled" : "not on PATH", reason);
@@ -528,6 +597,9 @@ public class AgentHostCompanionTests
         public bool LaunchFails { get; set; }
         public Exception? LaunchError { get; set; }
         public bool Available { get; set; } = true;
+        public bool TerminalInstalled { get; set; } = true;
+        public bool TerminalOpens { get; set; } = true;
+        public List<(string Command, IReadOnlyList<string> Args, string Root)> TerminalLaunches { get; } = [];
         public int Launches { get; private set; }
         public IReadOnlyList<string>? Arguments { get; private set; }
         public CancellationToken Token => deadline.Token;
@@ -536,12 +608,14 @@ public class AgentHostCompanionTests
         {
             Paths = new ProjectPaths(project.Root);
             Files = new AgentHostFiles(Paths);
-            Companion = new AgentHostCompanion(Paths, () => Policy, ["dotnet-stub", "milligram-stub.dll"], "test-version", _ => Available, Launch)
+            Companion = new AgentHostCompanion(Paths, () => Policy, ["dotnet-stub", "milligram-stub.dll"], "test-version",
+                command => Available && (command != "terminal-stub" || TerminalInstalled), Launch)
             {
                 ProbeTimeout = probeTimeout ?? TimeSpan.FromMilliseconds(300),
                 StartupTimeout = timeout ?? TimeSpan.FromSeconds(3),
                 CommandTimeout = timeout ?? TimeSpan.FromSeconds(3),
                 RetryDelay = TimeSpan.FromMilliseconds(10),
+                LaunchTerminal = (command, args, root) => { TerminalLaunches.Add((command, args, root)); return TerminalOpens; },
             };
         }
 

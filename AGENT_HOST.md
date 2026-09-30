@@ -183,6 +183,23 @@ Real Copilot login, xterm.js rendering, WSL and the rollout criteria remain sepa
 
 ## Local terminal attachment
 
+For the native host, `agent.terminal: "auto"` opens the browser panel and `"none"` leaves
+attachment manual. A custom template ends in one whole `{command}` argument, expanded to this
+build's executable/assembly arguments followed by `agent attach --project ROOT`. Template
+validation and executable lookup participate in `doctor` and startup availability. The command
+is captured before host startup, so a policy edit during startup cannot lose acquired ownership.
+Only a caller that starts its own host opens the external window; launch failure retains that
+ownership and the normal attachment command remains available. An explicit attachment always
+uses its current terminal.
+
+Expansion preserves argument boundaries without inserting a shell. Templates must accept an
+executable plus arguments, not an interpolated shell script. For `wt`/`wt.exe`, generated
+semicolons are escaped with a backslash because the
+[Windows Terminal parser](https://github.com/microsoft/terminal/blob/main/src/cascadia/TerminalApp/Commandline.cpp)
+treats them as command separators even within an argument. Other terminal templates receive
+the unchanged arguments. The native fixture records a real external-launch invocation to verify
+the selected build, project and argument boundaries without opening a GUI on the CI runner.
+
 `agent attach` connects to the selected native host, enters raw console mode and relays input,
 output and resize frames. It requires terminal input and output. Ctrl+] then d detaches; a doubled
 Ctrl+] sends one literal prefix. Detach never sends stop, and another attached client stays connected.
