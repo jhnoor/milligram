@@ -66,23 +66,24 @@ timeout.
 
 ## Measured results
 
-[Run 36648457626](https://github.com/jhnoor/milligram/actions/runs/36648457626), commit
-`3ef7eda12d86580eafe9f98e33ade55efe75aa75`, passed all six native runtime targets on .NET 10.0.12.
-Each row represents four passing probes: tool-path install and `dnx`, each in blocking and
+[Run 36649285602](https://github.com/jhnoor/milligram/actions/runs/36649285602), commit
+`9abd925`, passed all six native runtime targets on .NET 10.0.12.
+Each row represents six passing probes: tool-path install, global install and `dnx`, each in blocking and
 asynchronous mode. The latter adds the cancellation check (eight checks rather than seven).
-All 24 Markdown artifacts were inspected; no failed checks or unexpected runtime identifiers.
+All 36 Markdown artifacts were inspected: 270 passing checks, no failures or unexpected runtime identifiers.
+Windows reports select the out-of-band implementation; Linux and macOS report `posix`.
 
-| Runtime | Observed OS | Tool-path install | dnx |
-|---|---|---|---|
-| linux-x64 | Ubuntu 24.04.5 LTS | Both modes pass | Both modes pass |
-| linux-arm64 | Ubuntu 24.04.5 LTS | Both modes pass | Both modes pass |
-| osx-x64 | macOS 15.7.9 | Both modes pass | Both modes pass |
-| osx-arm64 | macOS 15.7.9 | Both modes pass | Both modes pass |
-| win-x64 | Windows build 26100 | Both modes pass | Both modes pass |
-| win-arm64 | Windows build 26200 | Both modes pass | Both modes pass |
+| Runtime | Observed OS | Tool-path install | Global install | dnx |
+|---|---|---|---|---|
+| linux-x64 | Ubuntu 24.04.5 LTS | Both modes pass | Both modes pass | Both modes pass |
+| linux-arm64 | Ubuntu 24.04.5 LTS | Both modes pass | Both modes pass | Both modes pass |
+| osx-x64 | macOS 15.7.9 | Both modes pass | Both modes pass | Both modes pass |
+| osx-arm64 | macOS 15.7.9 | Both modes pass | Both modes pass | Both modes pass |
+| win-x64 | Windows build 26100 | Both modes pass | Both modes pass | Both modes pass |
+| win-arm64 | Windows build 26200 | Both modes pass | Both modes pass | Both modes pass |
 
 Local Windows x64, build 19045, also passes all three launch paths, including the new isolated
-global-install checks. Hosted global-install results at ordinary path lengths are pending. These OS versions do not prove
+global-install checks. These OS versions do not prove
 the candidate's advertised minimum Windows version or compatibility with every older Linux kernel.
 
 **Windows long-path limit:** [run 36648767857](https://github.com/jhnoor/milligram/actions/runs/36648767857)
@@ -104,7 +105,7 @@ and waits for the signal before polling the child's actual dimensions.
 ## Still required before #20 can be closed
 
 Real Copilot login and xterm.js rendering at several sizes, a real Milligram doorbell, WSL2 testing,
-and global-install results on the hosted targets. Linux-musl, older supported OS versions and
+and a production solution for the Windows long-install-path failure. Linux-musl, older supported OS versions and
 other architectures remain untested. The fake child cannot establish real-agent results.
 Process-tree cleanup, replay, multiple clients, reconnect, WebSocket security and rollout belong
 to the subsequent host/panel issues. In particular, this experiment does not justify changing the
