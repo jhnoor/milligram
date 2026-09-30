@@ -38,9 +38,11 @@ foreach ($mode in @('async', 'blocking')) {
 }
 $previousCliHome = $env:DOTNET_CLI_HOME
 $previousPathSetup = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
+$previousCertificate = $env:DOTNET_GENERATE_ASPNET_CERTIFICATE
 try {
     $env:DOTNET_CLI_HOME = $cliRoot
     $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = 'false'
+    $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = 'false'
     Invoke-DotNet tool install --global Milligram.PtySpike --source $packageSource --version $Version
     $globalTool = Join-Path $cliRoot '.dotnet/tools' $(if ($IsWindows) { 'milligram-pty-spike.exe' } else { 'milligram-pty-spike' })
     if (!(Test-Path -LiteralPath $globalTool)) { throw 'Global installation did not produce the isolated tool shim' }
@@ -59,5 +61,6 @@ try {
 finally {
     $env:DOTNET_CLI_HOME = $previousCliHome
     $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $previousPathSetup
+    $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = $previousCertificate
 }
 Write-Output "Package $Version passed tool-path, global-tool and dnx probes in both I/O modes."

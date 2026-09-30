@@ -57,3 +57,35 @@ jobs:
           name: pty-${{ matrix.os }}
           path: artifacts/pty-results/*.md
           if-no-files-found: warn
+
+  long-path:
+    name: Long path (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-2025, rid: win-x64 }
+          - { os: windows-11-arm, rid: win-arm64 }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Compare native loading from a long global install
+        shell: pwsh
+        run: |
+          $version = '0.0.0-long.${{ github.run_id }}.${{ github.run_attempt }}'
+          dotnet restore spikes/PtyProbe --locked-mode
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet pack spikes/PtyProbe -c Release --no-restore -p:Version=$version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./spikes/PtyProbe/long-path.ps1 -Version $version -ExpectedRuntime '${{ matrix.rid }}'
+      - name: Upload both sides of the comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pty-long-${{ matrix.os }}
+          path: artifacts/pty-long-results/*.md
+          if-no-files-found: warn

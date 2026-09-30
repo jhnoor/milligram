@@ -97,6 +97,14 @@ solution or diagnostic for it. Local Windows build 19045 did load the out-of-ban
 a 285-character DLL path, so the failure is environment-dependent, not a universal cutoff.
 Reports now record the selected implementation and application path length to make this visible.
 
+The opt-in `--preload-long-path` experiment loads the packaged DLL through its absolute extended
+Windows path before Porta opens a terminal. It requires an actual path over 260 characters and
+the out-of-band implementation. `long-path.ps1` compares the default and preloaded paths using
+the same installed package in both I/O modes, recording the machine's `LongPathsEnabled` setting
+without changing it. Two additional Windows CI jobs run this comparison; results are pending.
+Local Windows build 19045 passes both sides, which alone cannot prove the workaround fixes the
+hosted failure. Neither this experiment nor its dependency is part of the product.
+
 The first hosted run exposed two probe assumptions, corrected before the passing run: a working
 directory can have different equivalent path spellings on macOS, and terminal dimensions can be
 cached until `SIGWINCH` is processed on Unix. The probe now reads a unique relative fixture marker

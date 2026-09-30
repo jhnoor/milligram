@@ -36,11 +36,23 @@ internal static class Program
         var marker = Guid.NewGuid().ToString("N");
         await File.WriteAllTextAsync(Path.Combine(fixture, "cwd-marker"), marker);
         IPtyConnection? terminal = null;
+        var preloaded = IntPtr.Zero;
         var stopReading = new CancellationTokenSource();
         Task? reading = null;
         var success = false;
         try
         {
+            if (args.Contains("--preload-long-path", StringComparer.Ordinal))
+            {
+                Require(OperatingSystem.IsWindows(), "The extended-path preload experiment is Windows-only");
+                var library = Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeInformation.RuntimeIdentifier, "native", "conpty.dll");
+                Require(library.Length > 260, "The preload comparison needs a native DLL path longer than 260 characters");
+                Require(PtyProvider.PseudoConsoleImplementation == "oob", "The preload comparison requires the packaged ConPTY implementation");
+                var extended = library.StartsWith(@"\\?\", StringComparison.Ordinal) ? library
+                    : library.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + library[2..] : @"\\?\" + library;
+                preloaded = NativeLibrary.Load(extended);
+                results.Add($"| Extended-path preload ({library.Length} characters) | PASS | 0 |");
+            }
             var expectedIndex = Array.IndexOf(args, "--expected-rid");
             if (expectedIndex >= 0)
                 Require(RuntimeInformation.RuntimeIdentifier == args[expectedIndex + 1], "Runner used an unexpected runtime architecture");
@@ -199,6 +211,7 @@ internal static class Program
                 }
             }
             stopReading.Dispose();
+            if (preloaded != IntPtr.Zero) NativeLibrary.Free(preloaded);
             var temporaryRoot = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
             if (Path.GetFullPath(fixture).StartsWith(temporaryRoot, StringComparison.Ordinal)) Directory.Delete(fixture, recursive: true);
             if (output is not null)
