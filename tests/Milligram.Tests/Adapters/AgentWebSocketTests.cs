@@ -135,8 +135,8 @@ public class AgentWebSocketTests : IAsyncLifetime
     [Fact]
     public async Task TokensAreRandomPerServerAndMetadataCannotBeCachedOrReadThroughCors()
     {
-        Assert.StartsWith("milligram-terminal.v1.", protocol);
-        Assert.Equal(32, Convert.FromHexString(protocol["milligram-terminal.v1.".Length..]).Length);
+        Assert.StartsWith("milligram-terminal.v2.", protocol);
+        Assert.Equal(32, Convert.FromHexString(protocol["milligram-terminal.v2.".Length..]).Length);
         Assert.Equal(protocol, await ReadProtocol(client));
         using var crossSite = new HttpRequestMessage(HttpMethod.Get, "api/meta");
         crossSite.Headers.Add("Origin", "https://evil.example");
@@ -221,6 +221,48 @@ public class AgentWebSocketTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task OutputWaitsForBrowserParsingAndAcknowledgementsNeverReachTheHost()
+    {
+        using var socket = await Attach();
+        var pipe = await connections.Reader.ReadAsync(Token);
+        var bytes = Enumerable.Repeat((byte)'x', HostProtocol.MaxPayload).ToArray();
+        for (var sent = 0; sent < BrowserOutputWindow.Capacity; sent += bytes.Length)
+        {
+            await HostProtocol.WriteAsync(pipe, new HostFrame(HostFrameKind.Output, bytes), Token);
+            Assert.Equal(bytes, (await Read(socket)).Bytes);
+        }
+        await HostProtocol.WriteAsync(pipe, new HostFrame(HostFrameKind.Output, [65]), Token);
+        var waiting = Read(socket);
+        await Task.Delay(50, Token);
+        Assert.False(waiting.IsCompleted);
+        await SendText(socket, """{"type":"ack","bytes":1}""");
+        Assert.Equal(new byte[] { 65 }, (await waiting).Bytes);
+        await SendText(socket, """{"type":"status"}""");
+        Assert.Equal(HostFrameKind.Status, (await HostProtocol.ReadAsync(pipe, Token))!.Kind);
+        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "detach", Token);
+        Assert.Null(await HostProtocol.ReadAsync(pipe, Token));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AFullBrowserWindowStillAllowsDetachAndHasAProgressDeadline(bool detach)
+    {
+        using var socket = await Attach();
+        var pipe = await connections.Reader.ReadAsync(Token);
+        var bytes = new byte[HostProtocol.MaxPayload];
+        for (var sent = 0; sent < BrowserOutputWindow.Capacity; sent += bytes.Length)
+        {
+            await HostProtocol.WriteAsync(pipe, new HostFrame(HostFrameKind.Output, bytes), Token);
+            Assert.Equal(bytes.Length, (await Read(socket)).Bytes.Length);
+        }
+        await HostProtocol.WriteAsync(pipe, new HostFrame(HostFrameKind.Output, [65]), Token);
+        if (detach) await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "detach", Token);
+        else await Closed(socket, WebSocketCloseStatus.InternalServerError);
+        Assert.Null(await HostProtocol.ReadAsync(pipe, Token));
+    }
+
+    [Fact]
     public async Task AgentExitFollowsTheLastOutputAndClosesCleanlyWithItsExitCode()
     {
         using var socket = await Attach();
@@ -243,6 +285,10 @@ public class AgentWebSocketTests : IAsyncLifetime
     [InlineData("{}")]
     [InlineData("{\"type\":\"stop\"}")]
     [InlineData("{\"type\":\"ring\"}")]
+    [InlineData("{\"type\":\"ack\"}")]
+    [InlineData("{\"type\":\"ack\",\"bytes\":1}")]
+    [InlineData("{\"type\":\"ack\",\"bytes\":-1}")]
+    [InlineData("{\"type\":\"ack\",\"bytes\":2147483647}")]
     [InlineData("{\"type\":\"resize\",\"columns\":1,\"rows\":24}")]
     [InlineData("{\"type\":\"resize\",\"columns\":80,\"rows\":1001}")]
     [InlineData("{\"type\":\"resize\",\"columns\":\"wide\",\"rows\":24}")]

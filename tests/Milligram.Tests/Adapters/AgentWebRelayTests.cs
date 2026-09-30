@@ -107,7 +107,7 @@ public class AgentWebRelayTests
         var reading = BrowserTerminalProtocol.ReadAsync(socket, timeout.Token);
         await Task.Delay(TimeSpan.FromSeconds(3.1), timeout.Token);
         socket.Messages.Writer.TryWrite(new([65], WebSocketMessageType.Binary, true));
-        Assert.Equal(new byte[] { 65 }, (await reading)!.Payload);
+        Assert.Equal(new byte[] { 65 }, (await reading)!.Frame!.Payload);
         Assert.Equal(0, socket.Readers);
     }
 

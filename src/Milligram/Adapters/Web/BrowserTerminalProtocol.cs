@@ -5,10 +5,12 @@ using Milligram.Application;
 
 namespace Milligram.Adapters.Web;
 
+public sealed record BrowserTerminalMessage(HostFrame? Frame, int Acknowledged = 0);
+
 /// <summary>Browser messages have bounded size and assembly time; idle terminals remain connected.</summary>
 public static class BrowserTerminalProtocol
 {
-    public static async Task<HostFrame?> ReadAsync(WebSocket socket, CancellationToken cancellation)
+    public static async Task<BrowserTerminalMessage?> ReadAsync(WebSocket socket, CancellationToken cancellation)
     {
         var buffer = new byte[HostProtocol.MaxPayload + 1];
         var length = 0;
@@ -23,22 +25,23 @@ public static class BrowserTerminalProtocol
                 throw new BrowserTerminalException(WebSocketCloseStatus.MessageTooBig, "Terminal message is too large.");
             if (part.EndOfMessage)
                 return part.MessageType == WebSocketMessageType.Binary
-                    ? new HostFrame(HostFrameKind.Input, buffer[..length]) : Control(buffer.AsSpan(0, length));
+                    ? new(new HostFrame(HostFrameKind.Input, buffer[..length])) : Control(buffer.AsSpan(0, length));
             if (fragments == 0) message.CancelAfter(TimeSpan.FromSeconds(3));
         }
     }
 
-    private sealed record Command(string? Type, int Columns, int Rows);
+    private sealed record Command(string? Type, int Columns, int Rows, int Bytes);
 
-    private static HostFrame Control(ReadOnlySpan<byte> bytes)
+    private static BrowserTerminalMessage Control(ReadOnlySpan<byte> bytes)
     {
         try
         {
             var command = JsonSerializer.Deserialize<Command>(bytes, MilligramJson.Compact);
             return command?.Type switch
             {
-                "resize" => HostProtocol.Resize(new TerminalSize(command.Columns, command.Rows)),
-                "status" => new HostFrame(HostFrameKind.Status, []),
+                "resize" => new(HostProtocol.Resize(new TerminalSize(command.Columns, command.Rows))),
+                "status" => new(new HostFrame(HostFrameKind.Status, [])),
+                "ack" => new(null, command.Bytes),
                 _ => throw new InvalidDataException(),
             };
         }

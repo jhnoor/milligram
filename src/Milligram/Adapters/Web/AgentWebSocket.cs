@@ -10,7 +10,7 @@ public sealed record TerminalAccess(bool Available, string? Protocol);
 /// <summary>Authenticates browser attachments before opening a host pipe; tokens belong to one viewer run.</summary>
 public sealed class AgentWebSocket(int port, Func<bool> enabled, Func<CancellationToken, Task<AgentPipeClient>>? connect)
 {
-    private readonly string protocol = "milligram-terminal.v1." + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
+    private readonly string protocol = "milligram-terminal.v2." + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
 
     public TerminalAccess Access => enabled() && connect is not null ? new(true, protocol) : new(false, null);
 

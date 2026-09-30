@@ -13,8 +13,9 @@ public static class AgentWebRelay
     {
         using var inputStop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         using var outputStop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var input = ReceiveAsync(socket, pipe, inputStop.Token);
-        var output = OutputAsync(socket, pipe, outputStop.Token, cancellation);
+        var window = new BrowserOutputWindow();
+        var input = ReceiveAsync(socket, pipe, window, inputStop.Token);
+        var output = OutputAsync(socket, pipe, window, outputStop.Token, cancellation);
         try
         {
             var ending = await await Task.WhenAny(input, output);
@@ -42,12 +43,18 @@ public static class AgentWebRelay
         }
     }
 
-    private static async Task<Ending> ReceiveAsync(WebSocket socket, AgentPipeClient pipe, CancellationToken cancellation)
+    private static async Task<Ending> ReceiveAsync(WebSocket socket, AgentPipeClient pipe, BrowserOutputWindow window, CancellationToken cancellation)
     {
         try
         {
-            while (await BrowserTerminalProtocol.ReadAsync(socket, cancellation) is { } frame)
+            while (await BrowserTerminalProtocol.ReadAsync(socket, cancellation) is { } message)
             {
+                var frame = message.Frame;
+                if (frame is null)
+                {
+                    window.Acknowledge(message.Acknowledged);
+                    continue;
+                }
                 using var send = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
                 send.CancelAfter(TimeSpan.FromSeconds(3));
                 await pipe.SendAsync(frame, send.Token);
@@ -61,7 +68,7 @@ public static class AgentWebRelay
         }
     }
 
-    private static async Task<Ending> OutputAsync(WebSocket socket, AgentPipeClient pipe, CancellationToken reading, CancellationToken cancellation)
+    private static async Task<Ending> OutputAsync(WebSocket socket, AgentPipeClient pipe, BrowserOutputWindow window, CancellationToken reading, CancellationToken cancellation)
     {
         try
         {
@@ -76,6 +83,11 @@ public static class AgentWebRelay
                 };
                 using var send = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
                 send.CancelAfter(TimeSpan.FromSeconds(3));
+                if (frame.Kind == HostFrameKind.Output)
+                {
+                    using var waiting = CancellationTokenSource.CreateLinkedTokenSource(reading, send.Token);
+                    await window.ReserveAsync(bytes.Length, waiting.Token);
+                }
                 await socket.SendAsync(bytes.AsMemory(), frame.Kind == HostFrameKind.Output ? WebSocketMessageType.Binary : WebSocketMessageType.Text,
                     endOfMessage: true, send.Token);
                 if (frame.Kind == HostFrameKind.Exited) return new Ending(WebSocketCloseStatus.NormalClosure, "Agent exited.");

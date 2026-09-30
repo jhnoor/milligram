@@ -200,7 +200,7 @@ panel is separate work. `/api/meta` includes `agent.terminal.available` and, whe
 agent is running. The tmux host has no browser transport.
 
 Every viewer run generates 32 random token bytes and includes their hex encoding in the
-`milligram-terminal.v1.<token>` WebSocket subprotocol. The browser must request that exact single
+`milligram-terminal.v2.<token>` WebSocket subprotocol. The browser must request that exact single
 subprotocol. Tokens never belong in URLs or logs. Metadata uses `Cache-Control: no-store` and
 `X-Content-Type-Options: nosniff`; no endpoint enables CORS. A connection must also pass the
 existing bound-port Host guard and supply exactly one Origin equal to the viewer's localhost
@@ -214,6 +214,14 @@ unchanged in each direction, up to 16 KiB per message. Text controls are at most
 `{"type":"status","pid":123,"clients":1,"columns":80,"rows":24}` and
 `{"type":"exited","code":0}`. There are no stop or ring controls on this socket. Existing
 guarded viewer actions handle commands. Sizes retain the host protocol's 2–1000 bounds.
+
+The v2 browser protocol bounds unparsed output with a 128 KiB window per connection. After its
+terminal parser consumes bytes, the browser sends `{"type":"ack","bytes":16384}` for that many
+bytes; these acknowledgements never reach the host. Counts must be positive and no greater
+than the outstanding bytes. A full window pauses this client's relay and applies the existing
+host backpressure; it does not pause other clients. A client that cannot make progress within
+three seconds is disconnected. Terminal writes must acknowledge from their completion callback,
+not merely on receipt of a WebSocket message. This bounds queues that socket writes cannot see.
 
 Fragmented messages allow at most 128 receive chunks and have three seconds to finish after
 their first chunk. Idle connections remain open. Pipe greeting, individual pipe/socket writes
