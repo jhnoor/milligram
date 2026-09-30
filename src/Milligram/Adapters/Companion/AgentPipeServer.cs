@@ -39,7 +39,8 @@ public sealed class AgentPipeServer(AgentSession session, string endpoint, HostH
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException or SocketException)
                 {
                     // Unix checks the peer's identity during accept, before our greeting handler runs.
-                    await pipe.DisposeAsync();
+                    try { if (!stop.IsCancellationRequested) waiting = CreatePipe(); }
+                    finally { await pipe.DisposeAsync(); }
                     if (stop.IsCancellationRequested) break;
                     log("Agent connection rejected: " + error.Message);
                     await Task.Delay(20, stop.Token);

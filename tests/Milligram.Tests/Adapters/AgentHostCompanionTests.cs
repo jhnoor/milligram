@@ -203,7 +203,7 @@ public class AgentHostCompanionTests
     [Fact]
     public async Task ACorruptGreetingIsNotReportedAsARunningHost()
     {
-        await using var fixture = new Fixture();
+        await using var fixture = new Fixture(probeTimeout: TimeSpan.FromSeconds(2));
         using var server = new NamedPipeServerStream(fixture.Files.Endpoint, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         var accepting = server.WaitForConnectionAsync(fixture.Token);
@@ -217,7 +217,7 @@ public class AgentHostCompanionTests
     [Fact]
     public async Task AnIncompatibleHostMustBeRestartedWithoutLaunchingAnotherOne()
     {
-        await using var fixture = new Fixture();
+        await using var fixture = new Fixture(probeTimeout: TimeSpan.FromSeconds(2));
         using var server = new NamedPipeServerStream(fixture.Files.Endpoint, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         var accepting = server.WaitForConnectionAsync(fixture.Token);
@@ -397,13 +397,13 @@ public class AgentHostCompanionTests
         public IReadOnlyList<string>? Arguments { get; private set; }
         public CancellationToken Token => deadline.Token;
 
-        public Fixture(TimeSpan? timeout = null)
+        public Fixture(TimeSpan? timeout = null, TimeSpan? probeTimeout = null)
         {
             Paths = new ProjectPaths(project.Root);
             Files = new AgentHostFiles(Paths);
             Companion = new AgentHostCompanion(Paths, () => Policy, ["dotnet-stub", "milligram-stub.dll"], "test-version", _ => Available, Launch)
             {
-                ProbeTimeout = TimeSpan.FromMilliseconds(20),
+                ProbeTimeout = probeTimeout ?? TimeSpan.FromMilliseconds(20),
                 StartupTimeout = timeout ?? TimeSpan.FromSeconds(3),
                 CommandTimeout = timeout ?? TimeSpan.FromSeconds(3),
                 RetryDelay = TimeSpan.FromMilliseconds(10),
