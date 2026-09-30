@@ -148,15 +148,14 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
                 await client.SendAsync(new HostFrame(HostFrameKind.Stop, []), deadline.Token);
                 while (await client.ReadAsync(deadline.Token) is not null) { }
             }
-            while (!LeaseIsAvailable() && (original is null || AgentHostLease.ReadDiscovery(files) == original))
+            while (!LeaseIsAvailable() && !HasReplacement(original, instance))
                 await Task.Delay(RetryDelay, deadline.Token);
         }
         catch (Exception error) when (error is IOException or InvalidDataException or OperationCanceledException)
         {
             while (!deadline.IsCancellationRequested)
             {
-                if (LeaseIsAvailable() || instance is not null && !OwnsDiscovery(instance)
-                    || original is not null && AgentHostLease.ReadDiscovery(files) != original) return;
+                if (LeaseIsAvailable() || HasReplacement(original, instance)) return;
                 try { await Task.Delay(RetryDelay, deadline.Token); }
                 catch (OperationCanceledException) { }
             }
@@ -167,6 +166,14 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
 
     private bool OwnsDiscovery(string instance) =>
         string.Equals(AgentHostLease.ReadDiscovery(files)?.Instance, instance, StringComparison.Ordinal);
+
+    /// <summary>Discovery disappears before its lease closes; only a published replacement permits leaving early.</summary>
+    private bool HasReplacement(AgentHostDiscovery? original, string? instance)
+    {
+        var current = AgentHostLease.ReadDiscovery(files);
+        if (current is null) return false;
+        return original is not null && current != original || instance is not null && !string.Equals(current.Instance, instance, StringComparison.Ordinal);
+    }
 
     private bool LeaseIsAvailable()
     {

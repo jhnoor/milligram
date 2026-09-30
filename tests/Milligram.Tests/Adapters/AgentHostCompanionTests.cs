@@ -380,13 +380,19 @@ public class AgentHostCompanionTests
     }
 
     [Theory]
-    [InlineData(false, false, false)]
-    [InlineData(true, false, false)]
-    [InlineData(false, true, false)]
-    [InlineData(true, true, false)]
-    [InlineData(false, true, true)]
-    [InlineData(true, true, true)]
-    public async Task StopWaitsForOwnershipAfterTheTransportCloses(bool corruptReply, bool owned, bool replaced)
+    [InlineData(false, false, false, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(false, true, false, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(false, true, true, false)]
+    [InlineData(true, true, true, false)]
+    [InlineData(false, false, true, false)]
+    [InlineData(true, false, true, false)]
+    [InlineData(false, false, false, true)]
+    [InlineData(true, false, false, true)]
+    [InlineData(false, true, false, true)]
+    [InlineData(true, true, false, true)]
+    public async Task StopWaitsForOwnershipAfterTheTransportCloses(bool corruptReply, bool owned, bool replaced, bool discoveryRemoved)
     {
         await using var fixture = new Fixture();
         AgentOwnership? ownership = null;
@@ -407,6 +413,7 @@ public class AgentHostCompanionTests
         await Greet(commands, fixture.Token, discovery.Instance);
         Assert.Equal(HostFrameKind.Stop, (await HostProtocol.ReadAsync(commands, fixture.Token))!.Kind);
         if (replaced) owner.Publish(discovery with { Instance = Guid.NewGuid().ToString("N") });
+        if (discoveryRemoved) File.Delete(fixture.Files.DiscoveryFile);
         if (corruptReply) await commands.WriteAsync(new byte[] { 0, 0, 0, 0 }, fixture.Token);
         commands.Dispose();
         if (replaced)

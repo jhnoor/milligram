@@ -171,8 +171,10 @@ cleanup callback across manual restarts, so exiting an old viewer leaves a repla
 
 A notification sends ring followed by status and waits for the status response, ensuring the
 doorbell has been submitted. Stop drains the pipe through EOF and waits for the old owner's
-discovery or lease to be released; it also handles a host that is still initializing. Malformed
-greetings are not treated as running hosts, and incompatible protocol versions require restart.
+lease to be released, or for a different host to publish discovery. A missing discovery record
+alone does not release ownership: removal happens just before the lock closes. Stop also handles
+a host that is still initializing. Malformed greetings are not treated as running hosts, and
+incompatible protocol versions require restart.
 Selection is fixed for each viewer run after policy loading. Changing `agent.host` requires a
 viewer restart; stop an old session before switching hosts.
 The six-platform terminal evidence and Windows loader workaround are on the separate
