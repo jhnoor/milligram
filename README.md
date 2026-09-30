@@ -94,6 +94,8 @@ ordinary build output is ignored.
 Source discovery, project discovery and polling skip nested directory symlinks and Windows
 junctions, so a link back to a parent cannot trap a scan in a loop. Point `src` at the actual
 source directory when code lives behind such a link; an explicitly selected linked root works too.
+Source preview and editor requests also reject nested links that lead outside the project root.
+Links between files or directories inside that root remain usable.
 
 Initialization also selects up to eight external libraries for the `foreign` ovals, ranked by
 how many of your types use them. It groups namespaces at two segments (three for `System.*`),

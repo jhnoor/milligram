@@ -192,6 +192,32 @@ public class WebServerTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, boundary.StatusCode);
     }
 
+    [UnixFact]
+    public async Task FilesystemLinksCannotReadOrOpenFilesOutsideTheProject()
+    {
+        using var outside = new TempProject(("Outside.cs", "outside"));
+        Directory.CreateSymbolicLink(Path.Combine(project.Root, "linked"), outside.Root);
+        File.CreateSymbolicLink(Path.Combine(project.Root, "linked.cs"), Path.Combine(outside.Root, "Outside.cs"));
+        foreach (var file in new[] { "linked/Outside.cs", "linked.cs" })
+        {
+            using var source = await client.GetAsync("api/source?file=" + Uri.EscapeDataString(file));
+            Assert.Equal(HttpStatusCode.NotFound, source.StatusCode);
+            using var open = await Post("api/open", JsonSerializer.Serialize(new { file, line = 1 }));
+            Assert.Equal(HttpStatusCode.NotFound, open.StatusCode);
+        }
+    }
+
+    [UnixFact]
+    public async Task AnInternalFileLinkKeepsItsRequestedPathInSourceResponses()
+    {
+        File.CreateSymbolicLink(Path.Combine(project.Root, "linked.cs"), "Order.cs");
+        using var response = await client.GetAsync("api/source?file=linked.cs");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var source = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("linked.cs", source.RootElement.GetProperty("file").GetString());
+        Assert.Contains("Total()", source.RootElement.GetProperty("text").GetString());
+    }
+
     [Fact]
     public async Task EditorStartupFailureIsReportedWithoutLosingTheResponse()
     {

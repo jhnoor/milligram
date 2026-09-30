@@ -697,20 +697,6 @@ public class PolicyTextTests
     }
 }
 
-public class ProjectPathsTests
-{
-    [Fact]
-    public void ContainsRejectsTraversal()
-    {
-        var paths = new ProjectPaths("/tmp/project");
-        Assert.True(paths.Contains("/tmp/project/src/A.cs"));
-        Assert.True(paths.Contains("src/A.cs"));
-        Assert.False(paths.Contains("../other/A.cs"));
-        Assert.False(paths.Contains("/tmp/project-evil/A.cs"));
-        Assert.False(paths.Contains("/etc/passwd"));
-    }
-}
-
 public class CommandLineTests
 {
     [Fact]

@@ -256,7 +256,10 @@ The page bounds pending input at 256 KiB and sends it in 16 KiB frames. Oversize
 rejected as a whole. OSC 52 clipboard requests are swallowed; OSC 8 links require Ctrl/Cmd+click,
 an http(s) URL and confirmation of the actual destination. Terminal text never becomes HTML.
 File links support C# paths and line numbers, including wrapping and wide terminal cells;
-source/editor access still passes the server's project containment check. Responses forbid
+source/editor access still passes the server's project containment check, including nested
+filesystem links. An explicitly linked project root defines the boundary; nested targets outside
+it are rejected before they are followed. This check is not an atomic defense against a local
+process changing directory entries between checking and opening a file. Responses forbid
 framing with `Content-Security-Policy: frame-ancestors 'none'`.
 
 Start, stop and restart use the guarded action endpoint and serialize within the viewer.

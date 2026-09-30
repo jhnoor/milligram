@@ -42,6 +42,10 @@ namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } 
 '@)
     $linkType = if ($IsWindows) { 'Junction' } else { 'SymbolicLink' }
     New-Item -ItemType $linkType -Path (Join-Path $projectRoot 'cycle') -Target $projectRoot | Out-Null
+    $outsideRoot = Join-Path $smokeRoot 'outside'
+    New-Item -ItemType Directory -Path $outsideRoot | Out-Null
+    [IO.File]::WriteAllText((Join-Path $outsideRoot 'Outside.cs'), 'generated outside-project fixture')
+    New-Item -ItemType $linkType -Path (Join-Path $projectRoot 'outside-link') -Target $outsideRoot | Out-Null
     $obj = Join-Path $projectRoot 'src/Smoke/obj'
     New-Item -ItemType Directory -Path $obj -Force | Out-Null
     New-Item -ItemType $linkType -Path (Join-Path $obj 'cycle') -Target $obj | Out-Null
@@ -88,6 +92,16 @@ namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } 
         }
         $source = Invoke-RestMethod ($address + 'api/source?file=src/Smoke/Class1.cs')
         if (!$source.text.Contains('class Order')) { throw 'Source navigation did not return the source' }
+        $linkedSource = Invoke-RestMethod ($address + 'api/source?file=cycle/src/Smoke/Class1.cs')
+        if ($linkedSource.text -ne $source.text -or $linkedSource.file -ne 'cycle/src/Smoke/Class1.cs') {
+            throw 'An internal directory link lost its source or requested path'
+        }
+        $outsideSource = Invoke-WebRequest ($address + 'api/source?file=outside-link/Outside.cs') -SkipHttpErrorCheck
+        $outsideOpen = Invoke-WebRequest ($address + 'api/open') -Method Post -ContentType 'application/json' `
+            -Headers @{ 'X-Milligram' = '1' } -Body '{"file":"outside-link/Outside.cs","line":1}' -SkipHttpErrorCheck
+        if ($outsideSource.StatusCode -ne 404 -or $outsideOpen.StatusCode -ne 404) {
+            throw 'Source preview or editor access followed a link outside the project'
+        }
         foreach ($file in @('milligram.json', '.milligram/agent.md', '.milligram/model.json')) {
             if (!(Test-Path -LiteralPath (Join-Path $projectRoot $file))) { throw "First run did not create $file" }
         }
@@ -158,7 +172,7 @@ namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } 
         $scanned = (Get-Content -LiteralPath $modelFile -Raw | ConvertFrom-Json).generatedAt
         Invoke-DotNet restore $projectFile
         Wait-Until 'restore triggers a new scan' { (Get-Content -LiteralPath $modelFile -Raw | ConvertFrom-Json).generatedAt -ne $scanned }
-        Write-Output "Package $Version passed: installed tool, dnx, directory-link cycles, first-run layers, proposals, mail round-trip, coverage import, live edits, folder moves, project edits, restore, source and embedded assets."
+        Write-Output "Package $Version passed: installed tool, dnx, directory-link cycles and containment, first-run layers, proposals, mail round-trip, coverage import, live edits, folder moves, project edits, restore, source and embedded assets."
     } finally {
         if (!$server.HasExited) { $server.Kill($true) }
         $server.WaitForExit()
