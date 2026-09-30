@@ -25,7 +25,10 @@ internal static class Program
         {
             "# Porta.Pty 2.2.2 probe", "",
             $"Runtime: {RuntimeInformation.RuntimeIdentifier}; {RuntimeInformation.OSDescription}; {RuntimeInformation.FrameworkDescription}",
-            $"Async I/O: {asynchronous}", "", "| Check | Result | Milliseconds |", "|---|---|---|",
+            $"Async I/O: {asynchronous}",
+            $"Selected terminal implementation: {PtyProvider.PseudoConsoleImplementation}",
+            $"Application base path length: {AppContext.BaseDirectory.Length}",
+            "", "| Check | Result | Milliseconds |", "|---|---|---|",
         };
         var capture = new Capture();
         var fixture = Path.Combine(Path.GetTempPath(), "Milligram PTY probe " + Guid.NewGuid().ToString("N"));

@@ -2,14 +2,16 @@ param(
     [Parameter(Mandatory)][string]$Version,
     [string]$PackageDirectory = './artifacts/pty',
     [string]$ReportDirectory = './artifacts/pty-results',
-    [string]$ExpectedRuntime = ''
+    [string]$ExpectedRuntime = '',
+    [string]$GlobalDirectory = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $packageSource = (Resolve-Path -LiteralPath $PackageDirectory).Path
 $reports = [IO.Path]::GetFullPath($ReportDirectory)
 $toolRoot = Join-Path ([IO.Path]::GetTempPath()) ('Milligram PTY tools ' + [guid]::NewGuid().ToString('N'))
-$cliRoot = Join-Path ([IO.Path]::GetTempPath()) ('Milligram PTY global ' + [guid]::NewGuid().ToString('N'))
+$cliRoot = if ($GlobalDirectory) { [IO.Path]::GetFullPath($GlobalDirectory) }
+    else { Join-Path ([IO.Path]::GetTempPath()) ('mpty global ' + [guid]::NewGuid().ToString('N').Substring(0, 12)) }
 New-Item -ItemType Directory -Path $reports -Force | Out-Null
 
 function Invoke-DotNet {

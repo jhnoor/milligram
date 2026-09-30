@@ -82,8 +82,19 @@ All 24 Markdown artifacts were inspected; no failed checks or unexpected runtime
 | win-arm64 | Windows build 26200 | Both modes pass | Both modes pass |
 
 Local Windows x64, build 19045, also passes all three launch paths, including the new isolated
-global-install checks. Hosted global-install results are pending. These OS versions do not prove
+global-install checks. Hosted global-install results at ordinary path lengths are pending. These OS versions do not prove
 the candidate's advertised minimum Windows version or compatibility with every older Linux kernel.
+
+**Windows long-path limit:** [run 36648767857](https://github.com/jhnoor/milligram/actions/runs/36648767857)
+passed the added global-install checks on both Linux and both macOS targets, but failed on both
+Windows targets with `DllNotFoundException`, `conpty.dll`, error `0x800700CE` (path too long).
+Those temporary global installations put the native DLL beyond 260 characters. The same code
+and package passed in shorter tool-path and `dnx` locations. The normal smoke now uses a shorter
+temporary CLI home; `-GlobalDirectory` preserves the ability to reproduce the long installation.
+This is a candidate limitation, not a fixed library bug. A production host needs an explicit
+solution or diagnostic for it. Local Windows build 19045 did load the out-of-band library from
+a 285-character DLL path, so the failure is environment-dependent, not a universal cutoff.
+Reports now record the selected implementation and application path length to make this visible.
 
 The first hosted run exposed two probe assumptions, corrected before the passing run: a working
 directory can have different equivalent path spellings on macOS, and terminal dimensions can be
