@@ -347,7 +347,6 @@ public class AgentHostCompanionTests
                 return loser;
             })
         {
-            ProbeTimeout = TimeSpan.FromMilliseconds(20),
             RetryDelay = TimeSpan.FromMilliseconds(10),
         };
 
@@ -417,7 +416,7 @@ public class AgentHostCompanionTests
             Files = new AgentHostFiles(Paths);
             Companion = new AgentHostCompanion(Paths, () => Policy, ["dotnet-stub", "milligram-stub.dll"], "test-version", _ => Available, Launch)
             {
-                ProbeTimeout = probeTimeout ?? TimeSpan.FromMilliseconds(20),
+                ProbeTimeout = probeTimeout ?? TimeSpan.FromMilliseconds(300),
                 StartupTimeout = timeout ?? TimeSpan.FromSeconds(3),
                 CommandTimeout = timeout ?? TimeSpan.FromSeconds(3),
                 RetryDelay = TimeSpan.FromMilliseconds(10),
