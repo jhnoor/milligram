@@ -169,6 +169,46 @@ public class CSharpScannerTests
     }
 
     [Fact]
+    public void DiscoveryFindsBoundExternalNamespacesWithoutInventingLibrariesFromUsingsOrSource()
+    {
+        using var project = new TempProject(("Types.cs", """
+            using System.Xml;
+            namespace Shop;
+            class JsonSerializer { }
+            class A
+            {
+                JsonSerializer local = new();
+                Missing.Package.Type? unresolved;
+                string Save() => System.Text.Json.JsonSerializer.Serialize(local);
+                string Again() => System.Text.Json.JsonSerializer.Serialize(local);
+            }
+            """));
+        var model = new CSharpScanner().Scan(new ScanRequest(project.Root, project.Root, [], "Shop", [], "Shop", DiscoverForeign: true));
+
+        Assert.Equal(["System.Text.Json"], model.Foreign.Select(n => n.Label));
+        Assert.Contains(model.Edges, e => e.From == "Shop.A" && e.To == "Shop.JsonSerializer");
+        Assert.Contains(model.Edges, e => e.From == "Shop.A" && e.To == "x:System.Text.Json" && e.Count > 1);
+    }
+
+    [Fact]
+    public void DiscoveryPreservesExplicitForeignPrefixes()
+    {
+        using var project = new TempProject(("A.cs", "class A { string Save() => System.Text.Json.JsonSerializer.Serialize(1); }"));
+        var model = new CSharpScanner().Scan(new ScanRequest(project.Root, project.Root, [], "", ["System.Text", "System.Text.Json"], "Test", DiscoverForeign: true));
+        Assert.Equal(["System.Text.Json"], model.Foreign.Select(n => n.Label));
+    }
+
+    [Fact]
+    public void SdkImplicitUsingsResolveLibraryDependenciesBeforeTheProjectIsBuilt()
+    {
+        using var project = new TempProject(("App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><ImplicitUsings>enable</ImplicitUsings></PropertyGroup></Project>
+            """), ("Client.cs", "namespace Shop; public class Client { public HttpClient Http { get; } = new(); }"));
+
+        Assert.Contains(Scan(project, "System.Net.Http").Edges, edge => edge.From == "Shop.Client" && edge.To == "x:System.Net.Http");
+    }
+
+    [Fact]
     public void TopLevelStatementsBecomeAProgramType()
     {
         using var project = new TempProject(("Program.cs", """

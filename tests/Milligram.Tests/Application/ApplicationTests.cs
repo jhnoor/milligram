@@ -3,6 +3,7 @@ using Milligram.Adapters.Cli;
 using Milligram.Analysis.CSharp;
 using Milligram.Application;
 using Milligram.Domain.Hierarchy;
+using Milligram.Domain.Metrics;
 using Milligram.Domain.Model;
 using Milligram.Domain.Policies;
 
@@ -280,6 +281,49 @@ public class WorkspaceTests
     }
 
     [Fact]
+    public void MutationGapDetailsRoundTripInStableOrder()
+    {
+        using var project = new TempProject();
+        var workspace = Open(project);
+        var first = new Mutant("a.cs", 2, 3, MutantStatus.Survived, "Equality") { EndLine = 2, EndColumn = 5, Replacement = ">=" };
+        var second = first with { Line = 3, EndLine = 3, Replacement = "<" };
+        Mutant[] ordered =
+        [
+            first with { File = "A.cs" }, first, first with { EndColumn = 6 }, first with { EndLine = 3 },
+            first with { Status = MutantStatus.NoCoverage }, first with { Replacement = "z" },
+            first with { Mutator = "Other" }, first with { Column = 4 }, second, first with { File = "z.cs" },
+        ];
+        var snapshot = MutationSnapshot.Empty with
+        {
+            Gaps = new Dictionary<string, IReadOnlyList<Mutant>> { ["z"] = ordered.Reverse().ToList(), ["A"] = [second] },
+        };
+
+        workspace.SaveMetrics(snapshot);
+        var written = File.ReadAllText(workspace.Paths.MutationFile);
+        workspace.ReloadMetrics();
+
+        Assert.Equal(["A", "z"], workspace.Metrics.Mutation.Gaps.Keys);
+        Assert.Equal(ordered, workspace.Metrics.Mutation.Gaps["z"]);
+        workspace.SaveMetrics(snapshot with { Gaps = new Dictionary<string, IReadOnlyList<Mutant>> { ["A"] = [second], ["z"] = ordered } });
+        Assert.Equal(written, File.ReadAllText(workspace.Paths.MutationFile));
+    }
+
+    [Fact]
+    public void OldMutationSnapshotsLoadWithoutGapDetails()
+    {
+        using var project = new TempProject((".milligram/metrics/mutation.json", """
+            { "generatedAt": "2026-01-01T00:00:00Z", "members": {
+              "App.A.M()": { "killed": 1, "timeout": 0, "survived": 2, "uncovered": 0, "hash": "h" }
+            }, "files": { "a.cs": "2026-01-01T00:00:00Z" } }
+            """));
+
+        var workspace = Open(project);
+
+        Assert.Equal(2, workspace.Metrics.Mutation.Members["App.A.M()"].Survived);
+        Assert.Empty(workspace.Metrics.Mutation.Gaps);
+    }
+
+    [Fact]
     public void ABrokenPolicyKeepsTheLastGoodOne()
     {
         using var project = new TempProject(("milligram.json", """{ "prefix": "Shop" }"""));
@@ -388,6 +432,37 @@ public class WorkspaceTests
 
 public class ProjectInitializerTests
 {
+    [Fact]
+    public void InitialPolicyIncludesUsedLibrariesAndTheNextScanDrawsTheirOvals()
+    {
+        using var project = new TempProject(("A.cs", """
+            namespace Shop;
+            class A
+            {
+                Microsoft.CodeAnalysis.SyntaxTree? syntax;
+                Microsoft.AspNetCore.Http.HttpContext? context;
+                string Save() => System.Text.Json.JsonSerializer.Serialize(new System.Collections.Generic.List<int>());
+            }
+            """));
+        var paths = new ProjectPaths(project.Root);
+        var initialization = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator()).Initialize(force: false)!;
+        string[] expected = ["Microsoft.AspNetCore", "Microsoft.CodeAnalysis", "System.Text.Json"];
+        Assert.Equal(expected, initialization.Policy.Foreign);
+        Assert.Equal(expected, JsonFile.Read<Policy>(paths.PolicyFile)!.Foreign);
+        Assert.Equal("Library ovals, inferred from usage (edit foreign in milligram.json): Microsoft.AspNetCore, Microsoft.CodeAnalysis, System.Text.Json.", initialization.Describe()[0]);
+
+        var workspace = new Workspace(paths, new CSharpScanner());
+        workspace.Load();
+        Assert.Equal(expected, workspace.Generate().Foreign.Select(n => n.Label));
+    }
+
+    [Fact]
+    public void LibrarySuggestionsAreDescribedEvenWithoutLayers()
+    {
+        Assert.Equal(["Library ovals, inferred from usage (edit foreign in milligram.json): System.Text.Json."],
+            new Initialization(new Policy { Foreign = ["System.Text.Json"] }, []).Describe());
+    }
+
     [Theory]
     [InlineData(new[] { "Shop.Domain", "Shop.Web.Pages" }, "Shop")]
     [InlineData(new[] { "Shop.Domain.Model", "Shop.Domain.Rules" }, "Shop.Domain")]

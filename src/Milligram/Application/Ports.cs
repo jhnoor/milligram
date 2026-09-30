@@ -9,7 +9,8 @@ public sealed record ScanRequest(
     IReadOnlyList<string> Exclude,
     string Prefix,
     IReadOnlyList<string> Foreign,
-    string Title);
+    string Title,
+    bool DiscoverForeign = false);
 
 /// <summary>Reads a source tree and emits the topology: types, members, and dependencies.</summary>
 public interface ILanguageScanner
@@ -34,6 +35,8 @@ public interface IMutationReportReader
 public sealed record BuildProject(string Path, string Name, bool IsTest, IReadOnlyList<string> References, bool IsRestored = false)
 {
     public string Directory => System.IO.Path.GetDirectoryName(Path)!;
+    public bool IsSdkStyle { get; init; } = true;
+    public bool TargetsNetFramework { get; init; }
 }
 
 /// <summary>Finds buildable projects (and which are tests) under a root.</summary>

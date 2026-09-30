@@ -16,32 +16,53 @@ public static class MutationMapper
         IReadOnlyCollection<string> testedFiles,
         DateTimeOffset now)
     {
-        var hashes = model.Types.SelectMany(t => t.Members).ToDictionary(m => m.Id, m => m.Hash);
-        var liveIds = hashes.Keys.Concat(model.Types.Select(InitializerId)).ToHashSet();
+        var declarations = model.Types.SelectMany(t => t.Members).ToDictionary(m => m.Id);
+        var liveIds = declarations.Keys.Concat(model.Types.Select(InitializerId)).ToHashSet();
         var members = old.Members.Where(kv => liveIds.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
+        var gaps = old.Gaps.Where(kv => liveIds.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value.ToList());
         var fresh = testedMemberIds.ToHashSet();
-        foreach (var id in fresh) members[id] = MutationEntry.None(hashes.GetValueOrDefault(id));
+        foreach (var id in fresh)
+        {
+            members[id] = MutationEntry.None(declarations.GetValueOrDefault(id)?.Hash);
+            gaps.Remove(id);
+        }
 
         var locator = new MemberLocator(model);
         foreach (var mutant in mutants)
         {
-            if (mutant.Status is MutantStatus.Ignored or MutantStatus.CompileError or MutantStatus.Pending) continue;
-            if (locator.Find(mutant) is not { } id) continue;
-            if (fresh.Add(id)) members[id] = MutationEntry.None(hashes.GetValueOrDefault(id));
+            if (mutant.Status is not (MutantStatus.Killed or MutantStatus.Timeout or MutantStatus.Survived or MutantStatus.NoCoverage)) continue;
+            var id = locator.Find(mutant);
+            if (id is null) continue;
+            if (fresh.Add(id))
+            {
+                members[id] = MutationEntry.None(declarations.GetValueOrDefault(id)?.Hash);
+                gaps.Remove(id);
+            }
             members[id] = members[id].Add(mutant.Status);
+            if (mutant.Status is MutantStatus.Survived or MutantStatus.NoCoverage)
+            {
+                if (!gaps.TryGetValue(id, out var sites)) gaps[id] = sites = [];
+                sites.Add(mutant with { MemberStartLine = declarations.GetValueOrDefault(id)?.Span.StartLine });
+            }
         }
 
         var files = new Dictionary<string, DateTimeOffset>(old.Files);
         foreach (var file in testedFiles) files[file] = now;
-        return new MutationSnapshot(now, members, files);
+        return new MutationSnapshot(now, members, files)
+        {
+            Gaps = gaps.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<Mutant>)kv.Value),
+        };
     }
 
     /// <summary>Members that changed since their last mutation run (or were never run).</summary>
     public static IReadOnlyList<MemberNode> Changed(MutationSnapshot snapshot, IEnumerable<MemberNode> members) =>
-        members
-            .Where(m => m.Complexity is not null)
+        Candidates(snapshot, members)
             .Where(m => !snapshot.Members.TryGetValue(m.Id, out var entry) || entry.Hash != m.Hash)
             .ToList();
+
+    /// <summary>Include previously measured members so removing their last expression clears old scores.</summary>
+    public static IEnumerable<MemberNode> Candidates(MutationSnapshot snapshot, IEnumerable<MemberNode> members) =>
+        members.Where(m => m.Complexity is not null || m.HasInitializer || snapshot.Members.ContainsKey(m.Id));
 
     private sealed class MemberLocator(CodeModel model)
     {

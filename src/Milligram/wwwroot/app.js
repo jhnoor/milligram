@@ -48,6 +48,10 @@ const state = {
   detail: localStorage.getItem('mg.detail') || 'members',
   selected: null,
   card: null,
+  cardToken: 0,
+  sourceToken: 0,
+  sourcePending: false,
+  sending: false,
   zoom: 1,
   pan: { x: 24, y: 24 },
   token: 0,
@@ -138,12 +142,18 @@ const api = {
     return response.json();
   },
   async post(path, body) {
-    const response = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Milligram': '1' },
-      body: JSON.stringify(body),
-    });
-    return response.json().catch(() => ({ ok: false, message: `${path}: ${response.status}` }));
+    try {
+      const response = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Milligram': '1' },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result) return { ok: false, message: result?.message || `Request failed (${response.status}).` };
+      return result;
+    } catch {
+      return { ok: false, message: 'Cannot reach Milligram. Check that the viewer is running, then try again.' };
+    }
   },
 };
 
@@ -197,7 +207,7 @@ async function refresh({ keepCamera = false } = {}) {
       api.get('/api/view', { context: state.context, focus: state.focus }),
     ]);
   } catch (error) {
-    $('#status').textContent = 'Viewer disconnected.';
+    if (token === state.token) $('#status').textContent = 'Viewer disconnected.';
     return;
   }
   if (token !== state.token) return;
@@ -770,12 +780,16 @@ async function openCard(typeId) {
 }
 
 function closeCard() {
+  state.cardToken++;
   state.card = null;
   $('#card').hidden = true;
 }
 
 async function refreshCard() {
-  const card = await api.get('/api/type', { context: state.context, id: state.card }).catch(() => null);
+  const id = state.card, context = state.context, token = ++state.cardToken;
+  if (!id) return;
+  const card = await api.get('/api/type', { context, id }).catch(() => null);
+  if (token !== state.cardToken || id !== state.card || context !== state.context) return;
   if (!card) return closeCard();
   renderCard(card);
 }
@@ -813,6 +827,7 @@ function renderCard(card) {
         <tr><th></th><th class="name">member</th><th>CRAP</th><th>CC</th><th>Cov</th><th>killed</th><th>survived</th><th>uncovered</th></tr></thead>
         <tbody>${typeRow(card)}${rows}</tbody>
       </table>
+      ${mutationGapSections(card)}
       <h4 class="muted small">Depends on</h4>${chips(card.dependsOn)}
       <h4 class="muted small">Used by</h4>${chips(card.usedBy)}
     </div>`;
@@ -824,6 +839,28 @@ function renderCard(card) {
     const member = card.members[+row.dataset.index];
     row.onclick = () => openSource(member.file, member.line, member.endLine);
   });
+  panel.querySelectorAll('[data-gap-member]').forEach((button) => {
+    const gap = card.members[+button.dataset.gapMember].mutationGaps[+button.dataset.gapIndex];
+    button.onclick = () => openSource(gap.file, gap.line, gap.endLine ?? gap.line);
+  });
+}
+
+function mutationGapSections(card) {
+  const sections = card.members.map((member, index) => {
+    const gaps = member.mutationGaps ?? [];
+    if (!gaps.length) return '';
+    return `<details class="mutation-gaps"><summary>${html(member.signature)} <span class="muted">(${gaps.length})</span></summary>
+      ${member.mutationStale ? '<p class="warn">Code changed since this run. Refresh mutation before relying on these locations.</p>' : ''}
+      <ul>${gaps.map((gap, gapIndex) => `<li>
+        <div><span class="gap-status">${gap.status === 'survived' ? 'Survived' : 'Not covered'}</span> · ${html(gap.mutator)}
+          <button data-gap-member="${index}" data-gap-index="${gapIndex}" title="Open ${html(gap.file)}">Line ${gap.line}:${gap.column}</button></div>
+        ${gap.replacement === null || gap.replacement === undefined ? '<span class="muted">Replacement not included in this report.</span>'
+          : `<div class="small muted">Replacement${gap.replacement === '' ? ' (remove this code)' : ''}</div><pre><code>${html(gap.replacement)}</code></pre>`}
+      </li>`).join('')}</ul></details>`;
+  }).join('');
+  const missing = card.members.some((m) => (m.mutation?.survived ?? 0) + (m.mutation?.uncovered ?? 0) > (m.mutationGaps?.length ?? 0));
+  if (!sections && !missing) return '';
+  return `<h4>Test gaps</h4>${sections}${missing ? '<p class="muted small">Some locations are missing from this snapshot. Use Refresh all mutation to include them.</p>' : ''}`;
 }
 
 function typeRow(card) {
@@ -874,20 +911,35 @@ function highlight(text) {
 
 async function openSource(file, line = 1, endLine = line) {
   if (!file) return;
+  const token = ++state.sourceToken;
+  state.sourcePending = true;
   let source;
-  try { source = await api.get('/api/source', { file }); } catch { return toast(`Cannot open ${file}.`, 'error'); }
+  try { source = await api.get('/api/source', { file }); }
+  catch {
+    if (token !== state.sourceToken) return;
+    state.sourcePending = false;
+    return toast(`Cannot open ${file}.`, 'error');
+  }
+  if (token !== state.sourceToken) return;
+  state.sourcePending = false;
   const panel = $('#source');
   const lines = highlight(source.text).split('\n');
   panel.innerHTML = `<header><h3 class="mono">${html(source.file)}</h3><button id="open-editor">Open in editor</button><button class="close icon" title="Close (Esc)">×</button></header>
     <div class="body">${lines.map((l, i) => `<div class="line${i + 1 >= line && i + 1 <= endLine ? ' hl' : ''}" data-n="${i + 1}"><span class="n">${i + 1}</span><span>${l || ' '}</span></div>`).join('')}</div>`;
   panel.hidden = false;
-  panel.querySelector('.close').onclick = () => (panel.hidden = true);
+  panel.querySelector('.close').onclick = closeSource;
   $('#open-editor').onclick = async () => {
     const result = await api.post('/api/open', { file: source.file, line });
     if (!result.ok) toast(result.message, 'error');
   };
   const target = panel.querySelector(`.line[data-n="${line}"]`);
   target?.scrollIntoView({ block: line > 1 ? 'center' : 'start' });
+}
+
+function closeSource() {
+  state.sourceToken++;
+  state.sourcePending = false;
+  $('#source').hidden = true;
 }
 
 // ---------------------------------------------------------------- menus and tips
@@ -1042,8 +1094,8 @@ function wireKeys() {
     if (pan) { e.preventDefault(); panBy(...pan); return; }
     if (e.key === 'Escape') {
       if (!$('#menu').hidden) hideMenu();
-      else if (!$('#source').hidden) $('#source').hidden = true;
-      else if (!$('#card').hidden) closeCard();
+      else if (!$('#source').hidden || state.sourcePending) closeSource();
+      else if (state.card) closeCard();
       else up();
     } else if (e.key === 'r' || e.key === 'R') refresh({ keepCamera: true });
     else if (e.key === 'f' || e.key === 'F') { fit(); applyCamera(); saveCamera(); }
@@ -1053,10 +1105,17 @@ function wireKeys() {
 
 async function send() {
   const ask = $('#ask');
-  const text = ask.value.trim();
-  if (!text) return;
-  const result = await action('message', { text, selection: selectionInfo() });
-  if (result.ok) ask.value = '';
+  const draft = ask.value, text = draft.trim();
+  if (!text || state.sending) return;
+  state.sending = true;
+  $('#send').disabled = true;
+  try {
+    const result = await action('message', { text, selection: selectionInfo() });
+    if (result.ok && ask.value === draft) ask.value = '';
+  } finally {
+    state.sending = false;
+    $('#send').disabled = false;
+  }
 }
 
 function wireInspector() {

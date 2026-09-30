@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
@@ -49,13 +50,13 @@ public sealed class CSharpScanner : ILanguageScanner
         var compilation = CSharpCompilation.Create(
             "milligram-scan",
             trees.Concat(GlobalUsings(projects)),
-            References.For(projects),
+            References.For(projects, report),
             CompilationOptions);
 
         var binding = new ScanStage(report, "Bound", trees.Count, "files");
         var types = new TypeCollector(compilation, request.Root).Collect(trees, binding.Tick);
         var linking = new ScanStage(report, "Linked", types.Count, "types");
-        var dependencies = new DependencyCollector(types, request.Foreign);
+        var dependencies = new DependencyCollector(types, request.Foreign, request.DiscoverForeign);
         foreach (var type in types.Values) { dependencies.Collect(type); linking.Tick(); }
 
         var edges = dependencies.Edges;
@@ -111,7 +112,8 @@ public sealed class CSharpScanner : ILanguageScanner
         {
             var obj = Path.Combine(project, "obj");
             var file = Directory.Exists(obj)
-                ? Directory.EnumerateFiles(obj, "*.GlobalUsings.g.cs", SearchOption.AllDirectories).MaxBy(File.GetLastWriteTimeUtc)
+                ? Directory.EnumerateFiles(obj, "*.GlobalUsings.g.cs", new EnumerationOptions
+                { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = false }).MaxBy(File.GetLastWriteTimeUtc)
                 : null;
             if (file is not null) generated.Add(Parse(file));
             else foreach (var ns in DefaultUsings(project)) fallback.Add(ns);
@@ -124,9 +126,25 @@ public sealed class CSharpScanner : ILanguageScanner
 
     private static IEnumerable<string> DefaultUsings(string project)
     {
-        var csproj = Directory.EnumerateFiles(project, "*.csproj").First();
-        var text = File.ReadAllText(csproj);
-        if (!text.Contains("<ImplicitUsings>enable", StringComparison.OrdinalIgnoreCase)) return [];
-        return text.Contains("Microsoft.NET.Sdk.Web", StringComparison.OrdinalIgnoreCase) ? [.. SdkUsings, .. WebSdkUsings] : SdkUsings;
+        var csproj = Directory.EnumerateFiles(project, "*.csproj").Order(StringComparer.Ordinal).First();
+        try
+        {
+            var root = XDocument.Load(csproj).Root;
+            if (root is null) return [];
+            var enabled = root.Elements().Where(e => e.Name.LocalName == "PropertyGroup")
+                .Elements().Where(e => e.Name.LocalName.Equals("ImplicitUsings", StringComparison.OrdinalIgnoreCase) &&
+                    !e.AncestorsAndSelf().Any(a => !string.IsNullOrWhiteSpace(a.Attribute("Condition")?.Value)))
+                .LastOrDefault()?.Value;
+            if (!string.Equals(enabled, "enable", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(enabled, "true", StringComparison.OrdinalIgnoreCase)) return [];
+            var sdks = (root.Attribute("Sdk")?.Value ?? "").Split(';')
+                .Concat(root.Elements().Where(e => e.Name.LocalName == "Sdk").Select(e => e.Attribute("Name")?.Value ?? ""));
+            return sdks.Any(sdk => sdk.Split('/')[0].Trim().Equals("Microsoft.NET.Sdk.Web", StringComparison.OrdinalIgnoreCase))
+                ? [.. SdkUsings, .. WebSdkUsings] : SdkUsings;
+        }
+        catch (Exception e) when (e is System.Xml.XmlException or IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
     }
 }

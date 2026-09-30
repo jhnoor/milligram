@@ -86,6 +86,9 @@ public class MutationMapperTests
         Assert.Equal(new MutationEntry(0, 0, 0, 1, "h2"), snapshot.Members[Second.Id]);
         Assert.Equal(1, snapshot.Members["App.A.<init>"].Killed);
         Assert.True(snapshot.Tested("a.cs"));
+        Assert.Equal([mutants[2] with { MemberStartLine = First.Span.StartLine }], snapshot.Gaps[First.Id]);
+        Assert.Equal([mutants[3] with { MemberStartLine = Second.Span.StartLine }], snapshot.Gaps[Second.Id]);
+        Assert.Equal(2, snapshot.Gaps.Count);
     }
 
     [Fact]
@@ -119,10 +122,77 @@ public class MutationMapperTests
             new Dictionary<string, DateTimeOffset>());
         var field = Build.Member("App.A", "field", complexity: null);
         var added = Build.Member("App.A", "Added", 1);
+        var initialized = field with { Id = "App.A.Initialized", HasInitializer = true };
 
-        var changed = MutationMapper.Changed(snapshot, [First, Second, field, added]);
+        var changed = MutationMapper.Changed(snapshot, [First, Second, field, added, initialized]);
 
-        Assert.Equal([Second.Id, added.Id], changed.Select(m => m.Id));
+        Assert.Equal([Second.Id, added.Id, initialized.Id], changed.Select(m => m.Id));
+    }
+
+    [Fact]
+    public void DifferentialRunsReplaceGapsAndPreserveTheMembersTheyDoNotRetest()
+    {
+        var firstGap = new Mutant("a.cs", 4, 5, MutantStatus.Survived, "Equality") { Replacement = ">=", MemberStartLine = 3 };
+        var secondGap = new Mutant("a.cs", 8, 5, MutantStatus.NoCoverage, "Boolean") { Replacement = "false", MemberStartLine = 7 };
+        var initial = MutationMapper.Merge(MutationSnapshot.Empty, Model, [firstGap, secondGap], [First.Id, Second.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        var replacement = firstGap with { Replacement = "<" };
+
+        var rerun = MutationMapper.Merge(initial, Model, [replacement], [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        Assert.Equal([replacement], rerun.Gaps[First.Id]);
+        Assert.Equal([secondGap], rerun.Gaps[Second.Id]);
+        Assert.Equal([firstGap], initial.Gaps[First.Id]);
+
+        var fixedFirst = MutationMapper.Merge(rerun, Model, [replacement with { Status = MutantStatus.Killed }], [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        Assert.False(fixedFirst.Gaps.ContainsKey(First.Id));
+        Assert.Equal([secondGap], fixedFirst.Gaps[Second.Id]);
+
+        var withoutSites = MutationMapper.Merge(rerun, Model, [], [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        Assert.False(withoutSites.Gaps.ContainsKey(First.Id));
+        Assert.Equal([secondGap], withoutSites.Gaps[Second.Id]);
+    }
+
+    [Fact]
+    public void GapsForVanishedMembersDisappearAndInitializerGapsAreReplaced()
+    {
+        var gap = new Mutant("a.cs", 11, 2, MutantStatus.Survived, "String") { Replacement = "\"\"" };
+        var initial = MutationMapper.Merge(MutationSnapshot.Empty, Model, [gap], [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        var initializer = MutationMapper.InitializerId(Model.Types[0]);
+        Assert.Equal([gap], initial.Gaps[initializer]);
+
+        var untouched = MutationMapper.Merge(initial, Model, [], [Second.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        Assert.Equal([gap], untouched.Gaps[initializer]);
+        Assert.Equal(1, untouched.Members[initializer].Survived);
+
+        var refreshed = MutationMapper.Merge(initial, Model, [gap with { Status = MutantStatus.Killed }], [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        Assert.Empty(refreshed.Gaps);
+        Assert.Empty(MutationMapper.Merge(initial, Build.Model([]), [], [], [], DateTimeOffset.UnixEpoch).Gaps);
+    }
+
+    [Fact]
+    public void SeveralGapsInOneMemberStaySeparateAndUnmappedMutantsAreIgnored()
+    {
+        var gap = new Mutant("a.cs", 4, 5, MutantStatus.Survived, "Equality") { Replacement = ">=", MemberStartLine = 3 };
+        var other = gap with { Replacement = "<" };
+        var result = MutationMapper.Merge(MutationSnapshot.Empty, Model, [gap, other, gap with { File = "outside.cs" }],
+            [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+        Assert.Equal([gap, other], result.Gaps[First.Id]);
+        Assert.Equal(2, result.Members[First.Id].Survived);
+    }
+
+    [Theory]
+    [InlineData(MutantStatus.Ignored)]
+    [InlineData(MutantStatus.CompileError)]
+    [InlineData(MutantStatus.RuntimeError)]
+    [InlineData(MutantStatus.Pending)]
+    public void UntestedMutantsDoNotReplacePreviouslyMeasuredGaps(MutantStatus status)
+    {
+        var gap = new Mutant("a.cs", 4, 5, MutantStatus.Survived, "Equality");
+        var initial = MutationMapper.Merge(MutationSnapshot.Empty, Model, [gap], [First.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+
+        var refreshed = MutationMapper.Merge(initial, Model, [gap with { Status = status }], [Second.Id], ["a.cs"], DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(initial.Gaps[First.Id], refreshed.Gaps[First.Id]);
+        Assert.Equal(initial.Members[First.Id], refreshed.Members[First.Id]);
     }
 }
 
@@ -202,4 +272,132 @@ public class GradingTests
         Assert.Equal(5, summary.Sites);
         Assert.Equal(0.8, summary.Score);
     }
+
+    [Fact]
+    public void AddingAnExecutableMemberMakesExistingSummariesStale()
+    {
+        var measured = Build.Member("App.A", "Measured");
+        var added = Build.Member("App.A", "Added");
+        var type = Build.Type("App.A", measured, added);
+        var crap = new CrapSnapshot(DateTimeOffset.UnixEpoch, new Dictionary<string, CrapEntry>
+        {
+            [measured.Id] = new(1, 1, 1, 1, 1, measured.Hash),
+        });
+        var mutation = new MutationSnapshot(DateTimeOffset.UnixEpoch, new Dictionary<string, MutationEntry>
+        {
+            [measured.Id] = new(2, 0, 0, 0, measured.Hash),
+        }, new Dictionary<string, DateTimeOffset> { [measured.Span.File] = DateTimeOffset.UnixEpoch });
+
+        Assert.True(TypeMetrics.Crap(type, crap)!.Stale);
+        Assert.True(TypeMetrics.Mutation(type, mutation)!.Stale);
+        Assert.False(TypeMetrics.Crap(type with { Members = [measured] }, crap)!.Stale);
+        Assert.False(TypeMetrics.Mutation(type with { Members = [measured] }, mutation)!.Stale);
+        Assert.Equal(1, TypeMetrics.Crap(type, crap)!.Count);
+        Assert.Equal(2, TypeMetrics.Mutation(type, mutation)!.Sites);
+    }
+
+    [Fact]
+    public void ANewTypeInATestedFileIsUnknownRatherThanPerfect()
+    {
+        var type = Build.Type("App.New", Build.Member("App.New", "Added", file: "shared.cs"));
+        var mutation = new MutationSnapshot(DateTimeOffset.UnixEpoch, new Dictionary<string, MutationEntry>
+        {
+            ["App.Old.Measured()"] = new(2, 0, 0, 0, "h"),
+        }, new Dictionary<string, DateTimeOffset> { ["shared.cs"] = DateTimeOffset.UnixEpoch });
+
+        Assert.Null(TypeMetrics.Mutation(type, mutation));
+        Assert.Null(Grading.ForType(type, new MetricsSet(CrapSnapshot.Empty, mutation), Defaults).Mutation);
+        Assert.Null(TypeMetrics.Mutation(type with { Members = [] }, mutation));
+    }
+
+    [Fact]
+    public void AMeasuredMethodWithoutMutationSitesStillHasABestGrade()
+    {
+        var member = Build.Member("App.A", "Measured");
+        var type = Build.Type("App.A", member);
+        var mutation = new MutationSnapshot(DateTimeOffset.UnixEpoch,
+            new Dictionary<string, MutationEntry> { [member.Id] = MutationEntry.None(member.Hash) },
+            new Dictionary<string, DateTimeOffset> { [member.Span.File] = DateTimeOffset.UnixEpoch });
+
+        Assert.Equal(10, Grading.MutationGrade(TypeMetrics.Mutation(type, mutation), Defaults));
+        Assert.False(TypeMetrics.Mutation(type, mutation)!.Stale);
+    }
+
+    [Fact]
+    public void MembersWithoutCodeDoNotMakeSummariesStaleButMeasuredFieldsDo()
+    {
+        var method = Build.Member("App.A", "Measured");
+        var field = Build.Member("App.A", "Field", complexity: null);
+        var type = Build.Type("App.A", method, field);
+        var crap = new CrapSnapshot(DateTimeOffset.UnixEpoch,
+            new Dictionary<string, CrapEntry> { [method.Id] = new(1, 1, 1, 1, 1, method.Hash) });
+        var entries = new Dictionary<string, MutationEntry> { [method.Id] = new(2, 0, 0, 0, method.Hash) };
+        var mutation = new MutationSnapshot(DateTimeOffset.UnixEpoch, entries,
+            new Dictionary<string, DateTimeOffset> { [method.Span.File] = DateTimeOffset.UnixEpoch });
+
+        Assert.False(TypeMetrics.Crap(type, crap)!.Stale);
+        Assert.False(TypeMetrics.Mutation(type, mutation)!.Stale);
+        Assert.True(TypeMetrics.Mutation(type with { Members = [method, field with { HasInitializer = true }] }, mutation)!.Stale);
+        entries[field.Id] = new(0, 0, 1, 0, "before");
+        Assert.True(TypeMetrics.Mutation(type, mutation)!.Stale);
+        Assert.Equal(3, TypeMetrics.Mutation(type, mutation)!.Sites);
+    }
+
+    [Fact]
+    public void AnUninstrumentedMemberIsCurrentWhenItsHashMatches()
+    {
+        var method = Build.Member("App.A", "Measured");
+        var uninstrumented = Build.Member("App.A", "Uninstrumented");
+        var type = Build.Type("App.A", method, uninstrumented);
+        var entries = new Dictionary<string, CrapEntry>
+        {
+            [method.Id] = new(1, 1, 1, 1, 1, method.Hash),
+            [uninstrumented.Id] = new(1, null, null, 0, 0, uninstrumented.Hash),
+        };
+        var crap = new CrapSnapshot(DateTimeOffset.UnixEpoch, entries);
+
+        Assert.False(TypeMetrics.Crap(type, crap)!.Stale);
+        entries[uninstrumented.Id] = entries[uninstrumented.Id] with { Hash = "before" };
+        Assert.True(TypeMetrics.Crap(type, crap)!.Stale);
+        Assert.Null(TypeMetrics.Crap(type with { Members = [uninstrumented] }, crap));
+    }
+
+    [Fact]
+    public void PartialTypesKeepMeasuredResultsAndFlagTheirUnmeasuredParts()
+    {
+        var first = Build.Member("App.A", "First", file: "first.cs");
+        var second = Build.Member("App.A", "Second", file: "first.cs");
+        var added = Build.Member("App.A", "Added", file: "second.cs");
+        var type = Build.Type("App.A", first, second, added) with { Spans = [Build.Span("first.cs", 1, 5), Build.Span("second.cs", 1, 5)] };
+        var snapshot = new MutationSnapshot(DateTimeOffset.UnixEpoch, new Dictionary<string, MutationEntry>
+        {
+            [first.Id] = new(1, 1, 2, 3, first.Hash),
+            [second.Id] = new(4, 0, 5, 6, second.Hash),
+            [MutationMapper.InitializerId(type)] = new(2, 0, 1, 1, null),
+        }, new Dictionary<string, DateTimeOffset> { ["first.cs"] = DateTimeOffset.UnixEpoch });
+
+        Assert.Equal(new MutationSummary(8, 8, 10, 26, true), TypeMetrics.Mutation(type, snapshot));
+    }
+
+    [Fact]
+    public void CrapSpreadIncludesEveryMemberRatherThanJustTheNearestToTheMean()
+    {
+        var members = new[] { Build.Member("App.A", "A"), Build.Member("App.A", "B"), Build.Member("App.A", "C") };
+        double[] scores = [1, 2, 6];
+        var snapshot = new CrapSnapshot(DateTimeOffset.UnixEpoch,
+            members.Select((m, i) => (m.Id, Entry: new CrapEntry(1, 1, scores[i], 1, 1, m.Hash))).ToDictionary(x => x.Id, x => x.Entry));
+
+        var summary = TypeMetrics.Crap(Build.Type("App.A", members), snapshot)!;
+
+        Assert.Equal(3, summary.Mu);
+        Assert.Equal(6, summary.Max);
+        Assert.Equal(Math.Sqrt(14.0 / 3), summary.Sigma, 6);
+    }
+
+    [Theory]
+    [InlineData(4, 1)]
+    [InlineData(5, 10)]
+    [InlineData(6, 1)]
+    public void EqualThresholdsGiveOnlyTheirExactValueTheBestGrade(double value, int grade) =>
+        Assert.Equal(grade, Grading.Scale(value, 5, 5));
 }

@@ -38,6 +38,10 @@ public sealed class CrapService(Workspace workspace, IProjectLocator projects, I
     {
         var tests = TestProjects();
         if (tests.Count == 0) throw new MilligramException("No test projects found. Set tests.projects in milligram.json.");
+        var legacy = projects.Find(workspace.Paths.Root).Where(p => !p.IsSdkStyle && tests.Contains(p.Path)).ToList();
+        if (legacy.Count > 0)
+            throw new MilligramException($"Automatic coverage requires SDK-style test projects: {string.Join(", ", legacy.Select(p => workspace.Paths.Relative(p.Path)))}. " +
+                "Collect Cobertura using your existing test tools, then import it with `milligram crap --coverage report.xml`.");
         RequireCoverageCollector(tests, log);
         return tests;
     }

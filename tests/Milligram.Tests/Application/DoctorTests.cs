@@ -12,6 +12,50 @@ public class DoctorTests
     private static string Report(IReadOnlyList<Check> checks) => string.Join("\n", checks.SelectMany(c => c.Describe()));
 
     [Fact]
+    public async Task LegacyProjectsGetAccurateLimitsInsteadOfAnImpossibleRestoreFix()
+    {
+        using var fixture = new ServiceFixture();
+        var locator = new FakeProjectLocator(fixture.AppProject with { IsSdkStyle = false, TargetsNetFramework = true },
+            fixture.TestProject with { IsSdkStyle = false, TargetsNetFramework = true });
+        var processes = new FakeProcessRunner { Output = { ["--version"] = ["10.0.401"] } };
+
+        var checks = await Doctor(fixture, locator, processes, new FakeCompanion()).RunAsync(CancellationToken.None);
+
+        var format = checks.Single(c => c.Name == "Project format");
+        Assert.Contains(".NET 10 references", format.Detail);
+        Assert.Contains("packages.config", format.Detail);
+        Assert.Contains("explicit HintPaths", format.Detail);
+        Assert.Contains("src/App/App.csproj", format.Detail);
+        Assert.Contains("tests/App.Tests/App.Tests.csproj", format.Detail);
+        Assert.Contains(format.Fixes, f => f.Contains("Compile items", StringComparison.Ordinal));
+        Assert.Contains(format.Fixes, f => f.Contains("milligram crap --coverage", StringComparison.Ordinal));
+        Assert.Contains(format.Fixes, f => f.Contains("stryker-config.json", StringComparison.Ordinal));
+        Assert.Contains(format.Fixes, f => f.Contains("working MSBuild/NuGet tools", StringComparison.Ordinal));
+        var restore = checks.Single(c => c.Name == "Restore");
+        Assert.Equal(CheckStatus.Skipped, restore.Status);
+        Assert.Empty(restore.Fixes);
+        var coverage = checks.Single(c => c.Name == "Coverage");
+        Assert.Equal(CheckStatus.Failed, coverage.Status);
+        Assert.Contains("SDK-style", coverage.Detail);
+        Assert.Contains(coverage.Fixes, f => f.Contains("--coverage", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SdkFrameworkProjectsWarnAboutReferencesWithoutBlockingTheirCoverageCollector()
+    {
+        using var fixture = new ServiceFixture();
+        var locator = new FakeProjectLocator(fixture.AppProject with { TargetsNetFramework = true, IsRestored = true },
+            fixture.TestProject with { IsRestored = true });
+        var processes = new FakeProcessRunner { Output = { ["--version"] = ["10.0.401"] } };
+
+        var checks = await Doctor(fixture, locator, processes, new FakeCompanion()).RunAsync(CancellationToken.None);
+
+        Assert.Contains("src/App/App.csproj", checks.Single(c => c.Name == "Project format").Detail);
+        Assert.Equal(CheckStatus.Ok, checks.Single(c => c.Name == "Coverage").Status);
+        Assert.Equal(CheckStatus.Ok, checks.Single(c => c.Name == "Restore").Status);
+    }
+
+    [Fact]
     public async Task ReportsEverythingInPlace()
     {
         using var fixture = new ServiceFixture();

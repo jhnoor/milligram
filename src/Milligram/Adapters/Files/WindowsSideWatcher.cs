@@ -14,10 +14,9 @@ public sealed class WindowsSideWatcher : IDisposable
     public const string Overflow = "?overflow";
 
     /// <summary>
-    /// The directories that are never scanned, and anything in them, for PowerShell's case-insensitive -match. The
-    /// directory itself counts too: writing a file inside it can raise a change for the directory, with no trailing \.
+    /// Ignores build noise but lets restore assets, generated usings and whole obj moves reach the scanner.
     /// </summary>
-    public const string Unscanned = @"\\(bin|obj|\.git|node_modules|\.vs|\.idea|\.milligram\\run)(\\|$)";
+    public const string Unscanned = @"\\(bin|\.git|node_modules|\.vs|\.idea|\.milligram\\run)(\\|$)|\\obj\\(?!project\.assets\.json$|(?:[^\\]+\\)*[^\\]+\.GlobalUsings\.g\.cs$)";
 
     private const string PowerShellOnC = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
 

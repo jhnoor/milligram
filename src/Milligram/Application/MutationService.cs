@@ -27,11 +27,17 @@ public sealed class MutationService(Workspace workspace, IProjectLocator locator
 
             var groupFiles = group.ToHashSet();
             var members = model.Types.SelectMany(t => t.Members).Where(m => groupFiles.Contains(m.Span.File)).ToList();
-            var chosen = all ? members.Where(m => m.Complexity is not null).ToList() : MutationMapper.Changed(workspace.Metrics.Mutation, members);
-            if (chosen.Count == 0) { log($"{group.Key.Name}: no changed members to mutate."); continue; }
+            var previous = workspace.Metrics.Mutation;
+            var candidates = MutationMapper.Candidates(previous, members).ToList();
+            var chosen = all ? candidates : MutationMapper.Changed(previous, members);
+            if (!all && chosen.Count == 0) { log($"{group.Key.Name}: no changed members to mutate."); continue; }
 
-            var mutants = await RunStrykerAsync(group.Key, tests, Patterns(group.Key, chosen, members), log, cancellation);
-            var snapshot = MutationMapper.Merge(workspace.Metrics.Mutation, model, mutants, chosen.Select(m => m.Id).ToList(), groupFiles, DateTimeOffset.UtcNow);
+            var testedFiles = all ? groupFiles : chosen.Select(m => m.Span.File).ToHashSet();
+            var wholeFiles = testedFiles.Where(f => all || candidates.Where(m => m.Span.File == f).All(chosen.Contains)).ToHashSet();
+            var testedIds = chosen.Select(m => m.Id).Concat(model.Types
+                .Where(t => t.Files.All(wholeFiles.Contains)).Select(MutationMapper.InitializerId)).ToList();
+            var mutants = await RunStrykerAsync(group.Key, tests, Patterns(group.Key, chosen, testedFiles, wholeFiles), log, cancellation);
+            var snapshot = MutationMapper.Merge(previous, model, mutants, testedIds, testedFiles, DateTimeOffset.UtcNow);
             workspace.SaveMetrics(snapshot);
             projectCount++;
             memberCount += chosen.Count;
@@ -43,15 +49,15 @@ public sealed class MutationService(Workspace workspace, IProjectLocator locator
     }
 
     /// <summary>Whole files when every member is chosen, otherwise Stryker character spans per member.</summary>
-    private IReadOnlyList<string> Patterns(BuildProject project, IReadOnlyList<MemberNode> chosen, IReadOnlyList<MemberNode> all)
+    private IReadOnlyList<string> Patterns(BuildProject project, IReadOnlyList<MemberNode> chosen,
+        IReadOnlySet<string> files, IReadOnlySet<string> wholeFiles)
     {
         var patterns = new List<string>();
-        foreach (var file in chosen.GroupBy(m => m.Span.File))
+        foreach (var file in files.Order(StringComparer.Ordinal))
         {
-            var glob = "**/" + Path.GetRelativePath(project.Directory, workspace.Paths.Absolute(file.Key)).Replace('\\', '/');
-            var everyMember = all.Where(m => m.Span.File == file.Key && m.Complexity is not null).All(m => file.Contains(m));
-            if (everyMember) patterns.Add(glob);
-            else patterns.AddRange(file.Select(m => $"{glob}{{{m.Span.Start}..{m.Span.End}}}"));
+            var glob = "**/" + Path.GetRelativePath(project.Directory, workspace.Paths.Absolute(file)).Replace('\\', '/');
+            if (wholeFiles.Contains(file)) patterns.Add(glob);
+            else patterns.AddRange(chosen.Where(m => m.Span.File == file).Select(m => $"{glob}{{{m.Span.Start}..{m.Span.End}}}"));
         }
         return patterns;
     }
@@ -59,8 +65,8 @@ public sealed class MutationService(Workspace workspace, IProjectLocator locator
     private async Task<IReadOnlyList<Mutant>> RunStrykerAsync(
         BuildProject project, IReadOnlyList<BuildProject> tests, IReadOnlyList<string> patterns, Action<string> log, CancellationToken cancellation)
     {
-        var output = Path.Combine(workspace.Paths.RunDirectory, "stryker", $"{DateTime.UtcNow:yyyyMMddTHHmmss}-{project.Name}");
-        var args = new List<string> { "stryker" };
+        var output = Path.Combine(workspace.Paths.RunDirectory, "stryker", $"{DateTime.UtcNow:yyyyMMddTHHmmss}-{project.Name}-{Guid.NewGuid():N}");
+        var args = new List<string> { "stryker", "--project", Path.GetFileName(project.Path) };
         foreach (var test in tests) args.AddRange(["--test-project", test.Path]);
         args.AddRange(["--reporter", "json", "--reporter", "progress", "--output", output]);
         foreach (var pattern in patterns) args.AddRange(["--mutate", pattern]);
@@ -70,7 +76,9 @@ public sealed class MutationService(Workspace workspace, IProjectLocator locator
         var report = Path.Combine(output, "reports", "mutation-report.json");
         if (!File.Exists(report))
             throw new MilligramException(
-                $"Stryker exited {code} without a report. Install it with `dotnet tool install -g dotnet-stryker` (or a local tool manifest).");
+                $"Stryker exited {code} without a report for {project.Name}. Check the build and test output above, and {output}. " +
+                "Run `milligram doctor` to check prerequisites. If Stryker is missing, use `dotnet tool restore` for a local manifest " +
+                "or `dotnet tool install -g dotnet-stryker`.");
         return reports.Read(report, workspace.Paths.Root, project.Directory);
     }
 

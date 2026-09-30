@@ -6,7 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Milligram</RootNamespace>
     <StartupObject>Milligram.Main.Program</StartupObject>
-    <Version>0.1.0</Version>
+    <!-- Releases take their version from the git tag (see .github/workflows/release.yml). -->
+    <Version>0.0.0-dev</Version>
     <Description>A live architecture viewer for C# codebases, with a companion agent.</Description>
 
     <IsPackable>true</IsPackable>
@@ -14,6 +15,14 @@
     <ToolCommandName>milligram</ToolCommandName>
     <PackageId>Milligram</PackageId>
     <PackageOutputPath>../../artifacts</PackageOutputPath>
+    <Authors>Jama Noor</Authors>
+    <Copyright>Copyright (c) 2026 Jama Noor</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://jhnoor.github.io/milligram/</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/jhnoor/milligram</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>architecture;diagram;csharp;roslyn;crap;coverage;mutation-testing;stryker;copilot</PackageTags>
 
     <!-- The viewer's web assets are embedded so the tool runs from anywhere. -->
     <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
@@ -26,6 +35,10 @@
     <Content Remove="wwwroot/**" />
     <None Remove="wwwroot/**" />
     <EmbeddedResource Include="wwwroot/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md;../../LICENSE;../../THIRD-PARTY-NOTICES.txt" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>

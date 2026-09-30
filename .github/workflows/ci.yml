@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
@@ -40,6 +41,14 @@ jobs:
 
       - name: Test (includes the architecture tests)
         run: dotnet test Milligram.slnx --no-build -c Release
+
+      - name: Pack and smoke test the installed tool and dnx
+        shell: pwsh
+        run: |
+          $version = "0.0.0-ci.${{ github.run_id }}.${{ github.run_attempt }}"
+          dotnet pack src/Milligram -c Release -warnaserror -p:Version=$version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./.github/scripts/smoke-package.ps1 -PackageDirectory ./artifacts -Version $version
 
   # Formatting doesn't depend on the platform, so it is checked once.
   format:

@@ -66,7 +66,7 @@ public class StrykerReportReaderTests
                 "Domain/Order.cs": {
                   "language": "cs",
                   "mutants": [
-                    { "id": "1", "mutatorName": "Equality mutation", "status": "Killed", "location": { "start": { "line": 12, "column": 17 }, "end": { "line": 12, "column": 19 } } },
+                    { "id": "1", "mutatorName": "Equality mutation", "status": "Killed", "replacement": ">=", "location": { "start": { "line": 12, "column": 17 }, "end": { "line": 12, "column": 19 } } },
                     { "id": "2", "mutatorName": "Boolean mutation", "status": "NoCoverage", "location": { "start": { "line": 20, "column": 5 }, "end": { "line": 20, "column": 9 } } },
                     { "id": "3", "mutatorName": "String mutation", "status": "Weird", "location": { "start": { "line": 1, "column": 1 }, "end": { "line": 1, "column": 2 } } }
                   ]
@@ -78,14 +78,102 @@ public class StrykerReportReaderTests
         var mutants = new StrykerReportReader().Read(report, project.Root, "/unused");
 
         Assert.Equal(3, mutants.Count);
-        Assert.Equal(new Mutant("src/App/Domain/Order.cs", 12, 17, MutantStatus.Killed, "Equality mutation"), mutants[0]);
+        Assert.Equal(new Mutant("src/App/Domain/Order.cs", 12, 17, MutantStatus.Killed, "Equality mutation")
+        { EndLine = 12, EndColumn = 19, Replacement = ">=" }, mutants[0]);
         Assert.Equal(MutantStatus.NoCoverage, mutants[1].Status);
         Assert.Equal(MutantStatus.Pending, mutants[2].Status);
+    }
+
+    [Theory]
+    [InlineData("", null)]
+    [InlineData(", \"replacement\": null", null)]
+    [InlineData(", \"replacement\": \"\"", "")]
+    public void OptionalMutationDetailsPreserveTheDifferenceBetweenUnknownAndRemovedCode(string extra, string? replacement)
+    {
+        using var project = new TempProject();
+        var report = project.Write("report.json", $$"""
+            { "files": { "A.cs": { "mutants": [
+              { "status": "survived", "mutatorName": null, "location": { "start": { "line": 1, "column": 2 } }{{extra}} }
+            ] } } }
+            """);
+
+        var mutant = Assert.Single(new StrykerReportReader().Read(report, project.Root, project.Root));
+
+        Assert.Equal(new Mutant("A.cs", 1, 2, MutantStatus.Survived, "") { Replacement = replacement }, mutant);
     }
 }
 
 public class DotNetProjectLocatorTests
 {
+    [UnixFact]
+    public void ProjectDiscoveryDoesNotFollowDirectoryLinks()
+    {
+        using var project = new TempProject(("src/App.csproj", "<Project />"), ("other/Other.csproj", "<Project />"));
+        var src = Path.Combine(project.Root, "src");
+        Directory.CreateSymbolicLink(Path.Combine(src, "cycle"), src);
+        Directory.CreateSymbolicLink(Path.Combine(src, "external"), Path.Combine(project.Root, "other"));
+
+        Assert.Equal("App", Assert.Single(new DotNetProjectLocator().Find(src)).Name);
+    }
+
+    [Theory]
+    [InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>", true, false)]
+    [InlineData("<Project><Sdk Name=\"Microsoft.NET.Sdk\" /><PropertyGroup><TargetFramework>net48</TargetFramework></PropertyGroup></Project>", true, true)]
+    [InlineData("<Project><Import Project=\"Sdk.props\" Sdk=\"Microsoft.NET.Sdk\" /><PropertyGroup><TargetFrameworks>net10.0; net472</TargetFrameworks></PropertyGroup></Project>", true, true)]
+    [InlineData("<Project xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\"><PropertyGroup><TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion></PropertyGroup><Import Project=\"Microsoft.CSharp.targets\" /></Project>", false, true)]
+    [InlineData("<Project><Import Project=\"shared.props\" /></Project>", false, false)]
+    [InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>NET35</TargetFramework></PropertyGroup></Project>", true, true)]
+    [InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>netstandard2.0</TargetFramework></PropertyGroup></Project>", true, false)]
+    [InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><Description>net48</Description></PropertyGroup></Project>", true, false)]
+    public void ReportsProjectFormatWithoutEvaluatingMsbuild(string xml, bool sdk, bool framework)
+    {
+        using var project = new TempProject(("App.csproj", xml));
+
+        var found = Assert.Single(new DotNetProjectLocator().Find(project.Root));
+
+        Assert.Equal(sdk, found.IsSdkStyle);
+        Assert.Equal(framework, found.TargetsNetFramework);
+    }
+
+    [Theory]
+    [InlineData("net11")]
+    [InlineData("net20")]
+    [InlineData("net35")]
+    [InlineData("net40")]
+    [InlineData("net403")]
+    [InlineData("net45")]
+    [InlineData("net451")]
+    [InlineData("net452")]
+    [InlineData("net46")]
+    [InlineData("net461")]
+    [InlineData("net462")]
+    [InlineData("net47")]
+    [InlineData("net471")]
+    [InlineData("net472")]
+    [InlineData("net48")]
+    [InlineData("net481")]
+    public void RecognizesTheFrameworkTargetMonikers(string framework)
+    {
+        using var project = new TempProject(("App.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>{framework}</TargetFramework></PropertyGroup></Project>"));
+        Assert.True(Assert.Single(new DotNetProjectLocator().Find(project.Root)).TargetsNetFramework);
+    }
+
+    [Theory]
+    [InlineData("<packages><package id=\"NUnit\" version=\"3.0\" /></packages>", true)]
+    [InlineData("<packages><package id=\"xunit\" /></packages>", true)]
+    [InlineData("<packages><package id=\"Newtonsoft.Json\" /></packages>", false)]
+    [InlineData("<packages><package version=\"1\" /></packages>", false)]
+    [InlineData("<broken", false)]
+    public void RecognizesLegacyTestsFromPackagesConfig(string packages, bool isTest)
+    {
+        using var project = new TempProject(("Legacy.csproj", "<Project />"), ("packages.config", packages));
+
+        var found = Assert.Single(new DotNetProjectLocator().Find(project.Root));
+
+        Assert.Equal(isTest, found.IsTest);
+        Assert.False(found.IsSdkStyle);
+    }
+
     [Fact]
     public void FindsProjectsReferencesAndTests()
     {

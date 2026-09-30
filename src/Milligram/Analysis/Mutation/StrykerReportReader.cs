@@ -28,9 +28,16 @@ public sealed class StrykerReportReader : IMutationReportReader
 
     private static Mutant Read(JsonElement mutant, string file)
     {
-        var start = mutant.GetProperty("location").GetProperty("start");
+        var location = mutant.GetProperty("location");
+        var start = location.GetProperty("start");
         var status = Enum.TryParse<MutantStatus>(mutant.GetProperty("status").GetString(), ignoreCase: true, out var s) ? s : MutantStatus.Pending;
         var mutator = mutant.TryGetProperty("mutatorName", out var name) ? name.GetString() ?? "" : "";
-        return new Mutant(file, start.GetProperty("line").GetInt32(), start.GetProperty("column").GetInt32(), status, mutator);
+        var hasEnd = location.TryGetProperty("end", out var end);
+        return new Mutant(file, start.GetProperty("line").GetInt32(), start.GetProperty("column").GetInt32(), status, mutator)
+        {
+            EndLine = hasEnd ? end.GetProperty("line").GetInt32() : null,
+            EndColumn = hasEnd ? end.GetProperty("column").GetInt32() : null,
+            Replacement = mutant.TryGetProperty("replacement", out var replacement) ? replacement.GetString() : null,
+        };
     }
 }

@@ -36,6 +36,49 @@ public class DrvFsTests
 
 public class ChangePollerTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AFailedWalkRetriesWithoutLosingThePreviousSnapshot(bool denied)
+    {
+        var walks = 0;
+        var changed = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var poller = new ChangePoller(() => Interlocked.Increment(ref walks) switch
+        {
+            1 => Files(("A.cs", 1)),
+            2 => throw (denied ? new UnauthorizedAccessException() : new IOException()),
+            _ => Files(("A.cs", 2)),
+        }, path => changed.TrySetResult(path), TimeSpan.FromMilliseconds(10));
+
+        Assert.Equal("A.cs", await changed.Task.WaitAsync(TimeSpan.FromSeconds(3)));
+    }
+
+    [Fact]
+    public async Task SlowWalksThrottlePollingBeyondTheMinimumInterval()
+    {
+        using var poller = new ChangePoller(() =>
+        {
+            Thread.Sleep(30);
+            return Files(("A.cs", 1));
+        }, _ => { }, TimeSpan.FromMilliseconds(1));
+        for (var i = 0; i < 200 && poller.Interval == TimeSpan.Zero; i++) await Task.Delay(10);
+
+        Assert.True(poller.Interval >= TimeSpan.FromMilliseconds(200));
+    }
+
+    [UnixFact]
+    public void PollingDoesNotRecurseIntoDirectoryLinks()
+    {
+        using var project = new TempProject(("src/One.cs", ""), ("other/Other.cs", ""));
+        var src = Path.Combine(project.Root, "src");
+        Directory.CreateSymbolicLink(Path.Combine(src, "cycle"), src);
+        Directory.CreateSymbolicLink(Path.Combine(src, "external"), Path.Combine(project.Root, "other"));
+
+        var files = ChangePoller.Files(src, name => name.EndsWith(".cs", StringComparison.Ordinal), recurse: true).ToList();
+
+        Assert.Equal(Path.Combine(src, "One.cs"), Assert.Single(files).Key);
+    }
+
     private static Dictionary<string, Stamp> Files(params (string Path, long Length)[] files) =>
         files.ToDictionary(f => f.Path, f => new Stamp(f.Length, new DateTime(2026, 9, 26, 12, 0, 0, DateTimeKind.Utc)));
 
@@ -109,7 +152,12 @@ public class WindowsSideWatcherTests
 
     [Theory]
     [InlineData(@"C:\p\src\obj\B.cs", true)]
-    [InlineData(@"C:\p\src\obj", true)]
+    [InlineData(@"C:\p\src\obj", false)]
+    [InlineData(@"C:\p\src\obj\project.assets.json", false)]
+    [InlineData(@"C:\p\src\obj\Debug\net10.0\App.GlobalUsings.g.cs", false)]
+    [InlineData(@"C:\p\src\obj\Debug\project.assets.json", true)]
+    [InlineData(@"C:\p\src\obj\Debug\App.AssemblyInfo.cs", true)]
+    [InlineData(@"C:\p\bin\obj\project.assets.json", true)]
     [InlineData(@"C:\p\src\Bin\Debug\A.dll", true)]
     [InlineData(@"C:\p\.git", true)]
     [InlineData(@"C:\p\.milligram\run\agent.json", true)]
@@ -140,16 +188,18 @@ public class WindowsSideWatcherTests
             Assert.Equal(WindowsSideWatcher.Ready, ready);
 
             File.WriteAllText(Path.Combine(project.Root, "src", "obj", "B.cs"), "b changed");
+            File.WriteAllText(Path.Combine(project.Root, "src", "obj", "project.assets.json"), "{}");
             File.WriteAllText(Path.Combine(project.Root, "src", "A.cs"), "a changed");
 
             // Changes to directories may be reported too, so read until A.cs, which comes after anything B.cs raised.
             var reported = new List<string>();
-            while (!reported.Contains(Path.Combine(project.Root, "src", "A.cs")))
+            while (!reported.Contains(Path.Combine(project.Root, "src", "A.cs")) ||
+                !reported.Contains(Path.Combine(project.Root, "src", "obj", "project.assets.json")))
             {
                 Assert.True(lines.TryTake(out var line, TimeSpan.FromSeconds(10)), $"A.cs was not reported; got {string.Join(", ", reported)}");
                 reported.Add(line);
             }
-            Assert.DoesNotContain(reported, path => path.Contains(@"\obj", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(Path.Combine(project.Root, "src", "obj", "B.cs"), reported);
             Assert.True(watcher.Stop(), "the watcher kept running after its input closed");
         }
         finally

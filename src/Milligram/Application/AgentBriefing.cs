@@ -61,7 +61,7 @@ public static class AgentBriefing
         | `prefix` | Stripped from every namespace. The remaining dots are the component tree. |
         | `order` | Box order of existing top-level namespace segments. |
         | `levels` | Groups of namespace paths, **inner (level 0) first**. Same group = same level. Drives red arrows. |
-        | `foreign` | Namespace prefixes of libraries to draw as ovals, e.g. `"Microsoft.EntityFrameworkCore"`. |
+        | `foreign` | Namespace prefixes of libraries to draw as ovals, e.g. `"Microsoft.EntityFrameworkCore"`. Init suggests up to eight from usage; edit to choose what matters. |
         | `omit` | Namespace paths or type names left off the diagram. |
         | `edgeKinds` | `[{"from":…,"to":…,"kind":"association"}]`: an association is never a violation. |
         | `omitEdges` | `[{"from":…,"to":…}]`: drop those dependencies from the drawing. |
@@ -104,8 +104,13 @@ public static class AgentBriefing
         1. Build and run the tests.
         2. `milligram crap` — reruns the tests with coverage and rescores CRAP.
         3. `milligram mutate <changed .cs files>` — differential mutation testing (Stryker.NET) on the
-           members that changed. `--all` re-mutates whole files. Surviving or uncovered mutants are test
+           members that changed, including initializers. `--all` re-mutates whole files. Surviving or uncovered mutants are test
            gaps: say so, and offer to write the missing tests. Do not loop re-running mutation.
+
+        The type card's **Test gaps** and `.milligram/metrics/mutation.json` (`gaps`, keyed by member id)
+        contain surviving and uncovered replacements with their source locations. Use them to explain
+        the missing cases. Locations describe the measured code; remeasure stale members before relying
+        on them. Older snapshots have counts only; `mutate --all` adds the details.
 
         If `milligram crap` or `milligram mutate` fails because something is missing, run `milligram doctor`:
         it lists what the metrics need and the command that fixes each gap. Tell the user; don't install

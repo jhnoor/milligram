@@ -35,13 +35,43 @@ The viewer, the editor integration, `crap` and `mutate` work the same everywhere
 | WSL2 (recommended on Windows) | tmux inside WSL. The agent opens in a Windows Terminal tab. On a Windows drive (`/mnt/c/…`), Linux isn't told about changes that Windows programs make, so Milligram also watches the project from Windows through `powershell.exe` (or polls, if WSL can't start Windows programs). A project in the Linux file system (for example `~/src`) scans faster and needs neither. |
 | Windows | Milligram can't start the agent yet: tmux doesn't run on native Windows ([#14](https://github.com/jhnoor/milligram/issues/14)). [Run your own](#run-the-agent-yourself). Copilot CLI needs PowerShell 7 (`winget install Microsoft.PowerShell`). |
 
+### Older .NET Framework projects
+
+The source diagram can be useful, but it is incomplete for these projects. The scanner binds
+against .NET 10, `obj/project.assets.json` and explicit assembly `HintPath` entries in `.csproj`
+files. Restored `packages.config` libraries bind when these entries point to their DLLs. Missing
+or invalid assemblies are reported during scans; conditional or property-based paths are reported
+as needing MSBuild evaluation. The scanner does not resolve .NET Framework reference assemblies.
+It also reads all `.cs` files under `src` without evaluating
+`Compile` items or build conditions. Use `exclude` for inactive files. `milligram doctor` flags
+these limitations and recognizes test frameworks listed in `packages.config`.
+
+Automatic coverage requires SDK-style test projects with `coverlet.collector`. SDK-style projects
+targeting .NET Framework still need a compatible Windows test environment. For old-style test
+projects, collect a Cobertura report with your existing tools and import it using
+`milligram crap --coverage report.xml`. Framework Stryker runs need a solution path in the
+source project's `stryker-config.json`, plus working MSBuild and NuGet tools. Stryker discovers
+MSBuild automatically; its `--msbuild-path` override is a CLI option that Milligram does not
+currently forward. See [Stryker's setup](https://stryker-mutator.io/docs/stryker-net/getting-started/)
+and [configuration](https://stryker-mutator.io/docs/stryker-net/configuration/).
+
+The [legacy investigation](LEGACY.md) measures recovered library edges and extra scanned files
+on an actual MVC 4 / .NET Framework 4.5 application. Building it, collecting coverage and running
+mutation remain unverified; [#27](https://github.com/jhnoor/milligram/issues/27) tracks that work.
+
 ## Install
 
 ```bash
-git clone <this repo> && cd milligram
+git clone https://github.com/jhnoor/milligram && cd milligram
 dotnet pack src/Milligram -c Release
-dotnet tool install -g Milligram --add-source ./artifacts
+dotnet tool install -g Milligram --source ./artifacts --prerelease
 ```
+
+Local builds use version `0.0.0-dev`. The release workflow takes its version from a `v*` tag,
+tests the package on Linux, macOS and Windows, then publishes it. See [Releasing](RELEASING.md)
+for the one-time NuGet setup. Until the first stable release is published, use the source install
+above. After that, `dnx Milligram` will run it directly, or `dotnet tool install -g Milligram`
+will put it on your PATH.
 
 ## Use
 
@@ -57,7 +87,24 @@ cycle, Milligram breaks the cycle at its lightest link (the fewest references) a
 link pointing outward, so the first diagram already shows the tangles in red. The console lists
 the levels it chose. Edit `levels` to match the architecture you intend. Every run scans the code,
 serves the viewer at `http://localhost:5170/` (loopback only), opens your browser, and starts the
-agent in a terminal. Edit code or `milligram.json` and the diagram updates by itself.
+agent in a terminal. Edit code, a `.csproj` or `milligram.json` and the diagram updates by itself.
+Restored `obj/project.assets.json` files and generated global usings also trigger a new scan;
+ordinary build output is ignored.
+
+Source discovery, project discovery and polling skip nested directory symlinks and Windows
+junctions, so a link back to a parent cannot trap a scan in a loop. Point `src` at the actual
+source directory when code lives behind such a link; an explicitly selected linked root works too.
+
+Initialization also selects up to eight external libraries for the `foreign` ovals, ranked by
+how many of your types use them. It groups namespaces at two segments (three for `System.*`),
+keeps choices such as `System.Text.Json`, and leaves out routine collections, LINQ, threading,
+compiler services and nullability annotations. These are namespace names, not package ids.
+Restore your projects first so package references bind; edit `foreign` to choose what matters.
+
+The scanner uses one source compilation rather than evaluating MSBuild. It reads generated global
+usings from the latest build, or falls back to explicit, unconditional `ImplicitUsings` settings
+in project XML (`enable` or `true`). Imported and conditional settings and stale generated files
+can therefore differ from the actual build; project-input evaluation remains a known limit.
 
 To get metrics, run `milligram crap` (tests with coverage) and `milligram mutate` (Stryker), or use
 the buttons in the viewer.
@@ -142,12 +189,27 @@ Snapshots are written in sorted order, so diffs stay small.
 
 - **CRAP** = complexity² × (1 − coverage)³ + complexity, for each method. Complexity comes from
   Roslyn and line coverage from coverlet.
-- **Mutation**: Stryker.NET runs on the files you pick. Later runs only mutate methods whose code
-  changed. After improving *tests*, use `--all` (or **Refresh all mutation**) to re-measure.
-  Survived or uncovered mutants are test gaps.
+- **Mutation**: Stryker.NET runs on the files you pick. Later runs only mutate members whose code
+  changed, including field and property initializers and explicit enum values. After improving
+  *tests*, use `--all` (or **Refresh all mutation**) to re-measure whole files, including attributes.
+  Survived or uncovered mutants are test gaps. Open a type card's **Test gaps** to see each
+  mutation's replacement code and jump to its source. Older snapshots keep their counts;
+  refresh all mutation to add the details.
+
+If Stryker fails before producing a report, check the build/test output and run `milligram doctor`.
+When dogfooding Milligram on Windows, use the installed tool or publish a separate copy first:
+
+```bash
+dotnet publish src/Milligram -o .milligram/dogfood
+dotnet .milligram/dogfood/Milligram.dll crap
+dotnet .milligram/dogfood/Milligram.dll mutate
+```
+
+Running from `dotnet run` holds the same binaries that coverage and Stryker need to rebuild.
 
 A component takes the worst grade of anything inside it. Values dim on the card when the code has
-changed since they were measured.
+changed since they were measured. Adding an unmeasured method also marks the type's existing
+summary stale. A new type stays unknown even if another type in its file was already mutation-tested.
 
 ## The agent
 
@@ -186,7 +248,7 @@ viewer, tell the agent to run `milligram mail`.
 | `milligram init [--force]` | Write `milligram.json` from the source, inferring levels from the dependencies. |
 | `milligram ir` | Rescan the source. |
 | `milligram crap [--coverage file.xml]` | Run the tests with coverage (or read a Cobertura file) and score CRAP. |
-| `milligram mutate [--all] [files…]` | Mutation-test changed methods (every file if you list none). |
+| `milligram mutate [--all] [files…]` | Mutation-test changed members, including initializers (every file if you list none). |
 | `milligram doctor` | Check the SDK, restore, test projects, coverage collector, Stryker, and the agent; print the fix for anything missing. Exits 1 if something is. |
 | `milligram mail [--peek]` | Print and remove mail for the agent. |
 | `milligram tell display <real\|proposalId>` / `tell notify "text"` | Send mail to the viewer. |

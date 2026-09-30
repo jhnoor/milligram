@@ -45,7 +45,8 @@ public sealed class ChangePoller : IDisposable
             new EnumerationOptions { RecurseSubdirectories = recurse, IgnoreInaccessible = true, AttributesToSkip = 0 })
         {
             ShouldIncludePredicate = (ref FileSystemEntry entry) => !entry.IsDirectory && include(entry.FileName.ToString()),
-            ShouldRecursePredicate = (ref FileSystemEntry entry) => skipped is null || !skipped.Contains(entry.FileName.ToString()),
+            ShouldRecursePredicate = (ref FileSystemEntry entry) => (entry.Attributes & FileAttributes.ReparsePoint) == 0 &&
+                (skipped is null || !skipped.Contains(entry.FileName.ToString())),
         };
     }
 
