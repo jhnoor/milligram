@@ -1,8 +1,9 @@
 # Agent host protocol (in development)
 
 This branch builds the opt-in host tracked in #22. The default companion remains tmux.
-The framing, replay and terminal session are implemented first; process ownership and pipe
-connections are not yet connected. This document describes their wire contract, not a released host.
+The framing, replay, terminal session and same-user pipe transport are implemented first;
+process ownership and companion integration are not yet connected. This document describes
+their wire contract, not a released host.
 
 ## Framing
 
@@ -58,8 +59,23 @@ The most recently active client's remembered size applies when it types or resiz
 resize briefly changes the width and restores the requested dimensions to request a redraw.
 Real Copilot rendering still needs validation; raw replay is not an exact screen snapshot.
 
-Same-user pipe permissions, process-tree cleanup, detachment, discovery and real-terminal
-integration checks remain part of the host implementation.
+## Local transport
+
+`AgentPipeServer` and `AgentPipeClient` use asynchronous named pipes with
+`PipeOptions.CurrentUserOnly` on both ends. Each peer sends its hello first. The server gives
+the client three seconds to finish greeting, then disconnects it if it has not. Protocol versions
+must match; a client that finds an incompatible host reports the host version and asks for a
+restart. Application versions may differ when the protocol is compatible.
+
+Only input, resize, ring, stop and empty status requests are accepted after greeting. Invalid
+frames, incomplete frames, unexpected server-only messages and transport failures disconnect
+that client. Each connection has one output task and serialized client writes. A slow connection
+inherits the session's bounded queue and cancellation, so it cannot block accepting new clients.
+Host shutdown stops new connections and lets existing clients receive output followed by exit
+before closing them; cancellation can interrupt idle readers and the listener.
+
+Process-tree cleanup, detachment, discovery, companion integration and real-terminal checks
+remain part of the host implementation.
 The six-platform terminal evidence and Windows loader workaround are on the separate
 [`codex/pty-spike` branch](https://github.com/jhnoor/milligram/tree/codex/pty-spike/spikes/PtyProbe).
 Real Copilot login, xterm.js rendering, WSL and the rollout criteria remain separate acceptance work.

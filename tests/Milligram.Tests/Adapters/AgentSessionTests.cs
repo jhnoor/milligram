@@ -409,6 +409,8 @@ public class AgentSessionTests
         session.Publish("too late"u8);
         session.Complete(99);
         await Assert.ThrowsAsync<IOException>(() => client.SendAsync(new HostFrame(HostFrameKind.Input, [13])));
+        using var later = session.Connect();
+        Assert.Equal("", await OutputBeforeExit(later, 17));
         session.Dispose();
         session.Dispose();
         Assert.Throws<ObjectDisposedException>(() => session.Connect());
