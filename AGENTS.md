@@ -134,6 +134,10 @@ Match the existing code. It is terse and consistent:
 - **Mail protocol.** Change `Domain/Mail/MailMessage.Ops`, `ViewerActions` (viewer → agent),
   `Program.Tell` and `ProjectWatcher.DeliverMail` (agent → viewer), the mail handling in `app.js`,
   and `AgentBriefing.Text` together.
+- **Host protocol.** Change `Adapters/Companion/HostProtocol`, `AgentSession`, both pipe peers,
+  and `AGENT_HOST.md` together. Preserve bounded frames, replay boundaries, same-user access and
+  the version handshake. Exercise native lifecycle changes in `tests/Milligram.AgentHost.Integration`
+  as well as the fast fake-terminal tests; the integration project is intentionally outside the solution.
 - **Agent host protocol.** Change `Adapters/Companion/HostProtocol.cs`, its host/client consumers,
   their tests and [AGENT_HOST.md](AGENT_HOST.md) together. Keep frame sizes bounded and version
   negotiation explicit; terminal replay and live delivery must share decoder state and ordering.

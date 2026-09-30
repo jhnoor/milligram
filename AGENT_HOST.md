@@ -86,7 +86,8 @@ a duplicate start cannot change these files.
 Discovery at `.milligram/run/agent-host.json` is atomic JSON containing the host `pid`, pipe
 `endpoint`, `protocol`, Milligram `version` and `started` timestamp. The lease removes only the
 exact record it published, before releasing its lock. Repeated disposal cannot affect a new
-owner. Missing or malformed discovery is read as absent; liveness must still be checked by
+owner. Missing, unreadable or malformed discovery is read as absent (including a Windows file
+pending deletion); liveness must still be checked by
 connecting, never inferred from a PID in this file.
 
 Pipe names are `milligram-` followed by 20 ASCII hexadecimal characters derived from the full
@@ -142,8 +143,21 @@ real fixture. This kept the caller waiting even though its immediate child had a
 
 The integration fixture now runs the actual hidden command through a short-lived launcher.
 It checks detachment, Unix session ownership, duplicate starts, replacement clients, doorbell,
-stop, stale discovery and restart. Native companion selection and user-facing control remain
-part of the implementation.
+stop, stale discovery and restart. It also exercises `AgentHostCompanion` directly against the
+real command: start, reuse, status, notification and stop.
+
+## Companion control
+
+`AgentHostCompanion` probes the pipe for liveness and waits for published discovery before
+returning from startup. If a previous host is still releasing its lease, it waits before
+launching. An early startup failure includes a bounded log tail. Cancellation or a startup
+deadline can stop only the child handle returned by this launch, never a PID from discovery.
+
+A notification sends ring followed by status and waits for the status response, ensuring the
+doorbell has been submitted. Stop drains the pipe through EOF and waits for the old owner's
+discovery or lease to be released; it also handles a host that is still initializing. Malformed
+greetings are not treated as running hosts, and incompatible protocol versions require restart.
+Native companion selection and user-facing terminal attachment remain part of the implementation.
 The six-platform terminal evidence and Windows loader workaround are on the separate
 [`codex/pty-spike` branch](https://github.com/jhnoor/milligram/tree/codex/pty-spike/spikes/PtyProbe).
 Real Copilot login, xterm.js rendering, WSL and the rollout criteria remain separate acceptance work.

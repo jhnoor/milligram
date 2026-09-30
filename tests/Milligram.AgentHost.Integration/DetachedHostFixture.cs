@@ -68,7 +68,22 @@ internal static class DetachedHostFixture
                 hostProcess.Dispose();
                 hostProcess = null;
             }
+            var policy = JsonFile.Read<Policy>(paths.PolicyFile)!;
+            var companion = new AgentHostCompanion(paths, () => policy, [Program.Dotnet(), typeof(ProcessRunner).Assembly.Location],
+                "integration", ProcessRunner.OnPath, ProcessRunner.StartDetached);
+            await companion.StartAsync(token);
+            hostProcess = Process.GetProcessById(AgentHostLease.ReadDiscovery(files)!.Pid);
+            _ = hostProcess.SafeHandle;
+            await companion.StartAsync(token);
+            Require(companion.IsRunning(), "The controller did not find the host it started.");
+            await ReadClient(stop: true, companion);
+            await hostProcess.WaitForExitAsync(token);
+            Require(!companion.IsRunning(), "The controller still sees a stopped host.");
+            Require(AgentHostLease.ReadDiscovery(files) is null, "Controller stop returned before discovery was removed.");
+            hostProcess.Dispose();
+            hostProcess = null;
             Console.WriteLine("PASS: detached command, duplicate start, reconnect, stale discovery and restart");
+            Console.WriteLine("PASS: native companion start, reuse, status, notification and stop");
 
             int Launch()
             {
@@ -84,7 +99,7 @@ internal static class DetachedHostFixture
                 while (!predicate()) await Task.Delay(20, token);
             }
 
-            async Task ReadClient(bool stop)
+            async Task ReadClient(bool stop, AgentHostCompanion? controller = null)
             {
                 using var connectionLifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
                 await using var client = await AgentPipeClient.ConnectAsync(files.Endpoint, new HostHello(HostProtocol.Version, "integration"), token);
@@ -95,9 +110,11 @@ internal static class DetachedHostFixture
                     await capture.Wait("READY", token);
                     if (stop)
                     {
-                        await client.SendAsync(new HostFrame(HostFrameKind.Ring, []), token);
+                        if (controller is null) await client.SendAsync(new HostFrame(HostFrameKind.Ring, []), token);
+                        else await Task.Run(controller.Ring, token);
                         await capture.Wait("ACK:" + AgentBriefing.Doorbell, token);
-                        await client.SendAsync(new HostFrame(HostFrameKind.Stop, []), token);
+                        if (controller is null) await client.SendAsync(new HostFrame(HostFrameKind.Stop, []), token);
+                        else await Task.Run(controller.Stop, token);
                         await reading.WaitAsync(token);
                         Require(capture.Exited.Task.IsCompletedSuccessfully, "The detached host omitted its exit frame.");
                     }

@@ -60,6 +60,6 @@ public sealed class AgentHostLease : IDisposable
     public static AgentHostDiscovery? ReadDiscovery(AgentHostFiles files)
     {
         try { return JsonFile.Read<AgentHostDiscovery>(files.DiscoveryFile); }
-        catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException or JsonException) { return null; }
+        catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException or UnauthorizedAccessException or JsonException) { return null; }
     }
 }

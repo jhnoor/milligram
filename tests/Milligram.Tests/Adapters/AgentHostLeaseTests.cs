@@ -5,6 +5,17 @@ namespace Milligram.Tests.Adapters;
 
 public class AgentHostLeaseTests
 {
+    [WindowsFact]
+    public void DiscoveryPendingDeletionIsAlreadyAbsentToNewReaders()
+    {
+        using var project = new TempProject();
+        var files = new AgentHostFiles(new ProjectPaths(project.Root));
+        JsonFile.Write(files.DiscoveryFile, Discovery(files));
+        using var reader = new FileStream(files.DiscoveryFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        File.Delete(files.DiscoveryFile);
+        Assert.Null(AgentHostLease.ReadDiscovery(files));
+    }
+
     [Fact]
     public void OnlyOneOwnerCanPublishForAProjectAtATime()
     {

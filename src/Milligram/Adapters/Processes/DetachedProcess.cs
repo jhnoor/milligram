@@ -10,14 +10,15 @@ public sealed partial class ProcessRunner
     private static readonly Lock detachedStart = new();
 
     /// <summary>The caller owns the returned process handle; the host owns its log and outlives that handle.</summary>
-    public static Process? StartDetached(string command, IReadOnlyList<string> args, string workingDirectory)
+    public static IDetachedProcess? StartDetached(string command, IReadOnlyList<string> args, string workingDirectory)
     {
         try
         {
             lock (detachedStart)
             {
                 using var handles = OperatingSystem.IsWindows() ? new DetachedStandardHandles() : null;
-                return Process.Start(DetachedStartInfo(command, args, workingDirectory));
+                var process = Process.Start(DetachedStartInfo(command, args, workingDirectory));
+                return process is null ? null : new DetachedProcess(process);
             }
         }
         catch (Exception error) when (error is Win32Exception or ArgumentException) { return null; }
@@ -42,6 +43,19 @@ public sealed partial class ProcessRunner
 
     [DllImport("libc", EntryPoint = "setsid", SetLastError = true)]
     private static extern int CreateSession();
+
+    private sealed class DetachedProcess(Process process) : IDetachedProcess
+    {
+        public int Id => process.Id;
+        public bool HasExited => process.HasExited;
+        public int ExitCode => process.ExitCode;
+        public void Stop()
+        {
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+            catch (Exception error) when (error is InvalidOperationException or Win32Exception && process.HasExited) { }
+        }
+        public void Dispose() => process.Dispose();
+    }
 
     /// <summary>CreateProcess inherits other inheritable handles even when all three standard streams are redirected.</summary>
     private sealed class DetachedStandardHandles : IDisposable
