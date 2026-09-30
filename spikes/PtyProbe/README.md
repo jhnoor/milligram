@@ -55,18 +55,46 @@ dotnet pack spikes/PtyProbe -c Release -p:Version=0.0.0-spike.local
 ```
 
 The package is installed to a fresh temporary tool directory and also run through `dotnet dnx`.
+It is then installed with `dotnet tool install --global` under a temporary `DOTNET_CLI_HOME`;
+the user's existing global tools and PATH are left alone. Each launch path exercises both modes.
 The smoke script checks that each requested I/O mode actually reached the probe. Use a new version
 after changing the code, since `dnx` caches packages. No package is uploaded to a feed.
 
 The branch-only workflow targets Linux, macOS and Windows on x64 and arm64. It checks the actual
 runtime identifier, preserves Markdown result artifacts even on failure, and has a bounded job
-timeout. Local Windows x64 checks pass in both modes, including installed-tool and `dnx` runs.
-Hosted-runner results are still pending.
+timeout.
+
+## Measured results
+
+[Run 36648457626](https://github.com/jhnoor/milligram/actions/runs/36648457626), commit
+`3ef7eda12d86580eafe9f98e33ade55efe75aa75`, passed all six native runtime targets on .NET 10.0.12.
+Each row represents four passing probes: tool-path install and `dnx`, each in blocking and
+asynchronous mode. The latter adds the cancellation check (eight checks rather than seven).
+All 24 Markdown artifacts were inspected; no failed checks or unexpected runtime identifiers.
+
+| Runtime | Observed OS | Tool-path install | dnx |
+|---|---|---|---|
+| linux-x64 | Ubuntu 24.04.5 LTS | Both modes pass | Both modes pass |
+| linux-arm64 | Ubuntu 24.04.5 LTS | Both modes pass | Both modes pass |
+| osx-x64 | macOS 15.7.9 | Both modes pass | Both modes pass |
+| osx-arm64 | macOS 15.7.9 | Both modes pass | Both modes pass |
+| win-x64 | Windows build 26100 | Both modes pass | Both modes pass |
+| win-arm64 | Windows build 26200 | Both modes pass | Both modes pass |
+
+Local Windows x64, build 19045, also passes all three launch paths, including the new isolated
+global-install checks. Hosted global-install results are pending. These OS versions do not prove
+the candidate's advertised minimum Windows version or compatibility with every older Linux kernel.
+
+The first hosted run exposed two probe assumptions, corrected before the passing run: a working
+directory can have different equivalent path spellings on macOS, and terminal dimensions can be
+cached until `SIGWINCH` is processed on Unix. The probe now reads a unique relative fixture marker
+and waits for the signal before polling the child's actual dimensions.
 
 ## Still required before #20 can be closed
 
 Real Copilot login and xterm.js rendering at several sizes, a real Milligram doorbell, WSL2 testing,
-and a recorded result for every target platform. The fake child cannot establish those results.
+and global-install results on the hosted targets. Linux-musl, older supported OS versions and
+other architectures remain untested. The fake child cannot establish real-agent results.
 Process-tree cleanup, replay, multiple clients, reconnect, WebSocket security and rollout belong
 to the subsequent host/panel issues. In particular, this experiment does not justify changing the
 default companion or skipping the weeks of daily use required by #26.
