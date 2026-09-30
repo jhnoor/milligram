@@ -49,12 +49,13 @@ public sealed class ProjectPaths(string root)
     /// <summary>Read immediate targets so a link is resolved before a following '..'; reject outside targets before opening them.</summary>
     private static string? ResolveLinks(string path, string? boundary, string? alias, ref int links)
     {
-        var current = boundary ?? Path.GetPathRoot(path)!;
+        var current = boundary ?? Volume(path);
         var remaining = new Queue<string>(Segments(path[current.Length..]));
         while (remaining.TryDequeue(out var part))
         {
             current = Path.GetFullPath(Path.Combine(current, part));
             if (boundary is not null && !AtOrWithin(current, boundary)) return null;
+            if (OperatingSystem.IsWindows()) current = StoredPath(current);
             var target = LinkTarget(current);
             if (target is null) continue;
             if (++links > 64) return null;
@@ -64,7 +65,7 @@ public sealed class ProjectPaths(string root)
                 if (!AtOrWithin(target, boundary)) target = ResolveAncestorAlias(target, boundary, ref links);
                 if (target is null) return null;
             }
-            current = boundary ?? Path.GetPathRoot(target)!;
+            current = boundary ?? Volume(target);
             remaining = new Queue<string>(Segments(target[current.Length..]).Concat(remaining));
         }
         return current;
@@ -73,17 +74,18 @@ public sealed class ProjectPaths(string root)
     /// <summary>An ancestor alias such as macOS /var may name the physical root; never descend into an outside ordinary directory.</summary>
     private static string? ResolveAncestorAlias(string path, string boundary, ref int links)
     {
-        var volume = Path.GetPathRoot(boundary)!;
-        if (!string.Equals(Path.GetPathRoot(path), volume, StringComparison.Ordinal)) return null;
+        var volume = Volume(boundary);
+        if (!string.Equals(Volume(path), volume, StringComparison.Ordinal)) return null;
         var current = volume;
         var remaining = new Queue<string>(Segments(path[volume.Length..]));
         while (remaining.TryDequeue(out var part))
         {
             current = Path.GetFullPath(Path.Combine(current, part));
+            if (OperatingSystem.IsWindows()) current = StoredPath(current);
             var target = LinkTarget(current);
             if (target is not null)
             {
-                if (++links > 64 || !string.Equals(Path.GetPathRoot(target), volume, StringComparison.Ordinal)) return null;
+                if (++links > 64 || !string.Equals(Volume(target), volume, StringComparison.Ordinal)) return null;
                 current = volume;
                 remaining = new Queue<string>(Segments(target[volume.Length..]).Concat(remaining));
             }
@@ -97,6 +99,34 @@ public sealed class ProjectPaths(string root)
     {
         try { return new FileInfo(path).ResolveLinkTarget(returnFinalTarget: false)?.ToString(); }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { return null; }
+    }
+
+    private static string Volume(string path)
+    {
+        var volume = Path.GetPathRoot(path)!;
+        return OperatingSystem.IsWindows() && volume.Length == 3 && volume[1] == ':' ? volume.ToUpperInvariant() : volume;
+    }
+
+    /// <summary>Normalize one existing component without following it; exact names keep case-sensitive siblings distinct.</summary>
+    internal static string StoredPath(string path)
+    {
+        try
+        {
+            var entries = Directory.GetFileSystemEntries(Path.GetDirectoryName(path)!, Path.GetFileName(path), new EnumerationOptions
+            {
+                MatchCasing = MatchCasing.CaseInsensitive,
+                MatchType = MatchType.Simple,
+                AttributesToSkip = 0,
+                IgnoreInaccessible = false,
+            });
+            return entries.FirstOrDefault(entry => string.Equals(entry, path, StringComparison.Ordinal)) ?? entries.Length switch
+            {
+                0 => path,
+                1 => entries[0],
+                _ => throw new IOException("Ambiguous directory-entry casing."),
+            };
+        }
+        catch (DirectoryNotFoundException) { return path; }
     }
 
     private static string[] Segments(string path) =>

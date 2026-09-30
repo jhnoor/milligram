@@ -68,7 +68,8 @@ namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } 
     $start.CreateNoWindow = $true
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
-    foreach ($argument in @('dnx', '-y', '--source', $packageSource, "Milligram@$Version", '--', '--no-agent', '--no-browser', '--port', '15170')) {
+    $viewerRoot = if ($IsWindows) { $projectRoot.ToUpperInvariant() } else { $projectRoot }
+    foreach ($argument in @('dnx', '-y', '--source', $packageSource, "Milligram@$Version", '--', '--project', $viewerRoot, '--no-agent', '--no-browser', '--port', '15170')) {
         $start.ArgumentList.Add($argument)
     }
     $server = [Diagnostics.Process]::Start($start)

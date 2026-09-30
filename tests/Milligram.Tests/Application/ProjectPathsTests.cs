@@ -44,6 +44,85 @@ public class ProjectPathsTests
         Assert.False(new ProjectPaths(project.Root).Contains(new string('x', 1024)));
     }
 
+    [WindowsFact]
+    public void WindowsJunctionsAcceptDifferentSpellingsOfTheSameProject()
+    {
+        using var project = new TempProject(("Project/Inside/Target.cs", "inside"));
+        var root = Path.Combine(project.Root, "Project");
+        var alias = Path.Combine(project.Root, "Alias");
+        using var aliasLink = WindowsJunction.Create(alias, root);
+        using var ordinaryLink = WindowsJunction.Create(Path.Combine(root, "Link"), Path.Combine(root, "Inside"));
+        using var upperLink = WindowsJunction.Create(Path.Combine(root, "Upper"), Path.Combine(root, "Inside").ToUpperInvariant());
+        using var aliasedLink = WindowsJunction.Create(Path.Combine(root, "Aliased"), Path.Combine(alias, "Inside").ToLowerInvariant());
+        foreach (var spelling in new[] { root, root.ToUpperInvariant(), root.ToLowerInvariant(), alias.ToUpperInvariant() })
+        {
+            var paths = new ProjectPaths(spelling);
+            foreach (var link in new[] { "Link", "Upper", "Aliased" })
+            {
+                var file = link + "/Target.cs";
+                Assert.Equal("inside", File.ReadAllText(paths.Absolute(file)));
+                Assert.True(paths.Contains(file), spelling + ": " + file);
+            }
+        }
+    }
+
+    [WindowsFact]
+    public void WindowsCasingDoesNotAllowOutsideJunctionsOrChainsThatReturnInside()
+    {
+        using var project = new TempProject(("Project/Inside.cs", "inside"), ("Project-other/Outside.cs", "outside"));
+        var root = Path.Combine(project.Root, "Project");
+        var outside = Path.Combine(project.Root, "Project-other");
+        using var returnLink = WindowsJunction.Create(Path.Combine(outside, "Return"), root.ToUpperInvariant());
+        using var outsideLink = WindowsJunction.Create(Path.Combine(root, "Outside"), outside.ToUpperInvariant());
+        using var bounceLink = WindowsJunction.Create(Path.Combine(root, "Bounce"), Path.Combine(outside, "Return").ToUpperInvariant());
+        var paths = new ProjectPaths(root.ToUpperInvariant());
+        Assert.Equal("outside", File.ReadAllText(paths.Absolute("Outside/Outside.cs")));
+        Assert.Equal("inside", File.ReadAllText(paths.Absolute("Bounce/Inside.cs")));
+        Assert.False(paths.Contains("Outside/Outside.cs"));
+        Assert.False(paths.Contains("Bounce/Inside.cs"));
+    }
+
+    [WindowsFact]
+    public void HiddenWindowsDirectoriesStillHaveTheirStoredSpelling()
+    {
+        using var project = new TempProject(("Hidden/Inside.cs", "inside"));
+        var root = Path.Combine(project.Root, "Hidden");
+        File.SetAttributes(root, File.GetAttributes(root) | FileAttributes.Hidden);
+        using var link = WindowsJunction.Create(Path.Combine(root, "Link"), root);
+        Assert.True(new ProjectPaths(root.ToUpperInvariant()).Contains("Link/Inside.cs"));
+    }
+
+    [Fact]
+    public void StoredNamesPreserveExactFilesAndMissingDescendants()
+    {
+        using var project = new TempProject(("Exact.cs", "inside"));
+        foreach (var name in new[] { "Exact.cs", "Missing.cs", "Missing/Deep.cs" })
+        {
+            var path = Path.Combine(project.Root, name);
+            Assert.Equal(path, ProjectPaths.StoredPath(path));
+        }
+    }
+
+    [UnixFact]
+    public void StoredNamesNeverMergeDistinctCaseSensitiveSiblings()
+    {
+        using var project = new TempProject(("Project/Inside.cs", "upper"));
+        var upper = Path.Combine(project.Root, "Project");
+        var lower = Path.Combine(project.Root, "project");
+        Directory.CreateDirectory(lower);
+        if (File.Exists(Path.Combine(lower, "Inside.cs")))
+        {
+            Assert.Equal(upper, ProjectPaths.StoredPath(lower));
+            return;
+        }
+        File.WriteAllText(Path.Combine(lower, "Inside.cs"), "lower");
+        Assert.Equal(upper, ProjectPaths.StoredPath(upper));
+        Assert.Equal(lower, ProjectPaths.StoredPath(lower));
+        Assert.Throws<IOException>(() => ProjectPaths.StoredPath(Path.Combine(project.Root, "PROJECT")));
+        Directory.CreateSymbolicLink(Path.Combine(upper, "Outside"), lower);
+        Assert.False(new ProjectPaths(upper).Contains("Outside/Inside.cs"));
+    }
+
     [UnixFact]
     public void DirectoryAndFileLinksCannotImportFilesFromOutsideTheRoot()
     {
