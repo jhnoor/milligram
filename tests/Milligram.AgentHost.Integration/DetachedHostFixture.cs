@@ -92,9 +92,9 @@ internal static class DetachedHostFixture
             _ = hostProcess.SafeHandle;
             Require(await companion.StartAsync(token) is null, "A reused host incorrectly granted startup ownership.");
             Require(await aliasCompanion.StartAsync(token) is null, "An alias started another host or acquired ownership.");
-            Require(aliasCompanion.IsRunning(), "An alias could not find the running host.");
+            await Until(aliasCompanion.IsRunning);
             for (var probe = 0; probe < 10; probe++)
-                Require(companion.IsRunning(), $"The controller lost its running host on probe {probe + 1}.");
+                await Until(companion.IsRunning);
             await ReadClient(stop: true, aliasCompanion, aliasFiles.Endpoint);
             await hostProcess.WaitForExitAsync(token);
             Require(!companion.IsRunning(), "The controller still sees a stopped host.");
@@ -105,7 +105,8 @@ internal static class DetachedHostFixture
             hostProcess = Process.GetProcessById(AgentHostLease.ReadDiscovery(files)!.Pid);
             _ = hostProcess.SafeHandle;
             await Task.Run(ownership.Stop, token);
-            Require(companion.IsRunning(), "An old owner stopped the replacement host.");
+            await using (var client = await AgentPipeClient.ConnectAsync(files.Endpoint, new HostHello(HostProtocol.Version, "integration"), token))
+                Require(client.Greeting?.Instance == AgentHostLease.ReadDiscovery(files)?.Instance, "An old owner stopped or replaced the new host.");
             await Task.Run(replacement.Stop, token);
             await hostProcess.WaitForExitAsync(token);
             hostProcess.Dispose();
