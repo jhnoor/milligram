@@ -47,7 +47,7 @@ public class AgentWebSocketTests : IAsyncLifetime
         server = new WebServer(workspace, actions, jobs, companion, events, () => enabled, ConnectHost);
         var started = await server.StartAsync(port, Token);
         app = started.App;
-        client = new HttpClient { BaseAddress = new Uri(started.Url.Replace("localhost", "127.0.0.1", StringComparison.Ordinal)), Timeout = TimeSpan.FromSeconds(5) };
+        client = new HttpClient { BaseAddress = new Uri(started.Url.Replace("localhost", "127.0.0.1", StringComparison.Ordinal)), Timeout = Timeout.InfiniteTimeSpan };
         protocol = await ReadProtocol(client);
     }
 
@@ -384,9 +384,9 @@ public class AgentWebSocketTests : IAsyncLifetime
         return connected;
     }
 
-    private static async Task<string> ReadProtocol(HttpClient http)
+    private async Task<string> ReadProtocol(HttpClient http)
     {
-        using var meta = JsonDocument.Parse(await http.GetStringAsync("api/meta"));
+        using var meta = JsonDocument.Parse(await http.GetStringAsync("api/meta", Token));
         var access = meta.RootElement.GetProperty("agent").GetProperty("terminal");
         Assert.True(access.GetProperty("available").GetBoolean());
         return access.GetProperty("protocol").GetString()!;
