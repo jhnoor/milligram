@@ -86,41 +86,36 @@ Local Windows x64, build 19045, also passes all three launch paths, including th
 global-install checks. These OS versions do not prove
 the candidate's advertised minimum Windows version or compatibility with every older Linux kernel.
 
-**Windows long-path limit:** [run 36648767857](https://github.com/jhnoor/milligram/actions/runs/36648767857)
-passed the added global-install checks on both Linux and both macOS targets, but failed on both
-Windows targets with `DllNotFoundException`, `conpty.dll`, error `0x800700CE` (path too long).
-Those temporary global installations used long paths. The same code
-and package passed in shorter tool-path and `dnx` locations. The normal smoke now uses a shorter
-temporary CLI home; `-GlobalDirectory` preserves the ability to reproduce the long installation.
-This is a candidate limitation, not a fixed library bug. A production host needs an explicit
-solution or diagnostic for it. Local Windows build 19045 did load the out-of-band library from
-a 285-character DLL path, so the failure is environment-dependent, not a universal cutoff.
-Reports now record the selected implementation and application path length to make this visible.
+**Windows path-boundary failure and measured workaround.**
+[Run 36651496373](https://github.com/jhnoor/milligram/actions/runs/36651496373), commit `ec79ce8`,
+reproduces `DllNotFoundException` for `conpty.dll`, error `0x800700CE`, at the original install
+boundary. The DLL paths are 257 characters on x64 and 259 on arm64; the packaged `OpenConsole.exe`
+is deeper. Merely using a still-longer path does not reproduce it. The original failure is also
+preserved in [run 36648767857](https://github.com/jhnoor/milligram/actions/runs/36648767857).
 
-The opt-in `--preload-long-path` experiment loads the packaged DLL through its absolute extended
-Windows path before Porta opens a terminal. It requires a packaged console-host path over 260 characters and
-the out-of-band implementation. `long-path.ps1` compares the default and preloaded paths using
-the same installed package in both I/O modes, recording the machine's `LongPathsEnabled` setting
-without changing it. Two additional Windows CI jobs run this comparison.
-Local Windows build 19045 passes both sides, which alone cannot prove the workaround fixes the
-hosted failure. Neither this experiment nor its dependency is part of the product.
+| Windows target | DLL path length | Default startup | Early backend initialization | Extended-path preload |
+|---|---|---|---|---|
+| Build 26100, x64 | 257 | Both modes fail | Both modes fail | Both modes pass |
+| Build 26200, arm64 | 259 | Both modes fail | Both modes fail | Both modes pass |
+| Both hosted targets | 330 | Both modes pass | Both modes pass | Both modes pass |
+| Local build 19045, x64 | 257 | Both modes fail | Both modes fail | Both modes pass |
+| Local build 19045, x64 | 330 | Both modes pass | Both modes pass | Both modes pass |
 
-[Run 36650835484](https://github.com/jhnoor/milligram/actions/runs/36650835484) also passed both
-sides on both hosted Windows architectures, with `LongPathsEnabled: 1` and DLL paths of 328/330
-characters. That does **not** demonstrate a fix: the control stopped reproducing the failure.
-The probe now queries the backend only after the first spawn, since the previously added diagnostic
-initialized Porta before startup. A third arm, `--initialize-backend`, isolates early initialization
-from extended-path preloading. The comparison remains an experiment until its control reproduces.
-It also exercises two distinct layouts: a 257/259-character DLL path matching the original failing
-installations (the console-host executable is deeper), and a 330-character DLL path. The earlier
-description of the original DLL itself being over 260 characters was incorrect; the run did not
-record the resolved native path, and that boundary must be measured rather than inferred from the error.
+All three machines reported `LongPathsEnabled: 1`; the experiment does not change that setting.
+The opt-in `--preload-long-path` loads the packaged DLL through its absolute extended Windows
+path before Porta opens a terminal. It requires the out-of-band backend and a console-host path
+over 260 characters. That workaround passes the reproduced failure on both architectures, without
+patching the library. It needs to be carried into a production adapter or replaced by an upstream
+fix; simply shortening one test directory would leave a real installation failure unresolved.
+This measures a workaround, not the native loader's internal cause or every possible path length.
 
-The revised local comparison **does reproduce** at a 257-character DLL path: both default startup
-and explicit early initialization fail with the original loader error; extended-path preloading
-passes both I/O modes. All three arms pass at 330 characters. The script now requires the boundary
-control to reproduce the specific DLL error, preventing a green comparison without a failing control.
-Hosted confirmation of this exact boundary is pending.
+`long-path.ps1 -Version VERSION -ExpectedRuntime win-x64 -Layout boundary` reproduces the failure
+and checks the workaround. Use `win-arm64` for an ARM runner and `-Layout long` for the longer
+control. Each layout runs both I/O modes through all three arms using the same installed package.
+The boundary control must fail with the specific loader error, so a comparison cannot pass without
+reproducing it. Backend diagnostics run after startup in the control. The normal six-platform
+checks also pass in the same run. No terminal dependency or workaround is added to the product by
+this spike.
 
 The first hosted run exposed two probe assumptions, corrected before the passing run: a working
 directory can have different equivalent path spellings on macOS, and terminal dimensions can be
@@ -130,7 +125,7 @@ and waits for the signal before polling the child's actual dimensions.
 ## Still required before #20 can be closed
 
 Real Copilot login and xterm.js rendering at several sizes, a real Milligram doorbell, WSL2 testing,
-and a production solution for the Windows long-install-path failure. Linux-musl, older supported OS versions and
+and carrying the measured Windows loader workaround into the production adapter. Linux-musl, older supported OS versions and
 other architectures remain untested. The fake child cannot establish real-agent results.
 Process-tree cleanup, replay, multiple clients, reconnect, WebSocket security and rollout belong
 to the subsequent host/panel issues. In particular, this experiment does not justify changing the
