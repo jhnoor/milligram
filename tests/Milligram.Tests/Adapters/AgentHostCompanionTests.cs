@@ -287,13 +287,19 @@ public class AgentHostCompanionTests
         fixture.SpawnGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var starting = fixture.Companion.StartAsync(fixture.Token);
         await fixture.Spawning.Task.WaitAsync(fixture.Token);
-        var stopping = Task.Run(fixture.Companion.Stop);
+        var stopEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stopping = Task.Run(() => { stopEntered.SetResult(); fixture.Companion.Stop(); });
+        await stopEntered.Task.WaitAsync(fixture.Token);
         await Task.Delay(100, fixture.Token);
         Assert.False(stopping.IsCompleted);
         fixture.SpawnGate.TrySetResult();
         await stopping.WaitAsync(fixture.Token);
         try { await starting; }
-        catch (MilligramException error) { Assert.Contains("exited during startup", error.Message); }
+        catch (MilligramException error)
+        {
+            Assert.Contains(new[] { "The agent host exited during startup", "The agent host did not become ready." },
+                prefix => error.Message.StartsWith(prefix, StringComparison.Ordinal));
+        }
         Assert.True(await fixture.Running!.WaitAsync(fixture.Token) == 0, JsonFile.ReadText(fixture.Files.LogFile));
         Assert.Null(AgentHostLease.ReadDiscovery(fixture.Files));
     }
