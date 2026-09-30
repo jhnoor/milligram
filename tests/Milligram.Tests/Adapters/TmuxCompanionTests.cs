@@ -7,6 +7,20 @@ namespace Milligram.Tests.Adapters;
 public class TmuxCompanionTests
 {
     [Fact]
+    public async Task ControlsRequireTheExactSessionName()
+    {
+        using var fixture = new Fixture();
+        await fixture.Companion.StartAsync(CancellationToken.None);
+        var target = "=" + fixture.Companion.SessionName;
+        Assert.Equal("tmux attach -t " + target, fixture.Companion.AttachCommand);
+        fixture.Companion.Ring();
+        Assert.Equal(["send-keys", "-t", target + ":", "-l", AgentBriefing.Doorbell], fixture.Commands[^2]);
+        Assert.Equal(["send-keys", "-t", target + ":", "Enter"], fixture.Commands[^1]);
+        fixture.Companion.Stop();
+        Assert.Equal(["kill-session", "-t", target], fixture.Commands[^1]);
+    }
+
+    [Fact]
     public async Task CleanupTargetsTheUniqueSessionAndItsCreationMarker()
     {
         using var fixture = new Fixture();
@@ -129,10 +143,11 @@ public class TmuxCompanionTests
                     Commands.Add(args);
                     switch (args[0])
                     {
-                        case "has-session": Assert.Equal(["has-session", "-t", Companion!.SessionName], args); return (running ? 0 : 1, "");
+                        case "has-session": Assert.Equal(["has-session", "-t", "=" + Companion!.SessionName], args); return (running ? 0 : 1, "");
                         case "new-session": running = CreateCode == 0 || Competing; return (CreateCode, Output ?? $"${++sessions}\n");
                         case "kill-session": running = false; return (0, "");
                         case "if-shell": return (0, "");
+                        case "send-keys": return (0, "");
                         default: throw new InvalidOperationException("Unexpected tmux command.");
                     }
                 },

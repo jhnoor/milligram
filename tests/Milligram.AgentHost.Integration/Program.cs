@@ -33,7 +33,7 @@ internal static class Program
         if (args.FirstOrDefault() == "--attach-console") return await AttachmentFixture.Child(args[1]);
         if (args.FirstOrDefault() == "--attach-fixture") { await AttachmentFixture.Run(); return 0; }
         if (args.FirstOrDefault() == "--tmux-fixture") { await TmuxFixture.Run(); return 0; }
-        if (args.FirstOrDefault() == "--tmux-child") { while (Console.ReadLine() is not null) { } return 0; }
+        if (args.FirstOrDefault() == "--tmux-child") { while (Console.ReadLine() is { } line) Console.WriteLine("ACK:" + line); return 0; }
         if (args.FirstOrDefault() == "--launch-host")
         {
             using var host = ProcessRunner.StartDetached(Dotnet(), [typeof(ProcessRunner).Assembly.Location, "agent", "host", "--project", args[1]], args[1]);

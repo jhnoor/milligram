@@ -298,6 +298,10 @@ invalid templates or a missing terminal executable. If the window cannot start, 
 `milligram agent attach` in your terminal. That command always attaches in the current terminal.
 Custom templates leave the viewer panel collapsed until you open it.
 
+With the tmux host, custom commands use the raw `{session}` name. Use tmux's exact selector,
+for example `"gnome-terminal -- tmux attach -t ={session}"`, so it cannot select another
+session whose name starts the same way. Built-in attachment and session controls use exact matches.
+
 **Ctrl+backtick** focuses or collapses the panel. Terminal keys stay out of the diagram's shortcuts.
 **Ctrl+C** copies a selection, or interrupts when nothing is selected. Paste uses the terminal's
 bracketed-paste mode when the agent enables it. **Ctrl/Cmd+click** on a C# `file:line` or `file(line)`

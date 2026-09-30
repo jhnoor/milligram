@@ -43,6 +43,8 @@ internal static class TmuxFixture
             Require(aliasCompanion.IsRunning(), "An alias could not find the tmux session.");
             Require(await aliasCompanion.StartAsync(deadline.Token) is null, "An alias created a second tmux session.");
             aliasCompanion.Ring();
+            while (!Tmux("capture-pane", "-p", "-t", "=" + companion.SessionName + ":").Output.Contains("ACK:" + AgentBriefing.Doorbell, StringComparison.Ordinal))
+                await Task.Delay(50, deadline.Token);
             original.Stop();
             Require(!companion.IsRunning(), "Owned cleanup did not stop its tmux session.");
             var replacement = await companion.StartAsync(deadline.Token) ?? throw new InvalidOperationException("No replacement tmux ownership.");
@@ -64,9 +66,23 @@ internal static class TmuxFixture
             Console.WriteLine("PASS: tmux generation cleanup, name reuse, server restart and numeric id reuse");
             Console.WriteLine("PASS: project aliases reuse and control the same tmux session");
 
+            var neighbor = companion.SessionName + "-neighbor";
+            Require(Tmux("new-session", "-d", "-s", neighbor, "sleep 60").ExitCode == 0, "Could not create the neighboring fixture session.");
+            Require(Tmux("has-session", "-t", companion.SessionName).ExitCode == 0, "The fixture did not reproduce tmux prefix matching.");
+            Require(!companion.IsRunning(), "A neighboring session was mistaken for the project's agent.");
+            companion.Ring();
+            var output = Tmux("capture-pane", "-p", "-t", "=" + neighbor + ":");
+            Require(output.ExitCode == 0 && !output.Output.Contains(AgentBriefing.Doorbell, StringComparison.Ordinal), "The doorbell reached a neighboring session.");
+            companion.Stop();
+            Require(Tmux("has-session", "-t", "=" + neighbor).ExitCode == 0, "Stopping an absent agent killed a neighboring session.");
+            var exact = await companion.StartAsync(deadline.Token) ?? throw new InvalidOperationException("Startup reused a neighboring session.");
+            exact.Stop();
+            Require(Tmux("has-session", "-t", "=" + neighbor).ExitCode == 0, "Owned cleanup killed a neighboring session.");
+            Console.WriteLine("PASS: exact tmux targets never reuse, ring or stop a neighboring session");
+
             string Id()
             {
-                var result = Tmux("display-message", "-p", "-t", companion.SessionName, "#{session_id}");
+                var result = Tmux("display-message", "-p", "-t", "=" + companion.SessionName + ":", "#{session_id}");
                 Require(result.ExitCode == 0, "Could not read tmux session id: " + result.Output);
                 return result.Output.Trim();
             }

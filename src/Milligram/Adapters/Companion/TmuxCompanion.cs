@@ -19,7 +19,9 @@ public sealed class TmuxCompanion(ProjectPaths paths, Func<Policy> policy, IRead
 
     public string SessionName { get; } = SessionNameFor(paths.Root);
 
-    public string AttachCommand => $"tmux attach -t {SessionName}";
+    /// <summary>A missing session must never match another session with the same name prefix.</summary>
+    private string Target => "=" + SessionName;
+    public string AttachCommand => $"tmux attach -t {Target}";
 
     public static string SessionNameFor(string root)
     {
@@ -40,7 +42,7 @@ public sealed class TmuxCompanion(ProjectPaths paths, Func<Policy> policy, IRead
         return reason.Length == 0;
     }
 
-    public bool IsRunning() => Supported && OnPath("tmux") && Tmux("has-session", "-t", SessionName) == 0;
+    public bool IsRunning() => Supported && OnPath("tmux") && Tmux("has-session", "-t", Target) == 0;
 
     /// <summary>Not native Windows: a tmux from MSYS2 or Cygwin can't run the bash launch script with Windows paths in it.</summary>
     internal bool Supported { get; init; } = !OperatingSystem.IsWindows();
@@ -70,14 +72,14 @@ public sealed class TmuxCompanion(ProjectPaths paths, Func<Policy> policy, IRead
 
     public void Stop()
     {
-        if (IsRunning()) Tmux("kill-session", "-t", SessionName);
+        if (IsRunning()) Tmux("kill-session", "-t", Target);
     }
 
     public void Ring()
     {
-        Tmux("send-keys", "-t", SessionName, "-l", AgentBriefing.Doorbell);
+        Tmux("send-keys", "-t", Target + ":", "-l", AgentBriefing.Doorbell);
         Thread.Sleep(150);
-        Tmux("send-keys", "-t", SessionName, "Enter");
+        Tmux("send-keys", "-t", Target + ":", "Enter");
     }
 
     public bool OpenTerminal() => IsRunning() && Desktop.OpenTerminal(policy().Agent.Terminal, SessionName, paths.Root);
