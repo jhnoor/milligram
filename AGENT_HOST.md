@@ -1,8 +1,8 @@
 # Agent host protocol (in development)
 
 This branch builds the opt-in host tracked in #22. The default companion remains tmux.
-The framing, replay, terminal session and same-user pipe transport are implemented first;
-process ownership and companion integration are not yet connected. This document describes
+The framing, replay, terminal session, same-user pipe transport and project lease are implemented first;
+native process lifecycle and companion integration are not yet connected. This document describes
 their wire contract, not a released host.
 
 ## Framing
@@ -74,7 +74,25 @@ inherits the session's bounded queue and cancellation, so it cannot block accept
 Host shutdown stops new connections and lets existing clients receive output followed by exit
 before closing them; cancellation can interrupt idle readers and the listener.
 
-Process-tree cleanup, detachment, discovery, companion integration and real-terminal checks
+## Project ownership
+
+`AgentHostLease` holds `.milligram/run/agent-host.lock` open with exclusive sharing for the
+host's lifetime. It keeps the lock file after closing: deleting it would let competing Unix
+processes lock different file objects at the same path. A stale discovery file does not hold
+the lock. The future process host will publish discovery only after its terminal and listener
+are ready.
+
+Discovery at `.milligram/run/agent-host.json` is atomic JSON containing the host `pid`, pipe
+`endpoint`, `protocol`, Milligram `version` and `started` timestamp. The lease removes only the
+exact record it published, before releasing its lock. Repeated disposal cannot affect a new
+owner. Missing or malformed discovery is read as absent; liveness must still be checked by
+connecting, never inferred from a PID in this file.
+
+Pipe names are `milligram-` followed by 20 ASCII hexadecimal characters derived from the full
+project root. Trailing separators are normalized, as is case on Windows. The host log path is
+`.milligram/run/agent-host.log`.
+
+Process-tree cleanup, detachment, companion integration and real-terminal checks
 remain part of the host implementation.
 The six-platform terminal evidence and Windows loader workaround are on the separate
 [`codex/pty-spike` branch](https://github.com/jhnoor/milligram/tree/codex/pty-spike/spikes/PtyProbe).
