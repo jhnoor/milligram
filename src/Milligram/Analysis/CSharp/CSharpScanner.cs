@@ -112,7 +112,8 @@ public sealed class CSharpScanner : ILanguageScanner
         {
             var obj = Path.Combine(project, "obj");
             var file = Directory.Exists(obj)
-                ? Directory.EnumerateFiles(obj, "*.GlobalUsings.g.cs", SearchOption.AllDirectories).MaxBy(File.GetLastWriteTimeUtc)
+                ? Directory.EnumerateFiles(obj, "*.GlobalUsings.g.cs", new EnumerationOptions
+                { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = false }).MaxBy(File.GetLastWriteTimeUtc)
                 : null;
             if (file is not null) generated.Add(Parse(file));
             else foreach (var ns in DefaultUsings(project)) fallback.Add(ns);

@@ -2,7 +2,7 @@ using Milligram.Domain.Policies;
 
 namespace Milligram.Analysis.CSharp;
 
-/// <summary>Finds source files under a directory, honouring exclude globs matched against root-relative paths.</summary>
+/// <summary>Finds source files without following directory links, honouring root-relative exclude globs.</summary>
 public static class SourceFiles
 {
     private static readonly HashSet<string> SkippedDirectories = ["bin", "obj", ".git", "node_modules", ".milligram", ".vs", ".idea"];
@@ -24,7 +24,7 @@ public static class SourceFiles
         foreach (var file in Directory.EnumerateFiles(directory, "*.cs")) yield return file;
         foreach (var child in Directory.EnumerateDirectories(directory))
         {
-            if (SkippedDirectories.Contains(Path.GetFileName(child))) continue;
+            if (SkippedDirectories.Contains(Path.GetFileName(child)) || (File.GetAttributes(child) & FileAttributes.ReparsePoint) != 0) continue;
             foreach (var file in Walk(child)) yield return file;
         }
     }

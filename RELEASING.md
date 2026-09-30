@@ -32,7 +32,7 @@ The release workflow runs build, tests, format and package smoke checks, packs t
 version, tests that exact package again, publishes it to NuGet, and attaches it to a GitHub
 release. Package checks run on Linux, macOS and Windows and cover both local installation
 and `dnx`, inferred layers, proposal edits, the mail round-trip, coverage import, live source
-edits, folder moves, project edits and restore, HTTP endpoints and embedded viewer assets. The fixture has no agent
+edits, folder moves, project edits and restore, directory-link cycles, HTTP endpoints and embedded viewer assets. The fixture has no agent
 or test runner: it imports a small coverage report and checks mail directly. Real Copilot,
 coverage collection and Stryker still need dogfooding in a configured project.
 

@@ -97,7 +97,7 @@ public sealed class DotNetProjectLocator : IProjectLocator
         foreach (var file in Directory.EnumerateFiles(directory, "*.csproj")) yield return file;
         foreach (var child in Directory.EnumerateDirectories(directory))
         {
-            if (SkippedDirectories.Contains(Path.GetFileName(child))) continue;
+            if (SkippedDirectories.Contains(Path.GetFileName(child)) || (File.GetAttributes(child) & FileAttributes.ReparsePoint) != 0) continue;
             foreach (var file in Walk(child)) yield return file;
         }
     }

@@ -40,6 +40,11 @@ try {
 namespace Smoke.Domain { public class Order { public int Total(int amount) => amount > 0 ? amount : 0; } }
 namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } = new(); } }
 '@)
+    $linkType = if ($IsWindows) { 'Junction' } else { 'SymbolicLink' }
+    New-Item -ItemType $linkType -Path (Join-Path $projectRoot 'cycle') -Target $projectRoot | Out-Null
+    $obj = Join-Path $projectRoot 'src/Smoke/obj'
+    New-Item -ItemType Directory -Path $obj -Force | Out-Null
+    New-Item -ItemType $linkType -Path (Join-Path $obj 'cycle') -Target $obj | Out-Null
     $installedVersion = & $tool --version
     if ($LASTEXITCODE -ne 0 -or $installedVersion -ne $Version) { throw "Installed version: $installedVersion; expected $Version" }
     $dnxVersion = @(& dnx -y --source $packageSource "Milligram@$Version" -- --version)
@@ -153,7 +158,7 @@ namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } 
         $scanned = (Get-Content -LiteralPath $modelFile -Raw | ConvertFrom-Json).generatedAt
         Invoke-DotNet restore $projectFile
         Wait-Until 'restore triggers a new scan' { (Get-Content -LiteralPath $modelFile -Raw | ConvertFrom-Json).generatedAt -ne $scanned }
-        Write-Output "Package $Version passed: installed tool, dnx, first-run layers, proposals, mail round-trip, coverage import, live edits, folder moves, project edits, restore, source and embedded assets."
+        Write-Output "Package $Version passed: installed tool, dnx, directory-link cycles, first-run layers, proposals, mail round-trip, coverage import, live edits, folder moves, project edits, restore, source and embedded assets."
     } finally {
         if (!$server.HasExited) { $server.Kill($true) }
         $server.WaitForExit()

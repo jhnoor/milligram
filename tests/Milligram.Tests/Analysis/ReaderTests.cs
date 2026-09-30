@@ -105,6 +105,17 @@ public class StrykerReportReaderTests
 
 public class DotNetProjectLocatorTests
 {
+    [UnixFact]
+    public void ProjectDiscoveryDoesNotFollowDirectoryLinks()
+    {
+        using var project = new TempProject(("src/App.csproj", "<Project />"), ("other/Other.csproj", "<Project />"));
+        var src = Path.Combine(project.Root, "src");
+        Directory.CreateSymbolicLink(Path.Combine(src, "cycle"), src);
+        Directory.CreateSymbolicLink(Path.Combine(src, "external"), Path.Combine(project.Root, "other"));
+
+        Assert.Equal("App", Assert.Single(new DotNetProjectLocator().Find(src)).Name);
+    }
+
     [Theory]
     [InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>", true, false)]
     [InlineData("<Project><Sdk Name=\"Microsoft.NET.Sdk\" /><PropertyGroup><TargetFramework>net48</TargetFramework></PropertyGroup></Project>", true, true)]

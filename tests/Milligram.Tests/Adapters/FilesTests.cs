@@ -36,6 +36,49 @@ public class DrvFsTests
 
 public class ChangePollerTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AFailedWalkRetriesWithoutLosingThePreviousSnapshot(bool denied)
+    {
+        var walks = 0;
+        var changed = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var poller = new ChangePoller(() => Interlocked.Increment(ref walks) switch
+        {
+            1 => Files(("A.cs", 1)),
+            2 => throw (denied ? new UnauthorizedAccessException() : new IOException()),
+            _ => Files(("A.cs", 2)),
+        }, path => changed.TrySetResult(path), TimeSpan.FromMilliseconds(10));
+
+        Assert.Equal("A.cs", await changed.Task.WaitAsync(TimeSpan.FromSeconds(3)));
+    }
+
+    [Fact]
+    public async Task SlowWalksThrottlePollingBeyondTheMinimumInterval()
+    {
+        using var poller = new ChangePoller(() =>
+        {
+            Thread.Sleep(30);
+            return Files(("A.cs", 1));
+        }, _ => { }, TimeSpan.FromMilliseconds(1));
+        for (var i = 0; i < 200 && poller.Interval == TimeSpan.Zero; i++) await Task.Delay(10);
+
+        Assert.True(poller.Interval >= TimeSpan.FromMilliseconds(200));
+    }
+
+    [UnixFact]
+    public void PollingDoesNotRecurseIntoDirectoryLinks()
+    {
+        using var project = new TempProject(("src/One.cs", ""), ("other/Other.cs", ""));
+        var src = Path.Combine(project.Root, "src");
+        Directory.CreateSymbolicLink(Path.Combine(src, "cycle"), src);
+        Directory.CreateSymbolicLink(Path.Combine(src, "external"), Path.Combine(project.Root, "other"));
+
+        var files = ChangePoller.Files(src, name => name.EndsWith(".cs", StringComparison.Ordinal), recurse: true).ToList();
+
+        Assert.Equal(Path.Combine(src, "One.cs"), Assert.Single(files).Key);
+    }
+
     private static Dictionary<string, Stamp> Files(params (string Path, long Length)[] files) =>
         files.ToDictionary(f => f.Path, f => new Stamp(f.Length, new DateTime(2026, 9, 26, 12, 0, 0, DateTimeKind.Utc)));
 

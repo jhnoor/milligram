@@ -6,6 +6,50 @@ namespace Milligram.Tests.Analysis;
 public class ImplicitUsingsTests
 {
     [Fact]
+    public void TheNewestGeneratedUsingsUnderObjTakePrecedence()
+    {
+        using var project = new TempProject(("App.csproj", "<Project />"),
+            ("obj/Debug/App.GlobalUsings.g.cs", "global using System.Net.Http;"),
+            ("obj/Release/App.GlobalUsings.g.cs", "global using System.Text.Json;"),
+            ("App.GlobalUsings.g.cs", "global using System.Text.Json;"),
+            ("src/Order.cs", "namespace Shop; public class Order { public HttpClient? Client { get; } public JsonSerializerOptions? Options { get; } }"));
+        var time = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(Path.Combine(project.Root, "obj/Release/App.GlobalUsings.g.cs"), time);
+        File.SetLastWriteTimeUtc(Path.Combine(project.Root, "obj/Debug/App.GlobalUsings.g.cs"), time.AddMinutes(1));
+        File.SetLastWriteTimeUtc(Path.Combine(project.Root, "App.GlobalUsings.g.cs"), time.AddMinutes(2));
+
+        var model = new CSharpScanner().Scan(new ScanRequest(project.Root, Path.Combine(project.Root, "src"), [], "Shop",
+            ["System.Net.Http", "System.Text.Json"], "Shop"));
+
+        Assert.Contains(model.Edges, edge => edge.To == "x:System.Net.Http");
+        Assert.DoesNotContain(model.Edges, edge => edge.To == "x:System.Text.Json");
+    }
+
+    [Fact]
+    public void LooseSourceFilesUseTheSdkDefaults()
+    {
+        using var project = new TempProject(("Order.cs", "namespace Shop; public class Order { public HttpClient? Client { get; } }"));
+
+        var model = new CSharpScanner().Scan(new ScanRequest(project.Root, project.Root, [], "Shop", ["System.Net.Http"], "Shop"));
+
+        Assert.Contains(model.Edges, edge => edge.To == "x:System.Net.Http");
+    }
+
+    [UnixFact]
+    public void GeneratedUsingDiscoveryDoesNotFollowDirectoryLinks()
+    {
+        using var project = new TempProject(("App.csproj", "<Project />"),
+            ("obj/Debug/App.GlobalUsings.g.cs", "global using System.Net.Http;"),
+            ("Order.cs", "namespace Shop; public class Order { public HttpClient Client { get; } = new(); }"));
+        var obj = Path.Combine(project.Root, "obj");
+        Directory.CreateSymbolicLink(Path.Combine(obj, "cycle"), obj);
+
+        var model = new CSharpScanner().Scan(new ScanRequest(project.Root, project.Root, [], "Shop", ["System.Net.Http"], "Shop"));
+
+        Assert.Contains(model.Edges, edge => edge.To == "x:System.Net.Http");
+    }
+
+    [Fact]
     public void FallbackUsingsIgnoreOtherFilesAndChooseAStableProject()
     {
         using var project = new TempProject(("Z.csproj", "<Project><PropertyGroup><ImplicitUsings>disable</ImplicitUsings></PropertyGroup></Project>"),

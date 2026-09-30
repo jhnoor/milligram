@@ -91,6 +91,10 @@ agent in a terminal. Edit code, a `.csproj` or `milligram.json` and the diagram 
 Restored `obj/project.assets.json` files and generated global usings also trigger a new scan;
 ordinary build output is ignored.
 
+Source discovery, project discovery and polling skip nested directory symlinks and Windows
+junctions, so a link back to a parent cannot trap a scan in a loop. Point `src` at the actual
+source directory when code lives behind such a link; an explicitly selected linked root works too.
+
 Initialization also selects up to eight external libraries for the `foreign` ovals, ranked by
 how many of your types use them. It groups namespaces at two segments (three for `System.*`),
 keeps choices such as `System.Text.Json`, and leaves out routine collections, LINQ, threading,
