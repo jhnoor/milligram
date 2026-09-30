@@ -97,6 +97,9 @@ source directory when code lives behind such a link; an explicitly selected link
 Source preview and editor requests also reject nested links that lead outside the project root.
 Links between files or directories inside that root remain usable.
 
+Opening a project through a directory symlink or Windows junction reuses the same agent as
+opening its physical directory. Agent names resolve aliases in the project root and its ancestors.
+
 Initialization also selects up to eight external libraries for the `foreign` ovals, ranked by
 how many of your types use them. It groups namespaces at two segments (three for `System.*`),
 keeps choices such as `System.Text.Json`, and leaves out routine collections, LINQ, threading,

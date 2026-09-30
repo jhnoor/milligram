@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Milligram.Adapters.Files;
 using Milligram.Application;
 
 namespace Milligram.Adapters.Companion;
@@ -14,12 +15,11 @@ public sealed class AgentHostFiles(ProjectPaths paths)
     public string LockFile => Path.Combine(Directory, "agent-host.lock");
     public string DiscoveryFile => Path.Combine(Directory, "agent-host.json");
     public string LogFile => Path.Combine(Directory, "agent-host.log");
-    public string Endpoint => EndpointFor(paths.Root, OperatingSystem.IsWindows());
+    public string Endpoint { get; } = EndpointFor(paths.Root);
 
-    internal static string EndpointFor(string root, bool windows)
+    internal static string EndpointFor(string root)
     {
-        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
-        if (windows) normalized = normalized.ToUpperInvariant();
+        var normalized = PhysicalProjectRoot.Resolve(root);
         return "milligram-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)))[..20].ToLowerInvariant();
     }
 }

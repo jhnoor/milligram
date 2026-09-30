@@ -36,13 +36,20 @@ internal static class TmuxFixture
             var original = await companion.StartAsync(deadline.Token) ?? throw new InvalidOperationException("No original tmux ownership.");
             var originalId = Id();
             Require(await companion.StartAsync(deadline.Token) is null, "A reused tmux session acquired ownership.");
+            var alias = Path.Combine(root, "alias");
+            Directory.CreateSymbolicLink(alias, root);
+            var aliasCompanion = new TmuxCompanion(new ProjectPaths(alias), () => policy, [Program.Dotnet(), typeof(ProcessRunner).Assembly.Location]);
+            Require(aliasCompanion.SessionName == companion.SessionName, "A project alias changed the tmux session name.");
+            Require(aliasCompanion.IsRunning(), "An alias could not find the tmux session.");
+            Require(await aliasCompanion.StartAsync(deadline.Token) is null, "An alias created a second tmux session.");
+            aliasCompanion.Ring();
             original.Stop();
             Require(!companion.IsRunning(), "Owned cleanup did not stop its tmux session.");
             var replacement = await companion.StartAsync(deadline.Token) ?? throw new InvalidOperationException("No replacement tmux ownership.");
             Require(Id() != originalId, "A live tmux server reused a session id.");
             original.Stop();
             Require(companion.IsRunning(), "Old cleanup stopped a replacement tmux session.");
-            companion.Stop();
+            aliasCompanion.Stop();
             Require(!companion.IsRunning(), "Explicit stop did not stop the current tmux session.");
 
             Tmux("kill-server");
@@ -55,6 +62,7 @@ internal static class TmuxFixture
             restarted.Stop();
             Require(!companion.IsRunning(), "The new owner could not stop its tmux session.");
             Console.WriteLine("PASS: tmux generation cleanup, name reuse, server restart and numeric id reuse");
+            Console.WriteLine("PASS: project aliases reuse and control the same tmux session");
 
             string Id()
             {

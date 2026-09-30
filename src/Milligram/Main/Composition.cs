@@ -37,7 +37,8 @@ public sealed class Composition
         Doctor = new Doctor(Workspace, Crap, locator, processes, Companion, WatchLimits);
         Agent = new AgentLauncher(Workspace, Companion);
         AgentHost = new AgentHost(Paths, () => Workspace.Policy, selfCommand, version, ProcessRunner.StartTerminalAsync, ProcessRunner.DetachHostSession);
-        connectTerminal = token => AgentPipeClient.ConnectAsync(new AgentHostFiles(Paths).Endpoint,
+        var endpoint = new AgentHostFiles(Paths).Endpoint;
+        connectTerminal = token => AgentPipeClient.ConnectAsync(endpoint,
             new HostHello(HostProtocol.Version, version), token);
         Attachment = new AgentAttachment(connectTerminal, LocalTerminal.Open);
     }

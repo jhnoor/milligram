@@ -93,15 +93,16 @@ public class AgentHostLeaseTests
     }
 
     [Fact]
-    public void EndpointNamesAreShortAsciiAndNormalizeWindowsCaseAndTrailingSeparators()
+    public void EndpointNamesAreShortAsciiAndNormalizeTrailingSeparators()
     {
         using var project = new TempProject();
         var root = Path.Combine(project.Root, "Agent with 漢字 and spaces");
-        var windows = AgentHostFiles.EndpointFor(root, windows: true);
-        Assert.Matches("^milligram-[a-f0-9]{20}$", windows);
-        Assert.Equal(windows, AgentHostFiles.EndpointFor(root.ToUpperInvariant() + Path.DirectorySeparatorChar, windows: true));
-        Assert.NotEqual(AgentHostFiles.EndpointFor(root, windows: false), AgentHostFiles.EndpointFor(root.ToUpperInvariant(), windows: false));
-        Assert.NotEqual(windows, AgentHostFiles.EndpointFor(root + "2", windows: true));
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(root + "2");
+        var endpoint = AgentHostFiles.EndpointFor(root);
+        Assert.Matches("^milligram-[a-f0-9]{20}$", endpoint);
+        Assert.Equal(endpoint, AgentHostFiles.EndpointFor(root + Path.DirectorySeparatorChar));
+        Assert.NotEqual(endpoint, AgentHostFiles.EndpointFor(root + "2"));
     }
 
     private static AgentHostDiscovery Discovery(AgentHostFiles files) => new(123, files.Endpoint, HostProtocol.Version, "0.2.0", DateTimeOffset.UnixEpoch);

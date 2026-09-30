@@ -22,6 +22,7 @@ internal static class Program
         Console.OutputEncoding = new UTF8Encoding(false);
         if (args.FirstOrDefault() == "--process-child") return await ProcessRunnerFixture.Child(args[1..]);
         if (args.FirstOrDefault() == "--process-fixture") { await ProcessRunnerFixture.Run(); return 0; }
+        if (args.FirstOrDefault() == "--detached-fixture") { await DetachedHostFixture.Run(); return 0; }
         if (args.FirstOrDefault() == "--child") return await Child(args);
         if (args.FirstOrDefault() == "--record-terminal")
         {

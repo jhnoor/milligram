@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Milligram.Adapters.Files;
 using Milligram.Adapters.Processes;
 using Milligram.Application;
 using Milligram.Domain.Policies;
@@ -22,6 +23,7 @@ public sealed class TmuxCompanion(ProjectPaths paths, Func<Policy> policy, IRead
 
     public static string SessionNameFor(string root)
     {
+        root = PhysicalProjectRoot.Resolve(root);
         var name = new string(Path.GetFileName(root).Select(c => char.IsLetterOrDigit(c) || c == '-' ? c : '-').ToArray());
         var hash = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(root)))[..8].ToLowerInvariant();
         return $"milligram-{name}-{hash}";

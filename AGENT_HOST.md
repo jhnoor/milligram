@@ -94,8 +94,15 @@ pending deletion); liveness must still be checked by
 connecting, never inferred from a PID in this file.
 
 Pipe names are `milligram-` followed by 20 ASCII hexadecimal characters derived from the full
-project root. Trailing separators are normalized, as is case on Windows. The host log path is
+physical project root. Directory symlinks, Windows junctions and aliases in ancestor directories
+resolve before hashing; Windows uses the directory's stored casing. Tmux uses the same physical
+root for its readable name and hash. The selected logical root still controls project paths.
+An absent or inaccessible root is an error rather than a second agent identity. Each controller
+retains its resolved identity for its lifetime. The host log path is
 `.milligram/run/agent-host.log`.
+
+Agent names changed from earlier experimental builds to unify directory aliases. Stop existing
+agents with the old build before upgrading, then start them with the new build.
 
 ## Native terminal adapter
 

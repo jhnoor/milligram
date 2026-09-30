@@ -20,6 +20,7 @@ internal static class DetachedHostFixture
         await File.WriteAllTextAsync(Path.Combine(fixture, "cwd-marker"), marker);
         var paths = new ProjectPaths(fixture);
         var files = new AgentHostFiles(paths);
+        var alias = fixture + ".alias";
         JsonFile.Write(paths.PolicyFile, new Policy
         {
             Agent = new AgentSettings
@@ -35,6 +36,16 @@ internal static class DetachedHostFixture
         Exception? failure = null;
         try
         {
+            if (OperatingSystem.IsWindows())
+            {
+                var link = ProcessRunner.Capture("pwsh", "-NoProfile", "-NonInteractive", "-Command",
+                    $"$ErrorActionPreference = 'Stop'; New-Item -ItemType Junction -Path '{alias.Replace("'", "''", StringComparison.Ordinal)}' -Target '{fixture.Replace("'", "''", StringComparison.Ordinal)}' | Out-Null");
+                Require(link.ExitCode == 0, "Could not create the project junction: " + link.Output);
+            }
+            else Directory.CreateSymbolicLink(alias, fixture);
+            var aliasPaths = new ProjectPaths(alias);
+            var aliasFiles = new AgentHostFiles(aliasPaths);
+            Require(files.Endpoint == aliasFiles.Endpoint, "An alias changed the host endpoint.");
             for (var attempt = 0; attempt < 2; attempt++)
             {
                 if (attempt == 1) JsonFile.Write(files.DiscoveryFile, new AgentHostDiscovery(123, "stale", 99, "old", DateTimeOffset.UnixEpoch));
@@ -72,15 +83,19 @@ internal static class DetachedHostFixture
             var policy = JsonFile.Read<Policy>(paths.PolicyFile)!;
             var companion = new AgentHostCompanion(paths, () => policy, [Program.Dotnet(), typeof(ProcessRunner).Assembly.Location],
                 "integration", ProcessRunner.OnPath, ProcessRunner.StartDetached);
+            var aliasCompanion = new AgentHostCompanion(aliasPaths, () => policy, [Program.Dotnet(), typeof(ProcessRunner).Assembly.Location],
+                "integration", ProcessRunner.OnPath, ProcessRunner.StartDetached);
             var starts = await Task.WhenAll(companion.StartAsync(token), companion.StartAsync(token));
             Require(starts.Count(started => started is not null) == 1, "Concurrent starters did not report exactly one owner.");
             var ownership = starts.Single(started => started is not null)!;
             hostProcess = Process.GetProcessById(AgentHostLease.ReadDiscovery(files)!.Pid);
             _ = hostProcess.SafeHandle;
             Require(await companion.StartAsync(token) is null, "A reused host incorrectly granted startup ownership.");
+            Require(await aliasCompanion.StartAsync(token) is null, "An alias started another host or acquired ownership.");
+            Require(aliasCompanion.IsRunning(), "An alias could not find the running host.");
             for (var probe = 0; probe < 10; probe++)
                 Require(companion.IsRunning(), $"The controller lost its running host on probe {probe + 1}.");
-            await ReadClient(stop: true, companion);
+            await ReadClient(stop: true, aliasCompanion, aliasFiles.Endpoint);
             await hostProcess.WaitForExitAsync(token);
             Require(!companion.IsRunning(), "The controller still sees a stopped host.");
             Require(AgentHostLease.ReadDiscovery(files) is null, "Controller stop returned before discovery was removed.");
@@ -97,6 +112,7 @@ internal static class DetachedHostFixture
             hostProcess = null;
             Console.WriteLine("PASS: detached command, duplicate start, reconnect, stale discovery and restart");
             Console.WriteLine("PASS: native companion concurrent start, generation ownership, reuse, status, notification and stop");
+            Console.WriteLine("PASS: project aliases reuse the native host and can attach, ring and stop it");
 
             policy = policy with
             {
@@ -136,7 +152,7 @@ internal static class DetachedHostFixture
             Console.WriteLine("PASS: invalid agent commands and configuration cannot start a host");
 
             (int ExitCode, string Output) AgentCommand(string command) => ProcessRunner.Capture(Program.Dotnet(),
-                typeof(ProcessRunner).Assembly.Location, "agent", command, "--project", fixture);
+                typeof(ProcessRunner).Assembly.Location, "agent", command, "--project", command == "start" ? fixture : alias);
 
             int Launch()
             {
@@ -152,10 +168,10 @@ internal static class DetachedHostFixture
                 while (!predicate()) await Task.Delay(20, token);
             }
 
-            async Task ReadClient(bool stop, AgentHostCompanion? controller = null)
+            async Task ReadClient(bool stop, AgentHostCompanion? controller = null, string? endpoint = null)
             {
                 using var connectionLifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
-                await using var client = await AgentPipeClient.ConnectAsync(files.Endpoint, new HostHello(HostProtocol.Version, "integration"), token);
+                await using var client = await AgentPipeClient.ConnectAsync(endpoint ?? files.Endpoint, new HostHello(HostProtocol.Version, "integration"), token);
                 var capture = new Program.Capture();
                 var reading = capture.Read(client, connectionLifetime.Token);
                 try
@@ -212,6 +228,7 @@ internal static class DetachedHostFixture
             var temp = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
             if (Path.GetFullPath(fixture).StartsWith(temp, StringComparison.Ordinal))
             {
+                if (Directory.Exists(alias)) Directory.Delete(alias);
                 try { Directory.Delete(fixture, recursive: true); }
                 catch (IOException) when (failure is not null) { Console.Error.WriteLine("Failed fixture retained at " + fixture); }
             }
