@@ -20,6 +20,8 @@ internal static class Program
     public static async Task<int> Main(string[] args)
     {
         Console.OutputEncoding = new UTF8Encoding(false);
+        if (args.FirstOrDefault() == "--process-child") return await ProcessRunnerFixture.Child(args[1..]);
+        if (args.FirstOrDefault() == "--process-fixture") { await ProcessRunnerFixture.Run(); return 0; }
         if (args.FirstOrDefault() == "--child") return await Child(args);
         if (args.FirstOrDefault() == "--record-terminal")
         {
@@ -44,6 +46,7 @@ internal static class Program
         try
         {
             if (ProcessRunner.TerminalIssue() is { } issue) throw new InvalidOperationException(issue);
+            await ProcessRunnerFixture.Run();
             foreach (var hosted in new[] { false, true })
             {
                 await Scenario(tree: false, parentExits: false, hosted);
