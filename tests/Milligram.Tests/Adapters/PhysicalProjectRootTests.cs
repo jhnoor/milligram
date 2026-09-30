@@ -93,7 +93,7 @@ public class PhysicalProjectRootTests
         Directory.CreateSymbolicLink(first, second);
         Directory.CreateSymbolicLink(second, first);
         Assert.Throws<MilligramException>(() => PhysicalProjectRoot.Resolve(first));
-        Directory.Delete(second);
+        File.Delete(second);
         Assert.Throws<MilligramException>(() => PhysicalProjectRoot.Resolve(first));
     }
 
