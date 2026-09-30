@@ -37,6 +37,13 @@ public class ProjectPathsTests
         Assert.True(paths.Contains(Path.Combine(project.Root, "Inside.cs")));
     }
 
+    [Fact]
+    public void AFilesystemErrorCannotBeMistakenForAMissingContainedPath()
+    {
+        using var project = new TempProject();
+        Assert.False(new ProjectPaths(project.Root).Contains(new string('x', 1024)));
+    }
+
     [UnixFact]
     public void DirectoryAndFileLinksCannotImportFilesFromOutsideTheRoot()
     {
@@ -135,6 +142,17 @@ public class ProjectPathsTests
         Directory.CreateSymbolicLink(Path.Combine(outside.Root, "return"), actual);
         File.CreateSymbolicLink(Path.Combine(actual, "outside.cs"), Path.Combine(outside.Root, "return", "Inside.cs"));
         Assert.False(paths.Contains("outside.cs"));
+    }
+
+    [UnixFact]
+    public void ALoopInAnAncestorAliasCannotKeepAContainmentCheckRunning()
+    {
+        using var project = new TempProject(("actual/Inside.cs", "inside"));
+        var actual = Path.Combine(project.Root, "actual");
+        Directory.CreateSymbolicLink(Path.Combine(project.Root, "first"), "second");
+        Directory.CreateSymbolicLink(Path.Combine(project.Root, "second"), "first");
+        File.CreateSymbolicLink(Path.Combine(actual, "cycle.cs"), Path.Combine(project.Root, "first", "Inside.cs"));
+        Assert.False(new ProjectPaths(actual).Contains("cycle.cs"));
     }
 
     [UnixFact]
