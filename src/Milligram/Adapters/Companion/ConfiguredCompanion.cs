@@ -19,7 +19,7 @@ public sealed class ConfiguredCompanion(Func<AgentHostKind> host, ICompanion tmu
     public string AttachCommand => Companion.AttachCommand;
     public bool IsAvailable(out string reason) => Companion.IsAvailable(out reason);
     public bool IsRunning() => Companion.IsRunning();
-    public Task<bool> StartAsync(CancellationToken cancellation) => Companion.StartAsync(cancellation);
+    public Task<AgentOwnership?> StartAsync(CancellationToken cancellation) => Companion.StartAsync(cancellation);
     public void Stop() => Companion.Stop();
     public void Ring() => Companion.Ring();
     public bool OpenTerminal() => Companion.OpenTerminal();

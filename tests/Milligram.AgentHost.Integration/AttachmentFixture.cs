@@ -48,7 +48,7 @@ internal static class AttachmentFixture
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         try
         {
-            Require(await companion.StartAsync(lifetime.Token), "Attachment fixture did not start its own host.");
+            Require(await companion.StartAsync(lifetime.Token) is not null, "Attachment fixture did not start its own host.");
             var files = new AgentHostFiles(paths);
             var original = AgentHostLease.ReadDiscovery(files);
             await using var observer = await AgentPipeClient.ConnectAsync(files.Endpoint, new HostHello(1, "integration"), lifetime.Token);

@@ -505,6 +505,21 @@ public class AgentLauncherTests : IDisposable
         Assert.Equal(new[] { "Agent: tmux attach -t milligram-test" }, outcome.Banner);
         Assert.True(outcome.Started);
         Assert.Equal(1, companion.Starts);
+        Assert.Same(companion.Ownership, outcome.Ownership);
+        outcome.Ownership!.Stop();
+        Assert.Equal(1, companion.Stops);
+        Assert.False(companion.Running);
+    }
+
+    [Fact]
+    public async Task AManualRestartDoesNotChangeTheViewersCapturedOwnership()
+    {
+        var outcome = await Start();
+        var original = outcome.Ownership;
+        companion.Stop();
+        await companion.StartAsync(CancellationToken.None);
+        Assert.NotSame(original, companion.Ownership);
+        Assert.Same(original, outcome.Ownership);
     }
 
     [Fact]

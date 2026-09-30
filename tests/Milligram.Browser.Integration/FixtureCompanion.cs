@@ -19,9 +19,9 @@ internal sealed class FixtureCompanion : ICompanion, IAsyncDisposable
     public bool OpenTerminal() => false;
     public Task<AgentPipeClient> Connect(CancellationToken cancellation) => AgentPipeClient.ConnectAsync(endpoint, greeting, cancellation);
 
-    public async Task<bool> StartAsync(CancellationToken cancellation)
+    public async Task<AgentOwnership?> StartAsync(CancellationToken cancellation)
     {
-        if (IsRunning()) return false;
+        if (IsRunning()) return null;
         if (running is not null) await running.WaitAsync(cancellation);
         session?.Dispose();
         server?.Dispose();
@@ -31,7 +31,7 @@ internal sealed class FixtureCompanion : ICompanion, IAsyncDisposable
         running = new AgentHostRuntime(Terminal, session, server, Console.Error.WriteLine).RunAsync(() => { }, CancellationToken.None);
         await server.Ready.WaitAsync(cancellation);
         await Terminal.Produce($"\u001b[?2004h\u001b[32mREADY {++Starts}: Grüße 漢字 🐱\u001b[0m\r\nOrder.cs:2\r\n$ ");
-        return true;
+        return new AgentOwnership(Terminal.Stop);
     }
 
     public void Stop() { if (running is not null) Terminal.Stop(); }

@@ -14,7 +14,7 @@ payloads are rejected. Each connection has one writer to prevent interleaved fra
 
 | Kind | Byte | Payload |
 |---|---|---|
-| hello | 1 | JSON: `protocol` (positive integer), `version` (Milligram version, 1–128 characters); at most 512 bytes |
+| hello | 1 | JSON: `protocol` (positive integer), `version` (Milligram version, 1–128 characters), optional `instance` (32 hexadecimal GUID digits); at most 512 bytes |
 | output | 2 | Raw terminal bytes, at most 16 KiB |
 | input | 3 | Raw terminal bytes, at most 16 KiB |
 | resize | 4 | Two little-endian 32-bit integers: columns, rows; each 2–1000 |
@@ -87,7 +87,7 @@ It also takes ownership before opening its log or preparing the agent's conversa
 a duplicate start cannot change these files.
 
 Discovery at `.milligram/run/agent-host.json` is atomic JSON containing the host `pid`, pipe
-`endpoint`, `protocol`, Milligram `version` and `started` timestamp. The lease removes only the
+`endpoint`, `protocol`, Milligram `version`, `started` timestamp and random per-run `instance`. The lease removes only the
 exact record it published, before releasing its lock. Repeated disposal cannot affect a new
 owner. Missing, unreadable or malformed discovery is read as absent (including a Windows file
 pending deletion); liveness must still be checked by
@@ -155,9 +155,19 @@ real command: start, reuse, status, notification and stop.
 returning from startup. If a previous host is still releasing its lease, it waits before
 launching. An early startup failure includes a bounded log tail. Cancellation or a startup
 deadline can stop only the child handle returned by this launch, never a PID from discovery.
-Startup reports ownership only when its own live child published discovery. A concurrent caller
-reuses the winning host and cleans up its losing child, so two viewers cannot both acquire
-shutdown ownership. Tmux reports creation separately from reuse through the same companion port.
+The launcher generates a random instance ID before creating its child and passes it through
+the internal `--instance` argument. Startup returns an immutable cleanup callback only when its
+own live child, discovery and connected peer identify that instance. A concurrent caller reuses
+the winning host and cleans up its losing child. Compatible older hosts without an instance
+remain usable but cannot grant fresh ownership. Automatic cleanup checks the instance again on
+the connection that will carry stop; a stale discovery or reused PID cannot authorize stopping
+a replacement. Explicit stop still targets the current session.
+
+Tmux atomically stores a random environment marker when creating a session and returns its
+unique numeric session ID. Cleanup targets that ID and checks its marker in one `if-shell -F`
+command. This protects both name reuse and numeric ID reuse after a server restart. A private
+tmux integration fixture exercises both cases on Linux and macOS. The viewer retains its initial
+cleanup callback across manual restarts, so exiting an old viewer leaves a replacement running.
 
 A notification sends ring followed by status and waits for the status response, ensuring the
 doorbell has been submitted. Stop drains the pipe through EOF and waits for the old owner's

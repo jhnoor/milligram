@@ -73,10 +73,11 @@ internal static class DetachedHostFixture
             var companion = new AgentHostCompanion(paths, () => policy, [Program.Dotnet(), typeof(ProcessRunner).Assembly.Location],
                 "integration", ProcessRunner.OnPath, ProcessRunner.StartDetached);
             var starts = await Task.WhenAll(companion.StartAsync(token), companion.StartAsync(token));
-            Require(starts.Count(started => started) == 1, "Concurrent starters did not report exactly one owner.");
+            Require(starts.Count(started => started is not null) == 1, "Concurrent starters did not report exactly one owner.");
+            var ownership = starts.Single(started => started is not null)!;
             hostProcess = Process.GetProcessById(AgentHostLease.ReadDiscovery(files)!.Pid);
             _ = hostProcess.SafeHandle;
-            Require(!await companion.StartAsync(token), "A reused host incorrectly granted startup ownership.");
+            Require(await companion.StartAsync(token) is null, "A reused host incorrectly granted startup ownership.");
             for (var probe = 0; probe < 10; probe++)
                 Require(companion.IsRunning(), $"The controller lost its running host on probe {probe + 1}.");
             await ReadClient(stop: true, companion);
@@ -85,8 +86,17 @@ internal static class DetachedHostFixture
             Require(AgentHostLease.ReadDiscovery(files) is null, "Controller stop returned before discovery was removed.");
             hostProcess.Dispose();
             hostProcess = null;
+            var replacement = await companion.StartAsync(token) ?? throw new InvalidOperationException("The replacement has no owner.");
+            hostProcess = Process.GetProcessById(AgentHostLease.ReadDiscovery(files)!.Pid);
+            _ = hostProcess.SafeHandle;
+            await Task.Run(ownership.Stop, token);
+            Require(companion.IsRunning(), "An old owner stopped the replacement host.");
+            await Task.Run(replacement.Stop, token);
+            await hostProcess.WaitForExitAsync(token);
+            hostProcess.Dispose();
+            hostProcess = null;
             Console.WriteLine("PASS: detached command, duplicate start, reconnect, stale discovery and restart");
-            Console.WriteLine("PASS: native companion concurrent start, ownership, reuse, status, notification and stop");
+            Console.WriteLine("PASS: native companion concurrent start, generation ownership, reuse, status, notification and stop");
 
             var started = AgentCommand("start");
             Require(started.ExitCode == 0, "The opt-in agent start command failed: " + started.Output);

@@ -7,7 +7,7 @@ namespace Milligram.Adapters.Companion;
 public enum HostFrameKind : byte { Hello = 1, Output = 2, Input = 3, Resize = 4, Ring = 5, Stop = 6, Status = 7, Exited = 8 }
 
 public sealed record HostFrame(HostFrameKind Kind, byte[] Payload);
-public sealed record HostHello(int Protocol, string Version);
+public sealed record HostHello(int Protocol, string Version, string? Instance = null);
 public sealed record TerminalSize(int Columns, int Rows);
 
 /// <summary>Bounded, versioned frames on the local agent pipe; stream reads need not align with frames.</summary>
@@ -63,6 +63,8 @@ public static class HostProtocol
         var hello = ReadJson<HostHello>(frame);
         if (hello.Protocol < 1 || string.IsNullOrWhiteSpace(hello.Version) || hello.Version.Length > 128)
             throw new InvalidDataException("Invalid agent greeting.");
+        if (hello.Instance is not null && !Guid.TryParseExact(hello.Instance, "N", out _))
+            throw new InvalidDataException("Invalid agent instance.");
         return hello;
     }
 

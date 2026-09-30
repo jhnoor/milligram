@@ -5,7 +5,7 @@ using Milligram.Application;
 
 namespace Milligram.Adapters.Companion;
 
-public sealed record AgentHostDiscovery(int Pid, string Endpoint, int Protocol, string Version, DateTimeOffset Started);
+public sealed record AgentHostDiscovery(int Pid, string Endpoint, int Protocol, string Version, DateTimeOffset Started, string? Instance = null);
 
 /// <summary>Host files are local to a project; the pipe name remains short ASCII for Unix socket limits.</summary>
 public sealed class AgentHostFiles(ProjectPaths paths)

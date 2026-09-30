@@ -63,6 +63,7 @@ internal sealed class FakeCompanion : ICompanion
     public int Starts { get; private set; }
     public int Stops { get; private set; }
     public Func<CancellationToken, Task>? Starting { get; set; }
+    public AgentOwnership? Ownership { get; private set; }
 
     public string SessionName => "milligram-test";
     public string AttachCommand => "tmux attach -t milligram-test";
@@ -75,12 +76,12 @@ internal sealed class FakeCompanion : ICompanion
 
     public bool IsRunning() => RunningError is { } error ? throw new MilligramException(error) : Running;
 
-    public async Task<bool> StartAsync(CancellationToken cancellation)
+    public async Task<AgentOwnership?> StartAsync(CancellationToken cancellation)
     {
         Starts++;
         if (Starting is not null) await Starting(cancellation);
         Running = true;
-        return CreatedSession;
+        return Ownership = CreatedSession ? new AgentOwnership(Stop) : null;
     }
 
     public void Stop() { Stops++; Running = false; }

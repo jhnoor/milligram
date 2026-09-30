@@ -5,6 +5,18 @@ namespace Milligram.Tests.Adapters;
 public class CommandLineTests
 {
     [Theory]
+    [InlineData("agent", "host", "instance-id")]
+    [InlineData("agent", "start", null)]
+    [InlineData("serve", "host", null)]
+    public void OnlyTheInternalHostReceivesTheLaunchInstance(string command, string subcommand, string? expected)
+    {
+        var line = CommandLine.Parse([command, subcommand, "--project", "with spaces", "--instance", "instance-id"]);
+        Assert.Equal(expected, line.HostInstance);
+        Assert.Equal([subcommand], line.Arguments);
+        Assert.Equal("with spaces", line.Value("project"));
+    }
+
+    [Theory]
     [InlineData("agent", true)]
     [InlineData("agent status", true)]
     [InlineData("agent start", true)]

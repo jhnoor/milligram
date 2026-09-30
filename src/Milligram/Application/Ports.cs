@@ -56,6 +56,9 @@ public interface IProcessRunner
     Task<int> RunAsync(string command, IReadOnlyList<string> args, string workingDirectory, Action<string> onLine, CancellationToken cancellation);
 }
 
+/// <summary>Stops only the session created by one startup, even after the current session has been replaced.</summary>
+public sealed record AgentOwnership(Action Stop);
+
 /// <summary>The agent session that works alongside the viewer.</summary>
 public interface ICompanion
 {
@@ -63,8 +66,8 @@ public interface ICompanion
     string AttachCommand { get; }
     bool IsAvailable(out string reason);
     bool IsRunning();
-    /// <summary>True only when this call created the session; a reused session belongs to its original caller.</summary>
-    Task<bool> StartAsync(CancellationToken cancellation);
+    /// <summary>Ownership only when this call created the session; null when reusing another caller's session.</summary>
+    Task<AgentOwnership?> StartAsync(CancellationToken cancellation);
     void Stop();
     /// <summary>Wakes the agent to read its mail. The doorbell carries no content.</summary>
     void Ring();

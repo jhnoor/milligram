@@ -11,6 +11,8 @@ public sealed class AgentPipeClient : IAsyncDisposable
 
     internal AgentPipeClient(Stream pipe) => this.pipe = pipe;
 
+    public HostHello? Greeting { get; private init; }
+
     public static async Task<AgentPipeClient> ConnectAsync(string endpoint, HostHello greeting, CancellationToken cancellation)
     {
         var pipe = new NamedPipeClientStream(".", endpoint, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
@@ -22,7 +24,7 @@ public sealed class AgentPipeClient : IAsyncDisposable
             var host = HostProtocol.ReadHello(response);
             if (host.Protocol != greeting.Protocol)
                 throw new MilligramException($"Agent host uses protocol {host.Protocol} (Milligram {host.Version}); restart it with a matching Milligram version.");
-            return new AgentPipeClient(pipe);
+            return new AgentPipeClient(pipe) { Greeting = host };
         }
         catch
         {

@@ -43,6 +43,18 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+      - name: Install tmux for isolated session ownership checks
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if ! command -v tmux >/dev/null; then
+            if [[ "$RUNNER_OS" == "Linux" ]]; then
+              sudo apt-get update
+              sudo apt-get install -y tmux
+            else
+              brew install tmux
+            fi
+          fi
       - name: Check integration fixture formatting
         if: matrix.rid == 'linux-x64'
         run: dotnet format tests/Milligram.AgentHost.Integration/Milligram.AgentHost.Integration.csproj --verify-no-changes

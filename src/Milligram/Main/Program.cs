@@ -85,7 +85,7 @@ public static class Program
         foreach (var step in ScanSummary.Of(c.Workspace).Describe()) Console.WriteLine("  " + step);
 
         await app.WaitForShutdownAsync();
-        if (agent.Started && !line.Has("keep-agent") && !c.Workspace.Policy.Agent.KeepOnExit) c.Companion.Stop();
+        if (!line.Has("keep-agent") && !c.Workspace.Policy.Agent.KeepOnExit) agent.Ownership?.Stop();
         File.Delete(c.Paths.ServerFile);
         return 0;
     }
@@ -176,7 +176,7 @@ public static class Program
         switch (line.Subcommand ?? "status")
         {
             case "host":
-                return await c.AgentHost.RunAsync(CancellationToken.None);
+                return await c.AgentHost.RunAsync(CancellationToken.None, line.HostInstance);
             case "start":
                 await c.Companion.StartAsync(CancellationToken.None);
                 Console.WriteLine(c.Companion.AttachCommand);
@@ -228,6 +228,7 @@ public static class Program
         usage: milligram [command] [options]
 
           serve (default)         Start the viewer (and the companion agent) for this project.
+                                  On exit, stop only the agent session this viewer started.
               --port N            Preferred port (default 5170; the next free one is used).
               --no-agent          Do not start the companion agent.
               --no-browser        Do not open a browser.

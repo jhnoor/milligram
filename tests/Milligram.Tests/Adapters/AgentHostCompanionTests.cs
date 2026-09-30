@@ -27,15 +27,61 @@ public class AgentHostCompanionTests
     public async Task StartingTwiceReusesTheHostAndKeepsTheProjectSessionName()
     {
         await using var fixture = new Fixture();
-        Assert.True(await fixture.Companion.StartAsync(fixture.Token));
-        Assert.False(await fixture.Companion.StartAsync(fixture.Token));
+        Assert.NotNull(await fixture.Companion.StartAsync(fixture.Token));
+        Assert.Null(await fixture.Companion.StartAsync(fixture.Token));
         Assert.Equal(1, fixture.Launches);
         Assert.True(await Task.Run(fixture.Companion.IsRunning));
         Assert.Equal(TmuxCompanion.SessionNameFor(fixture.Paths.Root), fixture.Companion.SessionName);
         Assert.Equal("milligram agent attach", fixture.Companion.AttachCommand);
-        Assert.Equal(["milligram-stub.dll", "agent", "host", "--project", fixture.Paths.Root], fixture.Arguments);
+        Assert.Equal(["milligram-stub.dll", "agent", "host", "--project", fixture.Paths.Root], fixture.Arguments!.Take(5));
+        Assert.Equal(AgentHostLease.ReadDiscovery(fixture.Files)!.Instance, FakeProcessRunner.After(fixture.Arguments!, "--instance"));
         Assert.True(fixture.Process!.Disposed);
         Assert.Equal(0, fixture.Process.Stops);
+    }
+
+    [Fact]
+    public async Task AutomaticCleanupCannotStopAReplacementEvenWhenItsPidIsReused()
+    {
+        await using var fixture = new Fixture();
+        var original = Assert.IsType<AgentOwnership>(await fixture.Companion.StartAsync(fixture.Token));
+        var discovery = AgentHostLease.ReadDiscovery(fixture.Files)!;
+        await Task.Run(original.Stop);
+        Assert.Null(AgentHostLease.ReadDiscovery(fixture.Files));
+        fixture.Terminal = new Terminal();
+        var replacement = Assert.IsType<AgentOwnership>(await fixture.Companion.StartAsync(fixture.Token));
+        var current = AgentHostLease.ReadDiscovery(fixture.Files)!;
+        Assert.Equal(discovery.Pid, current.Pid);
+        Assert.NotEqual(discovery.Instance, current.Instance);
+
+        await Task.Run(original.Stop);
+        Assert.True(await Task.Run(fixture.Companion.IsRunning));
+        Assert.False(fixture.Terminal.Exited.IsCompleted);
+        Assert.Equal(current, AgentHostLease.ReadDiscovery(fixture.Files));
+        await Task.Run(replacement.Stop);
+        Assert.Null(AgentHostLease.ReadDiscovery(fixture.Files));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CleanupChecksTheConnectedPeerEvenWhenDiscoveryStillNamesTheOldOwner(bool legacy)
+    {
+        await using var fixture = new Fixture();
+        var ownership = Assert.IsType<AgentOwnership>(await fixture.Companion.StartAsync(fixture.Token));
+        var original = AgentHostLease.ReadDiscovery(fixture.Files)!;
+        await Task.Run(fixture.Companion.Stop);
+        using var lease = new AgentHostLease(fixture.Files);
+        lease.Publish(original);
+        using var probe = Server(fixture.Files.Endpoint);
+        using var commands = Server(fixture.Files.Endpoint);
+        var stopping = Task.Run(ownership.Stop);
+        await Greet(probe, fixture.Token, original.Instance);
+        probe.Dispose();
+        await Greet(commands, fixture.Token, legacy ? null : Guid.NewGuid().ToString("N"));
+        Assert.Null(await HostProtocol.ReadAsync(commands, fixture.Token));
+        await stopping.WaitAsync(fixture.Token);
+        Assert.Equal(original, AgentHostLease.ReadDiscovery(fixture.Files));
+        Assert.Throws<IOException>(() => new AgentHostLease(fixture.Files));
     }
 
     [Fact]
@@ -263,8 +309,34 @@ public class AgentHostCompanionTests
             Assert.False(starting.IsCompleted);
             Assert.Equal(0, fixture.Launches);
             owner.Publish(new AgentHostDiscovery(Environment.ProcessId, fixture.Files.Endpoint, HostProtocol.Version, "test-version", DateTimeOffset.UtcNow));
-            Assert.False(await starting);
+            Assert.Null(await starting);
             Assert.Equal(0, fixture.Launches);
+        }
+        finally { cancellation.Cancel(); await listening.WaitAsync(fixture.Token); }
+    }
+
+    [Fact]
+    public async Task AReadyListenerCannotBeCombinedWithAnotherInstancesDiscovery()
+    {
+        await using var fixture = new Fixture();
+        var instance = Guid.NewGuid().ToString("N");
+        using var lease = new AgentHostLease(fixture.Files);
+        var discovery = new AgentHostDiscovery(Environment.ProcessId, fixture.Files.Endpoint, HostProtocol.Version,
+            "test-version", DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"));
+        lease.Publish(discovery);
+        using var session = new AgentSession(fixture.Terminal, new TerminalSize(80, 24));
+        using var server = new AgentPipeServer(session, fixture.Files.Endpoint, new HostHello(HostProtocol.Version, "test-version", instance), _ => { });
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(fixture.Token);
+        var listening = server.RunAsync(cancellation.Token);
+        try
+        {
+            await server.Ready;
+            var starting = fixture.Companion.StartAsync(fixture.Token);
+            await Task.Delay(100, fixture.Token);
+            Assert.False(starting.IsCompleted);
+            Assert.Equal(0, fixture.Launches);
+            lease.Publish(discovery with { Instance = instance });
+            Assert.Null(await starting);
         }
         finally { cancellation.Cancel(); await listening.WaitAsync(fixture.Token); }
     }
@@ -308,22 +380,41 @@ public class AgentHostCompanionTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task StopWaitsForOwnershipAfterTheTransportCloses(bool corruptReply)
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public async Task StopWaitsForOwnershipAfterTheTransportCloses(bool corruptReply, bool owned, bool replaced)
     {
         await using var fixture = new Fixture();
+        AgentOwnership? ownership = null;
+        var discovery = new AgentHostDiscovery(Environment.ProcessId, fixture.Files.Endpoint, HostProtocol.Version, "test-version", DateTimeOffset.UtcNow);
+        if (owned)
+        {
+            ownership = Assert.IsType<AgentOwnership>(await fixture.Companion.StartAsync(fixture.Token));
+            discovery = AgentHostLease.ReadDiscovery(fixture.Files)!;
+            await Task.Run(fixture.Companion.Stop);
+        }
         using var owner = new AgentHostLease(fixture.Files);
-        owner.Publish(new AgentHostDiscovery(Environment.ProcessId, fixture.Files.Endpoint, HostProtocol.Version, "test-version", DateTimeOffset.UtcNow));
+        owner.Publish(discovery);
         using var probe = Server(fixture.Files.Endpoint);
         using var commands = Server(fixture.Files.Endpoint);
-        var stopping = Task.Run(fixture.Companion.Stop);
-        await Greet(probe, fixture.Token);
+        var stopping = Task.Run(ownership?.Stop ?? fixture.Companion.Stop);
+        await Greet(probe, fixture.Token, discovery.Instance);
         probe.Dispose();
-        await Greet(commands, fixture.Token);
+        await Greet(commands, fixture.Token, discovery.Instance);
         Assert.Equal(HostFrameKind.Stop, (await HostProtocol.ReadAsync(commands, fixture.Token))!.Kind);
+        if (replaced) owner.Publish(discovery with { Instance = Guid.NewGuid().ToString("N") });
         if (corruptReply) await commands.WriteAsync(new byte[] { 0, 0, 0, 0 }, fixture.Token);
         commands.Dispose();
+        if (replaced)
+        {
+            await stopping.WaitAsync(fixture.Token);
+            Assert.Throws<IOException>(() => new AgentHostLease(fixture.Files));
+            return;
+        }
         await Task.Delay(100, fixture.Token);
         Assert.False(stopping.IsCompleted);
         owner.Dispose();
@@ -331,26 +422,50 @@ public class AgentHostCompanionTests
         using var free = new AgentHostLease(fixture.Files);
     }
 
+    [Fact]
+    public async Task OwnedCleanupWaitsForItsListenerToRecoverBeforeSendingStop()
+    {
+        await using var fixture = new Fixture();
+        var ownership = Assert.IsType<AgentOwnership>(await fixture.Companion.StartAsync(fixture.Token));
+        var discovery = AgentHostLease.ReadDiscovery(fixture.Files)!;
+        await Task.Run(fixture.Companion.Stop);
+        using var owner = new AgentHostLease(fixture.Files);
+        owner.Publish(discovery);
+        var stopping = Task.Run(ownership.Stop);
+        await Task.Delay(400, fixture.Token);
+        Assert.False(stopping.IsCompleted);
+        using var probe = Server(fixture.Files.Endpoint);
+        using var commands = Server(fixture.Files.Endpoint);
+        await Greet(probe, fixture.Token, discovery.Instance);
+        probe.Dispose();
+        await Greet(commands, fixture.Token, discovery.Instance);
+        Assert.Equal(HostFrameKind.Stop, (await HostProtocol.ReadAsync(commands, fixture.Token))!.Kind);
+        commands.Dispose();
+        owner.Dispose();
+        await stopping.WaitAsync(fixture.Token);
+    }
+
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ACompetingHostOwnsTheSessionAndOnlyTheLosingChildIsCleanedUp(bool childExited)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ACompetingHostOwnsTheSessionAndOnlyTheLosingChildIsCleanedUp(bool childExited, bool samePid)
     {
         await using var fixture = new Fixture();
         var exit = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (childExited) exit.TrySetResult(1);
-        var loser = new ProcessHandle(exit.Task, () => exit.TrySetResult(1)) { Id = int.MaxValue };
+        var loser = new ProcessHandle(exit.Task, () => exit.TrySetResult(1)) { Id = samePid ? Environment.ProcessId : int.MaxValue };
         var companion = new AgentHostCompanion(fixture.Paths, () => fixture.Policy, ["dotnet-stub"], "test-version", _ => true,
             (command, args, root) =>
             {
-                fixture.Launch(command, args, root)!.Dispose();
+                fixture.Launch(command, [.. args.SkipLast(1), Guid.NewGuid().ToString("N")], root)!.Dispose();
                 return loser;
             })
         {
             RetryDelay = TimeSpan.FromMilliseconds(10),
         };
 
-        Assert.False(await companion.StartAsync(fixture.Token));
+        Assert.Null(await companion.StartAsync(fixture.Token));
         Assert.Equal(childExited ? 0 : 1, loser.Stops);
         Assert.True(loser.Disposed);
         Assert.False(fixture.Running!.IsCompleted);
@@ -381,11 +496,11 @@ public class AgentHostCompanionTests
     private static NamedPipeServerStream Server(string endpoint) => new(endpoint, PipeDirection.InOut,
         NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 
-    private static async Task Greet(NamedPipeServerStream server, CancellationToken cancellation)
+    private static async Task Greet(NamedPipeServerStream server, CancellationToken cancellation, string? instance = null)
     {
         await server.WaitForConnectionAsync(cancellation);
         Assert.Equal(HostFrameKind.Hello, (await HostProtocol.ReadAsync(server, cancellation))!.Kind);
-        await HostProtocol.WriteAsync(server, HostProtocol.Json(HostFrameKind.Hello, new HostHello(HostProtocol.Version, "test-version")), cancellation);
+        await HostProtocol.WriteAsync(server, HostProtocol.Json(HostFrameKind.Hello, new HostHello(HostProtocol.Version, "test-version", instance)), cancellation);
     }
 
     private sealed class Fixture : IAsyncDisposable
@@ -438,7 +553,7 @@ public class AgentHostCompanionTests
                 if (SpawnGate is not null) await SpawnGate.Task.WaitAsync(cancellation);
                 return Terminal;
             }, () => { });
-            Running = host.RunAsync(hostLifetime.Token);
+            Running = host.RunAsync(hostLifetime.Token, FakeProcessRunner.After(args, "--instance"));
             return Process = new ProcessHandle(Running, hostLifetime.Cancel);
         }
 

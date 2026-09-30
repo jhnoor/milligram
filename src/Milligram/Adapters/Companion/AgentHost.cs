@@ -8,8 +8,10 @@ namespace Milligram.Adapters.Companion;
 public sealed class AgentHost(ProjectPaths paths, Func<Policy> policy, IReadOnlyList<string> self, string version,
     Func<AgentLaunch, TerminalSize, CancellationToken, Task<IAgentTerminal>> startTerminal, Action detach)
 {
-    public async Task<int> RunAsync(CancellationToken cancellation)
+    public async Task<int> RunAsync(CancellationToken cancellation, string? instance = null)
     {
+        instance ??= Guid.NewGuid().ToString("N");
+        if (!Guid.TryParseExact(instance, "N", out _)) throw new MilligramException("Invalid agent host instance.");
         var files = new AgentHostFiles(paths);
         AgentHostLease lease;
         try { lease = new AgentHostLease(files); }
@@ -33,11 +35,11 @@ public sealed class AgentHost(ProjectPaths paths, Func<Policy> policy, IReadOnly
             var size = new TerminalSize(80, 24);
             using var terminal = await startTerminal(launch, size, cancellation);
             using var session = new AgentSession(terminal, size);
-            using var pipe = new AgentPipeServer(session, files.Endpoint, new HostHello(HostProtocol.Version, version), Log);
+            using var pipe = new AgentPipeServer(session, files.Endpoint, new HostHello(HostProtocol.Version, version, instance), Log);
             var runtime = new AgentHostRuntime(terminal, session, pipe, Log);
             return await runtime.RunAsync(() =>
             {
-                lease.Publish(new AgentHostDiscovery(Environment.ProcessId, files.Endpoint, HostProtocol.Version, version, started));
+                lease.Publish(new AgentHostDiscovery(Environment.ProcessId, files.Endpoint, HostProtocol.Version, version, started, instance));
                 Log($"Agent host ready; agent pid {terminal.Pid}.");
             }, cancellation);
         }

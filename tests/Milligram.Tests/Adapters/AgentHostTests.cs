@@ -37,6 +37,8 @@ public class AgentHostTests
         Assert.Equal(HostProtocol.Version, discovery.Protocol);
         Assert.Equal("test-version", discovery.Version);
         Assert.Equal(fixture.Files.Endpoint, discovery.Endpoint);
+        Assert.True(Guid.TryParseExact(discovery.Instance, "N", out _));
+        Assert.Equal(discovery.Instance, client.Greeting!.Instance);
         Assert.InRange(discovery.Started, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow);
         await client.SendAsync(new HostFrame(HostFrameKind.Stop, []), fixture.Token);
         Assert.Equal(17, HostProtocol.ReadExitCode((await client.ReadAsync(fixture.Token))!));
@@ -47,6 +49,17 @@ public class AgentHostTests
         var log = File.ReadAllText(fixture.Files.LogFile);
         Assert.Contains("Agent host ready; agent pid 123.", log);
         Assert.Contains("Agent exited (17).", log);
+    }
+
+    [Fact]
+    public async Task AnInvalidInstanceCannotTakeOwnershipOrLaunchAnAgent()
+    {
+        using var fixture = new Fixture();
+        var error = await Assert.ThrowsAsync<MilligramException>(() => fixture.Host().RunAsync(fixture.Token, "invalid"));
+        Assert.Equal("Invalid agent host instance.", error.Message);
+        Assert.Equal(0, fixture.Detaches);
+        Assert.False(File.Exists(fixture.Paths.BriefingFile));
+        Assert.Null(AgentHostLease.ReadDiscovery(fixture.Files));
     }
 
     [Fact]

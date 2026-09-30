@@ -28,21 +28,23 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
         return reason.Length == 0;
     }
 
-    public bool IsRunning() => ProbeAsync(CancellationToken.None).GetAwaiter().GetResult();
+    public bool IsRunning() => ProbeAsync(CancellationToken.None).GetAwaiter().GetResult() is not null;
 
-    public async Task<bool> StartAsync(CancellationToken cancellation)
+    public async Task<AgentOwnership?> StartAsync(CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        if (await ReadyAsync(cancellation)) return false;
+        if (await ReadyAsync(cancellation) is not null) return null;
         cancellation.ThrowIfCancellationRequested();
         if (!IsAvailable(out var reason)) throw new MilligramException(reason);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         deadline.CancelAfter(StartupTimeout);
         IDetachedProcess? started = null;
         var owned = false;
+        var instance = Guid.NewGuid().ToString("N");
         try
         {
-            while (!await ReadyAsync(deadline.Token))
+            HostHello? ready;
+            while ((ready = await ReadyAsync(deadline.Token)) is null)
             {
                 if (LeaseIsAvailable())
                 {
@@ -50,14 +52,15 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
                         throw new MilligramException(StartupFailure($"The agent host exited during startup ({started.ExitCode})."));
                     if (started is null)
                     {
-                        var args = self.Skip(1).Concat(["agent", "host", "--project", paths.Root]).ToArray();
+                        var args = self.Skip(1).Concat(["agent", "host", "--project", paths.Root, "--instance", instance]).ToArray();
                         started = launch(self[0], args, paths.Root) ?? throw new MilligramException("Could not launch the agent host.");
                     }
                 }
                 await Task.Delay(RetryDelay, deadline.Token);
             }
-            owned = started is { HasExited: false } && AgentHostLease.ReadDiscovery(files)?.Pid == started.Id;
-            return owned;
+            owned = started is { HasExited: false } && AgentHostLease.ReadDiscovery(files)?.Pid == started.Id
+                && string.Equals(ready.Instance, instance, StringComparison.Ordinal);
+            return owned ? new AgentOwnership(() => StopAsync(instance).GetAwaiter().GetResult()) : null;
         }
         catch (OperationCanceledException)
         {
@@ -76,13 +79,18 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
     }
 
     public void Ring() => RingAsync().GetAwaiter().GetResult();
-    public void Stop() => StopAsync().GetAwaiter().GetResult();
+    public void Stop() => StopAsync(null).GetAwaiter().GetResult();
     public bool OpenTerminal() => false;
 
-    private async Task<bool> ReadyAsync(CancellationToken cancellation) =>
-        await ProbeAsync(cancellation) && string.Equals(AgentHostLease.ReadDiscovery(files)?.Endpoint, files.Endpoint, StringComparison.Ordinal);
+    private async Task<HostHello?> ReadyAsync(CancellationToken cancellation)
+    {
+        var hello = await ProbeAsync(cancellation);
+        var discovery = AgentHostLease.ReadDiscovery(files);
+        return hello is not null && discovery is not null && string.Equals(discovery.Endpoint, files.Endpoint, StringComparison.Ordinal)
+            && string.Equals(discovery.Instance, hello.Instance, StringComparison.Ordinal) ? hello : null;
+    }
 
-    private async Task<bool> ProbeAsync(CancellationToken cancellation)
+    private async Task<HostHello?> ProbeAsync(CancellationToken cancellation)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         deadline.CancelAfter(ProbeTimeout);
@@ -93,13 +101,13 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
                 try
                 {
                     await using var client = await AgentPipeClient.ConnectAsync(files.Endpoint, greeting, deadline.Token);
-                    return true;
+                    return client.Greeting;
                 }
                 catch (IOException) { await Task.Delay(RetryDelay, deadline.Token); }
             }
         }
-        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { return false; }
-        catch (InvalidDataException) { return false; }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { return null; }
+        catch (InvalidDataException) { return null; }
     }
 
     private async Task RingAsync()
@@ -120,20 +128,23 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
         }
     }
 
-    private async Task StopAsync()
+    private async Task StopAsync(string? instance)
     {
         using var deadline = new CancellationTokenSource(CommandTimeout);
         AgentHostDiscovery? original = null;
         try
         {
-            while (!await ProbeAsync(deadline.Token))
+            if (instance is not null && !OwnsDiscovery(instance)) return;
+            while (await ProbeAsync(deadline.Token) is null)
             {
+                if (instance is not null && !OwnsDiscovery(instance)) return;
                 if (LeaseIsAvailable()) return;
                 await Task.Delay(RetryDelay, deadline.Token);
             }
             original = AgentHostLease.ReadDiscovery(files);
             await using (var client = await AgentPipeClient.ConnectAsync(files.Endpoint, greeting, deadline.Token))
             {
+                if (instance is not null && !string.Equals(client.Greeting?.Instance, instance, StringComparison.Ordinal)) return;
                 await client.SendAsync(new HostFrame(HostFrameKind.Stop, []), deadline.Token);
                 while (await client.ReadAsync(deadline.Token) is not null) { }
             }
@@ -144,7 +155,8 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
         {
             while (!deadline.IsCancellationRequested)
             {
-                if (LeaseIsAvailable() || original is not null && AgentHostLease.ReadDiscovery(files) != original) return;
+                if (LeaseIsAvailable() || instance is not null && !OwnsDiscovery(instance)
+                    || original is not null && AgentHostLease.ReadDiscovery(files) != original) return;
                 try { await Task.Delay(RetryDelay, deadline.Token); }
                 catch (OperationCanceledException) { }
             }
@@ -152,6 +164,9 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
             throw new MilligramException($"Could not stop the agent host. See {paths.Relative(files.LogFile)}: {error.Message}");
         }
     }
+
+    private bool OwnsDiscovery(string instance) =>
+        string.Equals(AgentHostLease.ReadDiscovery(files)?.Instance, instance, StringComparison.Ordinal);
 
     private bool LeaseIsAvailable()
     {

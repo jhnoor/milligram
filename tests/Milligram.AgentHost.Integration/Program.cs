@@ -24,6 +24,8 @@ internal static class Program
         if (args.FirstOrDefault() == "--grandchild") return await Grandchild(args[1]);
         if (args.FirstOrDefault() == "--attach-console") return await AttachmentFixture.Child(args[1]);
         if (args.FirstOrDefault() == "--attach-fixture") { await AttachmentFixture.Run(); return 0; }
+        if (args.FirstOrDefault() == "--tmux-fixture") { await TmuxFixture.Run(); return 0; }
+        if (args.FirstOrDefault() == "--tmux-child") { while (Console.ReadLine() is not null) { } return 0; }
         if (args.FirstOrDefault() == "--launch-host")
         {
             using var host = ProcessRunner.StartDetached(Dotnet(), [typeof(ProcessRunner).Assembly.Location, "agent", "host", "--project", args[1]], args[1]);
@@ -45,6 +47,7 @@ internal static class Program
             }
             await DetachedHostFixture.Run();
             await AttachmentFixture.Run();
+            if (!OperatingSystem.IsWindows()) await TmuxFixture.Run();
             Console.WriteLine("PASS: terminal controls and tree cleanup directly and through the host runtime and pipe");
             return 0;
         }

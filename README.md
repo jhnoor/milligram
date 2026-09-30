@@ -286,9 +286,12 @@ browser tab detaches until visible again. Replay is bounded history, so it may n
 old full-screen terminal display exactly.
 
 Stop the old session before changing `agent.host`, then restart the viewer. Each viewer keeps
-its initial backend so a policy reload cannot redirect its shutdown command. `--keep-agent`
-and `agent.keepOnExit` apply to both hosts. The internal `agent host --project DIR` entry point
-is for the detached launcher and integration fixtures.
+its initial backend so a policy reload cannot redirect its shutdown command. On exit, a viewer
+stops only the session it originally started. A replacement started later, including through
+the Restart button, stays running. The Stop button and `agent stop` stop the current session.
+`--keep-agent` and `agent.keepOnExit` leave the original session running too.
+The internal `agent host --project DIR [--instance ID]` entry point is for the detached launcher
+and integration fixtures; the launcher supplies the identity used for automatic cleanup.
 
 ## Develop
 

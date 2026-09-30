@@ -29,7 +29,7 @@ public class ConfiguredCompanionTests
 
         Assert.True(companion.IsAvailable(out var reason));
         Assert.Empty(reason);
-        Assert.False(await companion.StartAsync(CancellationToken.None));
+        Assert.Null(await companion.StartAsync(CancellationToken.None));
         Assert.True(companion.IsRunning());
         Assert.True(companion.OpenTerminal());
         Assert.Equal(selected.SessionName, companion.SessionName);

@@ -182,6 +182,22 @@ public class HostProtocolTests
             await HostProtocol.WriteAsync(stream, new HostFrame(HostFrameKind.Ring, []), cancelled.Token));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("0123456789abcdef0123456789abcdef")]
+    public void GreetingsRetainTheOptionalInstanceForCompatiblePeers(string? instance)
+    {
+        var hello = new HostHello(1, "test", instance);
+        Assert.Equal(hello, HostProtocol.ReadHello(HostProtocol.Json(HostFrameKind.Hello, hello)));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("unknown")]
+    [InlineData("01234567-89ab-cdef-0123-456789abcdef")]
+    public void MalformedInstancesAreRejected(string instance) =>
+        Assert.Throws<InvalidDataException>(() => HostProtocol.ReadHello(HostProtocol.Json(HostFrameKind.Hello, new HostHello(1, "test", instance))));
+
     private sealed class SingleByteStream(byte[] data) : MemoryStream(data)
     {
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
