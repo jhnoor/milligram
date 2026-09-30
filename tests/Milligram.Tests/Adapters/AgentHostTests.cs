@@ -165,6 +165,9 @@ public class AgentHostTests
         public async Task<AgentPipeClient> Connect(bool expectOutput = false)
         {
             var client = await AgentPipeClient.ConnectAsync(Files.Endpoint, new HostHello(HostProtocol.Version, "client-version"), Token);
+            while (AgentHostLease.ReadDiscovery(Files)?.Version != "test-version" ||
+                !ReadLog(Files.LogFile).Contains("Agent host ready;", StringComparison.Ordinal))
+                await Task.Delay(10, Token);
             if (!expectOutput)
             {
                 await client.SendAsync(new HostFrame(HostFrameKind.Status, []), Token);

@@ -76,7 +76,8 @@ internal static class DetachedHostFixture
             hostProcess = Process.GetProcessById(AgentHostLease.ReadDiscovery(files)!.Pid);
             _ = hostProcess.SafeHandle;
             Require(!await companion.StartAsync(token), "A reused host incorrectly granted startup ownership.");
-            Require(companion.IsRunning(), "The controller did not find the host it started.");
+            for (var probe = 0; probe < 10; probe++)
+                Require(companion.IsRunning(), $"The controller lost its running host on probe {probe + 1}.");
             await ReadClient(stop: true, companion);
             await hostProcess.WaitForExitAsync(token);
             Require(!companion.IsRunning(), "The controller still sees a stopped host.");

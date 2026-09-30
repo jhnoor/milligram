@@ -40,7 +40,7 @@ public class AgentHostCompanionTests
         await using var fixture = new Fixture();
         await fixture.Companion.StartAsync(fixture.Token);
         await Task.Run(fixture.Companion.Stop);
-        Assert.Equal(0, await fixture.Running!.WaitAsync(fixture.Token));
+        Assert.True(await fixture.Running!.WaitAsync(fixture.Token) == 0, JsonFile.ReadText(fixture.Files.LogFile));
         Assert.Null(AgentHostLease.ReadDiscovery(fixture.Files));
         using (var free = new AgentHostLease(fixture.Files)) { }
         fixture.Terminal = new Terminal();
@@ -103,9 +103,11 @@ public class AgentHostCompanionTests
     [Fact]
     public async Task StartupTimeoutStopsTheOwnedChildAndPointsToItsLog()
     {
-        await using var fixture = new Fixture(timeout: TimeSpan.FromMilliseconds(150));
+        await using var fixture = new Fixture();
         fixture.SpawnGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var error = await Assert.ThrowsAsync<MilligramException>(() => fixture.Companion.StartAsync(fixture.Token));
+        var starting = fixture.Companion.StartAsync(fixture.Token);
+        await fixture.Spawning.Task.WaitAsync(fixture.Token);
+        var error = await Assert.ThrowsAsync<MilligramException>(() => starting);
         Assert.Contains("did not become ready", error.Message);
         Assert.Contains("agent-host.log", error.Message);
         Assert.Equal(1, fixture.Process!.Stops);
@@ -163,7 +165,7 @@ public class AgentHostCompanionTests
         await stopping.WaitAsync(fixture.Token);
         try { await starting; }
         catch (MilligramException error) { Assert.Contains("exited during startup", error.Message); }
-        Assert.Equal(0, await fixture.Running!.WaitAsync(fixture.Token));
+        Assert.True(await fixture.Running!.WaitAsync(fixture.Token) == 0, JsonFile.ReadText(fixture.Files.LogFile));
         Assert.Null(AgentHostLease.ReadDiscovery(fixture.Files));
     }
 
@@ -341,6 +343,26 @@ public class AgentHostCompanionTests
         Assert.False(fixture.Running!.IsCompleted);
         Assert.Equal(0, fixture.Process!.Stops);
         Assert.True(await Task.Run(companion.IsRunning));
+    }
+
+    [Fact]
+    public async Task AProbeRetriesATransientDisconnectBeforeItsDeadline()
+    {
+        await using var fixture = new Fixture();
+        var companion = new AgentHostCompanion(fixture.Paths, () => fixture.Policy, ["unused"], "test-version", _ => true,
+            (_, _, _) => throw new InvalidOperationException("A probe cannot launch anything."))
+        {
+            ProbeTimeout = TimeSpan.FromSeconds(2),
+            RetryDelay = TimeSpan.FromMilliseconds(10),
+        };
+        using var disconnecting = Server(fixture.Files.Endpoint);
+        using var healthy = Server(fixture.Files.Endpoint);
+        var probing = Task.Run(companion.IsRunning);
+        await disconnecting.WaitForConnectionAsync(fixture.Token);
+        await HostProtocol.ReadAsync(disconnecting, fixture.Token);
+        disconnecting.Dispose();
+        await Greet(healthy, fixture.Token);
+        Assert.True(await probing.WaitAsync(fixture.Token));
     }
 
     private static NamedPipeServerStream Server(string endpoint) => new(endpoint, PipeDirection.InOut,

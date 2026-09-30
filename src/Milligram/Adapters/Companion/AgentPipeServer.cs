@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Net.Sockets;
 
 namespace Milligram.Adapters.Companion;
 
@@ -11,6 +12,8 @@ public sealed class AgentPipeServer(AgentSession session, string endpoint, HostH
 
     public Task Ready => ready.Task;
     internal TimeSpan GreetingTimeout { get; init; } = TimeSpan.FromSeconds(3);
+    internal Func<NamedPipeServerStream, CancellationToken, Task> AcceptConnectionAsync { get; init; } =
+        (pipe, cancellation) => pipe.WaitForConnectionAsync(cancellation);
 
     /// <summary>Stop accepting first; existing clients may drain an exit frame before the host cancels this task.</summary>
     public void StopAccepting() => accepting.Cancel();
@@ -21,17 +24,30 @@ public sealed class AgentPipeServer(AgentSession session, string endpoint, HostH
         using var connections = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation, accepting.Token);
         var clients = new List<Task>();
+        NamedPipeServerStream? waiting = null;
         try
         {
             while (!stop.IsCancellationRequested)
             {
-                var pipe = new NamedPipeServerStream(endpoint, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
-                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly, HostProtocol.MaxPayload, HostProtocol.MaxPayload);
+                var pipe = waiting ?? CreatePipe();
+                waiting = null;
                 try
                 {
                     ready.TrySetResult();
-                    await pipe.WaitForConnectionAsync(stop.Token);
+                    await AcceptConnectionAsync(pipe, stop.Token);
                 }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or SocketException)
+                {
+                    // Unix checks the peer's identity during accept, before our greeting handler runs.
+                    await pipe.DisposeAsync();
+                    if (stop.IsCancellationRequested) break;
+                    log("Agent connection rejected: " + error.Message);
+                    await Task.Delay(20, stop.Token);
+                    continue;
+                }
+                catch { await pipe.DisposeAsync(); throw; }
+                // Keep the Unix listening socket alive even when this client disconnects synchronously.
+                try { waiting = CreatePipe(); }
                 catch { await pipe.DisposeAsync(); throw; }
                 clients.RemoveAll(task => task.IsCompletedSuccessfully);
                 clients.Add(ServeAsync(pipe, connections.Token));
@@ -46,10 +62,14 @@ public sealed class AgentPipeServer(AgentSession session, string endpoint, HostH
         }
         finally
         {
+            if (waiting is not null) await waiting.DisposeAsync();
             ready.TrySetCanceled();
             await Task.WhenAll(clients);
         }
     }
+
+    private NamedPipeServerStream CreatePipe() => new(endpoint, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
+        PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly, HostProtocol.MaxPayload, HostProtocol.MaxPayload);
 
     private async Task ServeAsync(NamedPipeServerStream pipe, CancellationToken cancellation)
     {

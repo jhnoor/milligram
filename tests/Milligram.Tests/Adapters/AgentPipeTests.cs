@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.IO.Pipes;
+using System.Net.Sockets;
 using System.Text;
 using Milligram.Adapters.Companion;
 using Milligram.Application;
@@ -9,6 +10,40 @@ namespace Milligram.Tests.Adapters;
 public class AgentPipeTests
 {
     private static readonly HostHello Greeting = new(HostProtocol.Version, "0.2.0-test");
+
+    [Fact]
+    public async Task ClientsLeavingBeforeTheGreetingCannotStopTheListener()
+    {
+        await using var host = new Host();
+        for (var i = 0; i < 64; i++)
+            await using (var abandoned = await host.Raw()) { }
+        await using var healthy = await host.Connect();
+        Assert.Equal(123, (await Status(healthy, host.Token)).Pid);
+        Assert.False(host.Running.IsCompleted);
+    }
+
+    [Theory]
+    [InlineData("credentials")]
+    [InlineData("disconnect")]
+    [InlineData("socket")]
+    public async Task RejectedConnectionsDoNotStopTheNextClientFromAttaching(string failure)
+    {
+        var attempts = 0;
+        await using var host = new Host(accept: (pipe, cancellation) =>
+        {
+            if (Interlocked.Increment(ref attempts) > 1) return pipe.WaitForConnectionAsync(cancellation);
+            return Task.FromException(failure switch
+            {
+                "credentials" => new UnauthorizedAccessException("peer rejected"),
+                "disconnect" => new IOException("peer disconnected"),
+                _ => new SocketException((int)SocketError.ConnectionReset),
+            });
+        });
+        await using var healthy = await host.Connect();
+        Assert.Equal(123, (await Status(healthy, host.Token)).Pid);
+        Assert.Single(host.Logs, message => message.StartsWith("Agent connection rejected:", StringComparison.Ordinal));
+        Assert.False(host.Running.IsCompleted);
+    }
 
     [Fact]
     public async Task SeveralPipeClientsReceiveReplayLiveOutputAndTheFinalExitCode()
@@ -314,12 +349,14 @@ public class AgentPipeTests
         public ConcurrentQueue<string> Logs { get; } = new();
         public CancellationToken Token => lifetime.Token;
 
-        public Host(HostHello? greeting = null, TimeSpan? timeout = null)
+        public Host(HostHello? greeting = null, TimeSpan? timeout = null,
+            Func<NamedPipeServerStream, CancellationToken, Task>? accept = null)
         {
             Session = new AgentSession(Terminal, new TerminalSize(80, 24));
             Server = new AgentPipeServer(Session, endpoint, greeting ?? Greeting, Logs.Enqueue)
             {
                 GreetingTimeout = timeout ?? TimeSpan.FromSeconds(3),
+                AcceptConnectionAsync = accept ?? ((pipe, cancellation) => pipe.WaitForConnectionAsync(cancellation)),
             };
             Running = Server.RunAsync(Token);
         }

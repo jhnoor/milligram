@@ -87,11 +87,18 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
         deadline.CancelAfter(ProbeTimeout);
         try
         {
-            await using var client = await AgentPipeClient.ConnectAsync(files.Endpoint, greeting, deadline.Token);
-            return true;
+            while (true)
+            {
+                try
+                {
+                    await using var client = await AgentPipeClient.ConnectAsync(files.Endpoint, greeting, deadline.Token);
+                    return true;
+                }
+                catch (IOException) { await Task.Delay(RetryDelay, deadline.Token); }
+            }
         }
         catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { return false; }
-        catch (Exception error) when (error is IOException or InvalidDataException) { return false; }
+        catch (InvalidDataException) { return false; }
     }
 
     private async Task RingAsync()

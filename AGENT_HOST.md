@@ -66,6 +66,9 @@ Real Copilot rendering still needs validation; raw replay is not an exact screen
 the client three seconds to finish greeting, then disconnects it if it has not. Protocol versions
 must match; a client that finds an incompatible host reports the host version and asks for a
 restart. Application versions may differ when the protocol is compatible.
+The next listening instance exists before a connected client can close, preserving the shared
+Unix listening socket across short probes. A peer rejected during acceptance does not stop the
+host. Liveness probes retry transient disconnects within their original deadline.
 
 Only input, resize, ring, stop and empty status requests are accepted after greeting. Invalid
 frames, incomplete frames, unexpected server-only messages and transport failures disconnect
