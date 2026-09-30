@@ -1,5 +1,9 @@
 // Milligram viewer: fetches a view from the server, lays it out with ELK, draws it as SVG.
+import { api } from './api.js';
+import { AgentPanel } from './agent-panel.js';
+
 const $ = (sel) => document.querySelector(sel);
+const agentPanel = new AgentPanel($('#agent-panel'), { openSource, poll: false });
 const SVG = 'http://www.w3.org/2000/svg';
 const FONT = 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const MONO = '"JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace';
@@ -133,29 +137,6 @@ function strokeFor(grades) {
 function dotColor(grade) { return grade === null || grade === undefined ? 'none' : `hsl(${gradeHue(grade)}, 70%, 55%)`; }
 
 // ---------------------------------------------------------------- server
-
-const api = {
-  async get(path, params = {}) {
-    const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== null && v !== undefined));
-    const response = await fetch(`${path}?${query}`);
-    if (!response.ok) throw new Error(`${path}: ${response.status}`);
-    return response.json();
-  },
-  async post(path, body) {
-    try {
-      const response = await fetch(path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Milligram': '1' },
-        body: JSON.stringify(body),
-      });
-      const result = await response.json().catch(() => null);
-      if (!response.ok || !result) return { ok: false, message: result?.message || `Request failed (${response.status}).` };
-      return result;
-    } catch {
-      return { ok: false, message: 'Cannot reach Milligram. Check that the viewer is running, then try again.' };
-    }
-  },
-};
 
 async function action(op, extra = {}) {
   const result = await api.post('/api/action', { op, context: state.context, focus: state.focus, ...extra });
@@ -673,7 +654,12 @@ function renderAgent() {
   const agent = state.meta?.agent;
   const box = $('#agent');
   if (!agent) return;
-  if (!agent.available) {
+  agentPanel.update(state.meta);
+  if (agent.terminal?.available) {
+    box.innerHTML = `<button id="show-agent" class="wide">Open agent panel</button>
+      ${agent.pendingMail ? `<div class="small muted">${agent.pendingMail} unread message(s)</div>` : ''}`;
+    $('#show-agent').onclick = () => agentPanel.setOpen(true, true);
+  } else if (!agent.available) {
     box.innerHTML = `<div><span class="dot bad"></span> Not available — ${html(agent.reason)}</div>`;
   } else if (agent.running) {
     box.innerHTML = `<div><span class="dot ok"></span> Running · <a id="open-terminal">open terminal</a></div>
@@ -1078,6 +1064,7 @@ function wireCanvas() {
 
 function wireKeys() {
   document.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented || e.target.closest('#agent-panel')) return;
     const typing = e.target.matches('textarea, input');
     if (typing) {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.target.id === 'ask') { e.preventDefault(); send(); }

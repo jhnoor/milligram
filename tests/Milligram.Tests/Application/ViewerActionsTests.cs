@@ -53,7 +53,12 @@ public class ViewerActionsTests : IDisposable
     private Policy SavedPolicy => JsonFile.Read<Policy>(workspace.Paths.PolicyFile)!;
 
     [Fact]
-    public async Task UnknownOperationsFail() => Assert.False((await Do("explode")).Ok);
+    public async Task UnknownOperationsFail()
+    {
+        var result = await Do("explode");
+        Assert.False(result.Ok);
+        Assert.Contains("explode", result.Message);
+    }
 
     [Fact]
     public async Task AMessageGoesToTheAgentWithItsContextAndRingsTheBell()
@@ -181,12 +186,14 @@ public class ViewerActionsTests : IDisposable
     public async Task MutatingANodeWithoutFilesFails() =>
         Assert.False((await Do("refresh-mutate", context: "p1", node: "g:core-missing")).Ok);
 
-    [Fact]
-    public async Task MutatingANodeQueuesAJobNamedForIt()
+    [Theory]
+    [InlineData("refresh-mutate-all", "Mutation (all): Domain")]
+    [InlineData("refresh-mutate", "Mutation: Domain")]
+    public async Task MutatingANodeQueuesAJobNamedForIt(string op, string label)
     {
-        var result = await Do("refresh-mutate-all", context: "real", node: "ns:Domain");
+        var result = await Do(op, context: "real", node: "ns:Domain");
         Assert.Contains("1 file", result.Message);
-        var status = await Jobs.Finished(jobs, "Mutation (all): Domain");
+        var status = await Jobs.Finished(jobs, label);
         Assert.Equal(JobState.Succeeded, status.State);
     }
 
@@ -203,9 +210,117 @@ public class ViewerActionsTests : IDisposable
     [Fact]
     public async Task StartingTheAgentStartsItOnce()
     {
-        Assert.True((await Do("start-agent")).Ok);
+        var result = await Do("start-agent");
+        Assert.True(result.Ok);
+        Assert.Contains(companion.SessionName, result.Message);
+        Assert.Equal(1, companion.Starts);
+        Assert.Equal(0, companion.Stops);
+        Assert.Contains("agent", events.Types);
+    }
+
+    [Fact]
+    public async Task StoppingWorksEvenWithInvalidPolicyAndMissingPrerequisites()
+    {
+        companion.Running = true;
+        companion.Available = false;
+        File.WriteAllText(workspace.Paths.PolicyFile, "{");
+        workspace.ReloadPolicy();
+
+        var result = await Do("stop-agent");
+        Assert.True(result.Ok);
+        Assert.Equal("Agent stopped.", result.Message);
+        Assert.False(companion.Running);
+        Assert.Equal(1, companion.Stops);
+        Assert.Equal(0, companion.Starts);
+        Assert.Contains("agent", events.Types);
+    }
+
+    [Fact]
+    public async Task RestartStopsBeforeStartingAndReportsItsNewState()
+    {
+        companion.Running = true;
+        companion.Starting = _ =>
+        {
+            Assert.False(companion.Running);
+            Assert.Equal(1, companion.Stops);
+            return Task.CompletedTask;
+        };
+        Assert.True((await Do("restart-agent")).Ok);
+        Assert.True(companion.Running);
         Assert.Equal(1, companion.Starts);
         Assert.Contains("agent", events.Types);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RestartLeavesTheSessionAloneWhenItsPrerequisitesAreInvalid(bool invalidPolicy)
+    {
+        companion.Running = true;
+        if (invalidPolicy)
+        {
+            File.WriteAllText(workspace.Paths.PolicyFile, "{");
+            workspace.ReloadPolicy();
+        }
+        else companion.Available = false;
+
+        Assert.False((await Do("restart-agent")).Ok);
+        Assert.True(companion.Running);
+        Assert.Equal(0, companion.Stops);
+        Assert.Equal(0, companion.Starts);
+    }
+
+    [Fact]
+    public async Task ControlsFromTwoViewersCannotStopAnAgentWhileItIsStarting()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        companion.Starting = async _ => { entered.SetResult(); await release.Task; };
+        var start = Do("start-agent");
+        await entered.Task;
+        var stop = Do("stop-agent");
+        Assert.False(stop.IsCompleted);
+        Assert.Equal(0, companion.Stops);
+        release.SetResult();
+        Assert.True((await start).Ok);
+        Assert.True((await stop).Ok);
+        Assert.False(companion.Running);
+        Assert.Equal(1, companion.Stops);
+    }
+
+    [Fact]
+    public async Task AFailedRestartStillPublishesItsStoppedStateAndReleasesTheControlLock()
+    {
+        companion.Running = true;
+        companion.Starting = _ => throw new MilligramException("Could not start Copilot.");
+        var result = await Do("restart-agent");
+        Assert.False(result.Ok);
+        Assert.Equal("Could not start Copilot.", result.Message);
+        Assert.False(companion.Running);
+        Assert.Contains("agent", events.Types);
+        companion.Starting = null;
+        Assert.True((await Do("start-agent")).Ok);
+    }
+
+    [Fact]
+    public async Task ACancelledControlDoesNotTouchTheSessionOrHoldTheControlLock()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => actions.HandleAsync(new("stop-agent"), cancellation.Token));
+        Assert.Equal(0, companion.Stops);
+        Assert.True((await Do("start-agent")).Ok);
+    }
+
+    [Fact]
+    public async Task StartingWithAnInvalidHostSettingDoesNotUseTheLastGoodConfiguration()
+    {
+        File.WriteAllText(workspace.Paths.PolicyFile, """{"agent":{"host":"unknown"}}""");
+        workspace.ReloadPolicy();
+        var result = await Do("start-agent");
+        Assert.False(result.Ok);
+        Assert.Equal(workspace.PolicyError, result.Message);
+        Assert.Equal(0, companion.Starts);
     }
 
     [Fact]
@@ -389,6 +504,44 @@ public class AgentLauncherTests : IDisposable
         Assert.True(File.Exists(workspace.Paths.BriefingFile));
         Assert.Equal(new[] { "Agent: tmux attach -t milligram-test" }, outcome.Banner);
         Assert.True(outcome.Started);
+        Assert.Equal(1, companion.Starts);
+        Assert.Same(companion.Ownership, outcome.Ownership);
+        outcome.Ownership!.Stop();
+        Assert.Equal(1, companion.Stops);
+        Assert.False(companion.Running);
+    }
+
+    [Fact]
+    public async Task AManualRestartDoesNotChangeTheViewersCapturedOwnership()
+    {
+        var outcome = await Start();
+        var original = outcome.Ownership;
+        companion.Stop();
+        await companion.StartAsync(CancellationToken.None);
+        Assert.NotSame(original, companion.Ownership);
+        Assert.Same(original, outcome.Ownership);
+    }
+
+    [Fact]
+    public async Task AnInvalidHostSettingPreventsAutomaticStartup()
+    {
+        File.WriteAllText(workspace.Paths.PolicyFile, """{"agent":{"host":"unknown"}}""");
+        workspace.ReloadPolicy();
+        var outcome = await Start();
+        Assert.False(outcome.Started);
+        Assert.Contains(workspace.PolicyError!, outcome.Banner[0]);
+        Assert.Equal(0, companion.Starts);
+    }
+
+    [Fact]
+    public async Task AConcurrentStarterKeepsOwnershipOfItsAgent()
+    {
+        companion.CreatedSession = false;
+
+        var outcome = await Start();
+
+        Assert.False(outcome.Started);
+        Assert.Equal(new[] { "Agent: already running — tmux attach -t milligram-test" }, outcome.Banner);
         Assert.Equal(1, companion.Starts);
     }
 }

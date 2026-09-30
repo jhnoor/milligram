@@ -47,18 +47,23 @@ public sealed class Workspace
     }
 
     /// <summary>Re-reads milligram.json. A broken file keeps the last good policy and reports the error.</summary>
-    public bool ReloadPolicy()
+    public bool ReloadPolicy() => ReloadPolicy(() => JsonFile.Read<Policy>(Paths.PolicyFile));
+
+    internal bool ReloadPolicy(Func<Policy?> read)
     {
-        try
+        lock (gate)
         {
-            var loaded = JsonFile.Read<Policy>(Paths.PolicyFile) ?? new Policy();
-            Update(() => { policy = loaded; PolicyError = null; });
-            return true;
-        }
-        catch (Exception e) when (e is System.Text.Json.JsonException or IOException or NotSupportedException)
-        {
-            Update(() => PolicyError = $"milligram.json: {e.Message}");
-            return false;
+            try
+            {
+                var loaded = read() ?? new Policy();
+                Update(() => { policy = loaded; PolicyError = null; });
+                return true;
+            }
+            catch (Exception e) when (e is System.Text.Json.JsonException or IOException or NotSupportedException)
+            {
+                Update(() => PolicyError = $"milligram.json: {e.Message}");
+                return false;
+            }
         }
     }
 

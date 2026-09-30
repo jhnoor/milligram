@@ -96,17 +96,20 @@ public sealed record TestSettings
     public string? Filter { get; init; }
 }
 
+public enum AgentHostKind { Tmux, Milligram }
+
 public sealed record AgentSettings
 {
     public static readonly IReadOnlyList<string> DefaultAllowTools = ["shell(milligram:*)"];
 
     public bool Enabled { get; init; } = true;
+    public AgentHostKind Host { get; init; } = AgentHostKind.Tmux;
     public string Command { get; init; } = "copilot";
     public IReadOnlyList<string> Args { get; init; } = [];
     public IReadOnlyList<string> AllowTools { get; init; } = DefaultAllowTools;
     public string? Model { get; init; }
 
-    /// <summary>"auto", "none", or a command with a {session} placeholder that attaches a terminal.</summary>
+    /// <summary>"auto" opens the selected host's terminal or panel; custom terminals use {session} for tmux or {command} for native attach.</summary>
     public string Terminal { get; init; } = "auto";
 
     public bool KeepOnExit { get; init; }

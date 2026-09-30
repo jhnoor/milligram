@@ -30,43 +30,50 @@ public static class Desktop
     }
 
     /// <summary>Opens a terminal window attached to a tmux session.</summary>
-    public static bool OpenTerminal(string template, string session, string workingDirectory)
+    public static bool OpenTerminal(string template, string session, string workingDirectory) =>
+        OpenTerminal(template, session, workingDirectory, ProcessRunner.OnPath,
+            (command, args, root) => ProcessRunner.Launch(command, args, root));
+
+    internal static bool OpenTerminal(string template, string session, string workingDirectory,
+        Func<string, bool> onPath, Func<string, IReadOnlyList<string>, string?, bool> launch)
     {
         if (template == "none") return false;
         if (template != "auto")
         {
             var words = Split(template).Select(w => w.Replace("{session}", session)).ToList();
-            return words.Count > 0 && ProcessRunner.Launch(words[0], words.Skip(1), workingDirectory);
+            return words.Count > 0 && launch(words[0], words.Skip(1).ToArray(), workingDirectory);
         }
-        string[] attach = ["tmux", "attach", "-t", session];
-        if (IsWsl && ProcessRunner.OnPath("wt.exe"))
-            return ProcessRunner.Launch("wt.exe",
+        string[] attach = ["tmux", "attach", "-t", "=" + session];
+        if (IsWsl && onPath("wt.exe"))
+            return launch("wt.exe",
                 ["-w", "milligram", "new-tab", "--title", "Milligram agent", "wsl.exe", "-d", Environment.GetEnvironmentVariable("WSL_DISTRO_NAME")!, "--", .. attach],
                 "/mnt/c");
         if (OperatingSystem.IsMacOS())
-            return ProcessRunner.Launch("osascript", ["-e", $"tell application \"Terminal\" to do script \"tmux attach -t {session}\""]);
+            return launch("osascript", ["-e", $"tell application \"Terminal\" to do script \"{string.Join(' ', attach)}\""], null);
         foreach (var (terminal, flag) in new[] { ("x-terminal-emulator", "-e"), ("gnome-terminal", "--"), ("konsole", "-e"), ("xterm", "-e") })
-            if (ProcessRunner.OnPath(terminal)) return ProcessRunner.Launch(terminal, [flag, .. attach], workingDirectory);
+            if (onPath(terminal)) return launch(terminal, [flag, .. attach], workingDirectory);
         return false;
     }
 
-    /// <summary>Splits a command template on spaces, honouring double quotes.</summary>
+    /// <summary>Splits a command template on whitespace, preserving quoted empty arguments.</summary>
     public static IReadOnlyList<string> Split(string command)
     {
         var words = new List<string>();
         var current = new System.Text.StringBuilder();
         var quoted = false;
+        var started = false;
         foreach (var c in command)
         {
-            if (c == '"') quoted = !quoted;
-            else if (c == ' ' && !quoted)
+            if (c == '"') { quoted = !quoted; started = true; }
+            else if (char.IsWhiteSpace(c) && !quoted)
             {
-                if (current.Length > 0) words.Add(current.ToString());
+                if (started) words.Add(current.ToString());
                 current.Clear();
+                started = false;
             }
-            else current.Append(c);
+            else { current.Append(c); started = true; }
         }
-        if (current.Length > 0) words.Add(current.ToString());
+        if (started) words.Add(current.ToString());
         return words;
     }
 }

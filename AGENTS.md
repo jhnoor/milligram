@@ -12,8 +12,8 @@ decide what to work on next, and then to get it done with an agent.
 
 Today it handles **C# only**. Roslyn scans the source into a model. The browser draws namespaces
 as components, using an ELK layout. Boxes are coloured by CRAP (complexity × missing coverage) and
-by Stryker.NET mutation score. A companion agent (Copilot CLI in tmux) talks to the viewer through
-file mailboxes. Local builds are `0.0.0-dev`; release versions come from tags.
+by Stryker.NET mutation score. Copilot CLI runs in tmux by default, or in the opt-in native host,
+and talks to the viewer through file mailboxes. Local builds are `0.0.0-dev`; release versions come from tags.
 
 ## Current focus (decided September 2026)
 
@@ -28,11 +28,12 @@ file mailboxes. Local builds are `0.0.0-dev`; release versions come from tags.
 
 Requirements: the .NET 10 SDK. In Claude Code on the web, `.claude/hooks/session-start.sh`
 installs it into `~/.dotnet` and restores packages and tools. Locally, install it yourself.
-`tmux` and `copilot` are needed only for the companion agent, and Stryker only for mutation.
+`copilot` is needed only for the companion agent, `tmux` only for the tmux backend, and Stryker
+only for mutation. Native-host platform requirements are listed under Known limits below.
 
 ```bash
 dotnet build                                   # must stay at 0 warnings
-dotnet test                                    # whole xunit suite in ~10 s, including the architecture tests
+dotnet test                                    # whole xunit suite, including the architecture tests
 dotnet test --filter "FullyQualifiedName~WorkspaceTests"   # one class
 dotnet format Milligram.slnx --verify-no-changes           # lint gate: must pass before you commit
 dotnet tool restore                            # Stryker 5, pinned in dotnet-tools.json
@@ -57,9 +58,9 @@ One project, `src/Milligram`, packed as the `milligram` dotnet tool. One test pr
 | `Domain` | 0 | Pure model and rules. `Model` (CodeModel, TypeNode, edges), `Policies` (milligram.json records, NamePath, Glob), `Hierarchy` (component tree, dependency rule, `Layering` used by `init` to infer levels), `Views` (what the browser draws), `Metrics` (CRAP, mutation, grades, snapshots), `Mail`. |
 | `Application` | 1 | Use cases and ports. `Workspace` (current policy, model, and metrics, all thread-safe), `ViewerActions` (what the viewer's buttons do), `CrapService`, `MutationService`, `JobQueue`, `Mailbox`, `PolicyEditor`, `ProjectInitializer`, `AgentBriefing`, `AgentLauncher` (what `serve` does about the agent), and `Ports.cs` (every interface an adapter implements). |
 | `Analysis` | 2 | Readers of the outside world: the Roslyn `CSharp` scanner, the Cobertura and Stryker report readers, and the .csproj locator. |
-| `Adapters` | 2 | Web server and SSE `EventHub`, tmux companion and `AgentLaunch` (how any companion starts the agent: command, arguments, conversation, and the `milligram` shim), file watcher (with `DrvFs`, `WindowsSideWatcher` and `ChangePoller` for a Windows drive under WSL), process runner (with `ProgramPath` and `BatchCommandLine` for Windows), CLI parsing. |
+| `Adapters` | 2 | Web server, SSE `EventHub` and guarded `AgentWebSocket`; tmux companion and native host (session, protocol, pipes, lease and discovery); `AgentLaunch` (command, arguments, conversation and shim); PTY and local terminal attachment; file watcher (`DrvFs`, `WindowsSideWatcher`, `ChangePoller` for Windows drives under WSL); process runner (`ProgramPath`, `BatchCommandLine`, output draining); CLI parsing. |
 | `Main` | 3 | `Program` (commands) and `Composition` (the only place that constructs concrete classes). |
-| `wwwroot/` | n/a | The viewer: vanilla JS with no build step (`app.js`, `index.html`, `style.css`), embedded in the assembly. `lib/elk.bundled.js` is vendored ELK (EPL-2.0). Do not edit it. |
+| `wwwroot/` | n/a | The viewer: vanilla JS with no build step, embedded in the assembly. `lib/elk.bundled.js` is vendored ELK (EPL-2.0); `lib/xterm/` contains pinned xterm.js and fit addon assets (MIT). Do not edit vendored files; preserve licenses and verify package integrity when upgrading. |
 | `docs/` | n/a | The landing page, served by GitHub Pages from `main`'s `/docs` folder. One static `index.html`, no build. Not part of the tool. |
 
 Data flow: `CSharpScanner` → `CodeModel` (written to `.milligram/model.json`) → `TreeBuilder`
@@ -104,6 +105,8 @@ Match the existing code. It is terse and consistent:
   progress with the `log` callback.
 - Keep the web server's safety guard: loopback host names only, POSTs must carry
   `X-Milligram: 1`, and file access must pass `ProjectPaths.Contains` (no path traversal).
+  Terminal WebSockets additionally require an exact bound-port Origin and the per-run secret
+  subprotocol from uncached `/api/meta`. Never enable CORS or put the token in a URL or log.
 - Start programs only through `ProcessRunner`. It resolves them with `ProgramPath` (PATHEXT on
   Windows), so lookup and launch agree, and runs `.cmd` and `.bat` files through `cmd.exe` with
   `BatchCommandLine`'s quoting, so a file name from the project can't run another command.
@@ -121,9 +124,12 @@ Match the existing code. It is terse and consistent:
 - The suite runs on Linux, Windows and macOS. Compare paths after `ProjectPaths.Absolute` or
   `Path.GetFullPath`, which normalise separators on Windows. Mark tests of Windows-only behaviour `[WindowsFact]`.
 - After a change, dogfood it: run `crap`, then `mutate` on the files you touched. Surviving
-  mutants mean missing tests. As of September 2026, `Main.Program`, `Adapters.Companion.Desktop`,
-  `Adapters.Files.ProjectWatcher` and `Adapters.Web.WebServer` have no coverage. They are the
-  worst CRAP hotspots.
+  mutants need investigation. Use the current metrics to find gaps; separate integration fixtures
+  are not included in the fast suite's coverage report.
+- The [native fixture](tests/Milligram.AgentHost.Integration/README.md) exercises real processes,
+  PTYs and a private tmux server. The [browser fixture](tests/Milligram.Browser.Integration/README.md)
+  exercises the real viewer and relay with a deterministic terminal peer. Both are intentionally
+  outside `Milligram.slnx`. Run the relevant fixture after native lifecycle or browser protocol changes.
 
 ## Things that must change together
 
@@ -134,6 +140,12 @@ Match the existing code. It is terse and consistent:
 - **Mail protocol.** Change `Domain/Mail/MailMessage.Ops`, `ViewerActions` (viewer → agent),
   `Program.Tell` and `ProjectWatcher.DeliverMail` (agent → viewer), the mail handling in `app.js`,
   and `AgentBriefing.Text` together.
+- **Host protocol.** Change `Adapters/Companion/HostProtocol.cs`, `AgentSession`, both pipe peers,
+  their tests and [AGENT_HOST.md](AGENT_HOST.md) together. Preserve bounded frames, same-user
+  access and explicit version negotiation. Replay and live delivery share decoder state and ordering.
+- **Terminal WebSocket.** Change `Adapters/Web/AgentWebSocket.cs`, `wwwroot/agent-panel.js`,
+  their fast/browser tests and `AGENT_HOST.md` together. Preserve exact Host and Origin checks,
+  the secret subprotocol, protocol version, message bounds and parsed-output credit accounting.
 - `AgentBriefing.Text` holds the instructions for the companion agent. Milligram writes them into
   *each examined project* as `.milligram/agent.md`. They are not instructions for you, but they are
   product copy, so keep them accurate.
@@ -146,6 +158,13 @@ Match the existing code. It is terse and consistent:
 - C# only. `ILanguageScanner` is the seam for other languages.
 - Coverage comes from coverlet (Cobertura) and mutation from Stryker.NET. Both are .NET-specific
   readers behind ports.
+- The opt-in native host supports glibc Linux, macOS and Windows 10 version 1809 or later, each
+  on x64 or ARM64. musl Linux, 32-bit systems and older Windows are unsupported. Windows needs
+  PowerShell 6 or later (`pwsh`); PowerShell 7 is recommended. Other setups can use tmux where
+  available or run Copilot separately.
+- Keep tmux as the default until the rollout requirements in [#26](https://github.com/jhnoor/milligram/issues/26)
+  are satisfied. Automated fake-agent tests do not establish real Copilot, WSL, physical-terminal,
+  Safari, IME or OS clipboard acceptance, independent security review, or weeks of daily use.
 
 ## Git
 

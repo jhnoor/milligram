@@ -1,6 +1,68 @@
 Milligram includes third-party software under its own license.
 
 --------------------------------------------------------------------------------
+xterm.js 6.0.0 and @xterm/addon-fit 0.11.0
+https://github.com/xtermjs/xterm.js
+Copyright (c) 2017-2019, The xterm.js authors
+Copyright (c) 2014-2016, SourceLair Private Company
+Copyright (c) 2012-2013, Christopher Jeffrey
+
+Vendored unmodified under src/Milligram/wwwroot/lib/xterm/ and embedded in the
+Milligram assembly. Both use the MIT license below; their original license files
+and verified package integrity values accompany the assets.
+--------------------------------------------------------------------------------
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------------------------------------------------------
+Porta.Pty 2.2.2
+https://github.com/tomlm/Porta.Pty
+Copyright (c) 2025 Tom Laird-McConnell
+Includes code copyright (c) Microsoft Corporation. All rights reserved.
+
+Microsoft.Windows.Console.ConPTY 1.24.260710001
+https://github.com/microsoft/terminal
+Copyright (c) Microsoft Corporation
+
+Distributed as NuGet dependencies for the opt-in native agent host. Both packages
+are licensed under the MIT license, whose text follows.
+--------------------------------------------------------------------------------
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------------------------------------------------------
 ELK (Eclipse Layout Kernel), elkjs
 https://github.com/kieler/elkjs
 
