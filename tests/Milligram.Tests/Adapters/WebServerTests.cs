@@ -58,20 +58,48 @@ public class WebServerTests : IAsyncLifetime
     [Fact]
     public async Task ServesEmbeddedAssetsAndSourceWithTheSameJsonContractAsTheViewer()
     {
-        foreach (var path in new[] { "", "app.js", "style.css", "lib/elk.bundled.js" })
+        foreach (var path in new[] { "", "app.js", "style.css", "lib/elk.bundled.js", "agent.html", "agent.js", "agent-panel.js", "agent.css", "api.js", "terminal-links.js", "lib/xterm/xterm.mjs", "lib/xterm/addon-fit.mjs", "lib/xterm/xterm.css" })
         {
             using var asset = await client.GetAsync(path);
             Assert.Equal(HttpStatusCode.OK, asset.StatusCode);
             Assert.True(asset.Headers.CacheControl!.NoCache);
+            Assert.Equal("frame-ancestors 'none'", Assert.Single(asset.Headers.GetValues("Content-Security-Policy")));
+            Assert.Equal("nosniff", Assert.Single(asset.Headers.GetValues("X-Content-Type-Options")));
             Assert.NotEmpty(await asset.Content.ReadAsByteArrayAsync());
         }
         using var meta = JsonDocument.Parse(await client.GetStringAsync("api/meta"));
         Assert.Equal(1, meta.RootElement.GetProperty("types").GetInt32());
+        Assert.False(meta.RootElement.GetProperty("agent").TryGetProperty("reason", out _));
+        var terminal = meta.RootElement.GetProperty("agent").GetProperty("terminal");
+        Assert.False(terminal.GetProperty("available").GetBoolean());
+        Assert.False(terminal.TryGetProperty("protocol", out _));
         using var card = JsonDocument.Parse(await client.GetStringAsync("api/type?id=Shop.Order"));
         Assert.Equal("Order", card.RootElement.GetProperty("name").GetString());
         Assert.Equal("method", card.RootElement.GetProperty("members")[0].GetProperty("kind").GetString());
         using var source = JsonDocument.Parse(await client.GetStringAsync("api/source?file=Order.cs"));
         Assert.Contains("Total()", source.RootElement.GetProperty("text").GetString());
+    }
+
+    [Theory]
+    [InlineData("auto", true)]
+    [InlineData("none", false)]
+    [InlineData("custom-terminal", false)]
+    public async Task TerminalMetadataRespectsTheAutomaticPanelPreference(string preference, bool opens)
+    {
+        workspace.EditPolicy(p => p with { Agent = p.Agent with { Terminal = preference } });
+        using var meta = JsonDocument.Parse(await client.GetStringAsync("api/meta"));
+        Assert.Equal(opens, meta.RootElement.GetProperty("agent").GetProperty("terminal").GetProperty("autoOpen").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("", null)]
+    [InlineData("Cached project title", "Cached project title")]
+    public async Task MetadataKeepsTheCachedModelTitleOrFallsBackToTheProjectDirectory(string title, string? expected)
+    {
+        JsonFile.Write(workspace.Paths.ModelFile, workspace.Model with { Title = title });
+        workspace.ReloadModel();
+        using var meta = JsonDocument.Parse(await client.GetStringAsync("api/meta"));
+        Assert.Equal(expected ?? workspace.DefaultTitle, meta.RootElement.GetProperty("title").GetString());
     }
 
     [Theory]
@@ -164,6 +192,32 @@ public class WebServerTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, boundary.StatusCode);
     }
 
+    [UnixFact]
+    public async Task FilesystemLinksCannotReadOrOpenFilesOutsideTheProject()
+    {
+        using var outside = new TempProject(("Outside.cs", "outside"));
+        Directory.CreateSymbolicLink(Path.Combine(project.Root, "linked"), outside.Root);
+        File.CreateSymbolicLink(Path.Combine(project.Root, "linked.cs"), Path.Combine(outside.Root, "Outside.cs"));
+        foreach (var file in new[] { "linked/Outside.cs", "linked.cs" })
+        {
+            using var source = await client.GetAsync("api/source?file=" + Uri.EscapeDataString(file));
+            Assert.Equal(HttpStatusCode.NotFound, source.StatusCode);
+            using var open = await Post("api/open", JsonSerializer.Serialize(new { file, line = 1 }));
+            Assert.Equal(HttpStatusCode.NotFound, open.StatusCode);
+        }
+    }
+
+    [UnixFact]
+    public async Task AnInternalFileLinkKeepsItsRequestedPathInSourceResponses()
+    {
+        File.CreateSymbolicLink(Path.Combine(project.Root, "linked.cs"), "Order.cs");
+        using var response = await client.GetAsync("api/source?file=linked.cs");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var source = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("linked.cs", source.RootElement.GetProperty("file").GetString());
+        Assert.Contains("Total()", source.RootElement.GetProperty("text").GetString());
+    }
+
     [Fact]
     public async Task EditorStartupFailureIsReportedWithoutLosingTheResponse()
     {
@@ -194,6 +248,77 @@ public class WebServerTests : IAsyncLifetime
         }
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(65536)]
+    [InlineData(int.MaxValue)]
+    [InlineData(int.MinValue)]
+    public async Task InvalidPortsFailBeforeBuildingAnApplication(int port)
+    {
+        WebApplication? unexpected = null;
+        try
+        {
+            var error = await Assert.ThrowsAsync<MilligramException>(async () =>
+                unexpected = (await server.StartAsync(port, CancellationToken.None)).App);
+            Assert.Equal("The preferred port must be from 1 to 65535.", error.Message);
+        }
+        finally
+        {
+            if (unexpected is not null)
+            {
+                await unexpected.StopAsync();
+                await unexpected.DisposeAsync();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TheLastPortCanBeUsedButCannotFallForwardPastTheValidRange()
+    {
+        var opened = new List<WebApplication>();
+        const string exhausted = "No free port in 65535-65535.";
+        try
+        {
+            try
+            {
+                var last = await server.StartAsync(65535, CancellationToken.None);
+                opened.Add(last.App);
+                Assert.Equal("http://localhost:65535/", last.Url);
+            }
+            catch (MilligramException error)
+            {
+                Assert.Equal(exhausted, error.Message);
+                return;
+            }
+            try
+            {
+                var duplicate = await server.StartAsync(65535, CancellationToken.None);
+                opened.Add(duplicate.App);
+                Assert.Fail("The occupied final port must report that the valid range is exhausted.");
+            }
+            catch (MilligramException error) { Assert.Equal(exhausted, error.Message); }
+        }
+        finally
+        {
+            foreach (var instance in opened)
+            {
+                await instance.StopAsync();
+                await instance.DisposeAsync();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task CancellationIsNotReportedAsAnExhaustedPortRange() =>
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => server.StartAsync(client.BaseAddress!.Port, new CancellationToken(true)));
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(65535)]
+    public async Task BothValidPortBoundariesHonorCancellation(int port) =>
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => server.StartAsync(port, new CancellationToken(true)));
+
     [Fact]
     public async Task MetadataShowsMeasuredTimesAndUnavailableAgentsAccurately()
     {
@@ -215,8 +340,21 @@ public class WebServerTests : IAsyncLifetime
         Assert.Equal(measuredAt, meta.RootElement.GetProperty("metrics").GetProperty("mutationAt").GetDateTimeOffset());
         var agent = meta.RootElement.GetProperty("agent");
         Assert.False(agent.GetProperty("available").GetBoolean());
-        Assert.False(agent.GetProperty("running").GetBoolean());
+        Assert.True(agent.GetProperty("running").GetBoolean());
         Assert.Equal("tmux is not installed.", agent.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task AnIncompatibleAgentDoesNotPreventTheViewerFromReadingItsMetadata()
+    {
+        companion.RunningError = "Agent host uses protocol 2; restart it with a matching Milligram version.";
+        using var meta = JsonDocument.Parse(await client.GetStringAsync("api/meta"));
+        var agent = meta.RootElement.GetProperty("agent");
+        Assert.False(agent.GetProperty("available").GetBoolean());
+        Assert.False(agent.GetProperty("running").GetBoolean());
+        Assert.Equal(companion.RunningError, agent.GetProperty("reason").GetString());
+        using var view = await client.GetAsync("api/view");
+        Assert.Equal(HttpStatusCode.OK, view.StatusCode);
     }
 
     [Fact]

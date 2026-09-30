@@ -34,6 +34,8 @@ public sealed class ViewerActions(
     ICompanion companion,
     IViewerEvents events)
 {
+    private readonly SemaphoreSlim agentControl = new(1, 1);
+
     public async Task<ActionResult> HandleAsync(ViewerAction action, CancellationToken cancellation)
     {
         try
@@ -50,7 +52,7 @@ public sealed class ViewerActions(
                 "delete-proposal" => DeleteProposal(action),
                 MailMessage.Ops.Context => Context(action),
                 MailMessage.Ops.Message => Message(action),
-                "start-agent" => await StartAgentAsync(cancellation),
+                "start-agent" or "stop-agent" or "restart-agent" => await ControlAgentAsync(action.Op, cancellation),
                 "open-terminal" => companion.OpenTerminal()
                     ? ActionResult.Done()
                     : ActionResult.Fail($"Could not open a terminal. Run: {companion.AttachCommand}"),
@@ -157,12 +159,27 @@ public sealed class ViewerActions(
         return ActionResult.Done(companion.IsRunning() ? "Sent to the agent." : "Queued; the agent is not running. If you run your own, tell it to run `milligram mail`.");
     }
 
-    private async Task<ActionResult> StartAgentAsync(CancellationToken cancellation)
+    /// <summary>Serialize controls from multiple viewers and check restart prerequisites before stopping a running session.</summary>
+    private async Task<ActionResult> ControlAgentAsync(string op, CancellationToken cancellation)
     {
-        if (!companion.IsAvailable(out var reason)) return ActionResult.Fail(reason);
-        await companion.StartAsync(cancellation);
-        events.Publish("agent");
-        return ActionResult.Done($"Agent session {companion.SessionName} started.");
+        await agentControl.WaitAsync(cancellation);
+        try
+        {
+            if (op != "stop-agent")
+            {
+                if (workspace.PolicyError is { } error) return ActionResult.Fail(error);
+                if (!companion.IsAvailable(out var reason)) return ActionResult.Fail(reason);
+            }
+            if (op != "start-agent") companion.Stop();
+            if (op == "stop-agent") return ActionResult.Done("Agent stopped.");
+            await companion.StartAsync(cancellation);
+            return ActionResult.Done($"Agent session {companion.SessionName} started.");
+        }
+        finally
+        {
+            agentControl.Release();
+            events.Publish("agent");
+        }
     }
 
     private void Mail(string op, JsonObject data)

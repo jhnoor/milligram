@@ -5,6 +5,7 @@ using Milligram.Adapters.Companion;
 using Milligram.Adapters.Files;
 using Milligram.Application;
 using Milligram.Domain.Mail;
+using Milligram.Domain.Policies;
 
 namespace Milligram.Main;
 
@@ -19,7 +20,7 @@ public static class Program
         if (line.Has("help") || line.Command == "help") { Console.WriteLine(Help); return 0; }
         try
         {
-            var composition = new Composition(FindRoot(line.Value("project")), SelfCommand());
+            var composition = new Composition(FindRoot(line.Value("project")), SelfCommand(), Version);
             return line.Command switch
             {
                 "serve" => await ServeAsync(composition, line),
@@ -47,6 +48,7 @@ public static class Program
 
     private static async Task<int> ServeAsync(Composition c, CommandLine line)
     {
+        var preferredPort = line.Port(DefaultPort);
         var initialization = c.Initializer.Initialize(force: false);
         if (initialization is not null)
         {
@@ -62,7 +64,7 @@ public static class Program
         }
         if (c.Workspace.PolicyError is { } error) Console.Error.WriteLine(error);
 
-        var (app, url) = await c.WebServer().StartAsync(line.IntValue("port", DefaultPort), CancellationToken.None);
+        var (app, url) = await c.WebServer().StartAsync(preferredPort, CancellationToken.None);
         JsonFile.Write(c.Paths.ServerFile, new { url, pid = Environment.ProcessId, started = DateTimeOffset.UtcNow });
         var limit = c.WatchLimits.For(c.Paths.Root);
         using var watcher = new ProjectWatcher(c.Paths, c.Workspace, c.Actions, c.Events, windowsDrive: limit is not null);
@@ -84,7 +86,7 @@ public static class Program
         foreach (var step in ScanSummary.Of(c.Workspace).Describe()) Console.WriteLine("  " + step);
 
         await app.WaitForShutdownAsync();
-        if (agent.Started && !line.Has("keep-agent") && !c.Workspace.Policy.Agent.KeepOnExit) c.Companion.Stop();
+        if (!line.Has("keep-agent") && !c.Workspace.Policy.Agent.KeepOnExit) agent.Ownership?.Stop();
         File.Delete(c.Paths.ServerFile);
         return 0;
     }
@@ -169,9 +171,18 @@ public static class Program
 
     private static async Task<int> AgentAsync(Composition c, CommandLine line)
     {
-        c.Workspace.Load();
-        switch (line.Arguments.FirstOrDefault() ?? "status")
+        if (!line.IsAgentCommand) return Usage("Use `milligram agent status|start|stop|attach` with at most one subcommand.");
+        c.Workspace.ReloadPolicy();
+        if (line.Subcommand == "stop" && c.Workspace.PolicyError is not null)
         {
+            c.Companion.StopWithoutPolicy();
+            return 0;
+        }
+        if (c.Workspace.PolicyError is { } error) throw new MilligramException(error);
+        switch (line.Subcommand ?? "status")
+        {
+            case "host":
+                return await c.AgentHost.RunAsync(CancellationToken.None, line.HostInstance);
             case "start":
                 await c.Companion.StartAsync(CancellationToken.None);
                 Console.WriteLine(c.Companion.AttachCommand);
@@ -180,6 +191,11 @@ public static class Program
                 c.Companion.Stop();
                 return 0;
             case "attach":
+                if (c.Companion.Host == AgentHostKind.Milligram)
+                {
+                    Console.WriteLine("Attached terminal: Ctrl+] then d detaches; Ctrl+] twice sends Ctrl+] to the agent.");
+                    return await c.Attachment.RunAsync(CancellationToken.None);
+                }
                 if (!c.Companion.OpenTerminal()) Console.WriteLine(c.Companion.AttachCommand);
                 return 0;
             default:
@@ -218,10 +234,11 @@ public static class Program
         usage: milligram [command] [options]
 
           serve (default)         Start the viewer (and the companion agent) for this project.
-              --port N            Preferred port (default 5170; the next free one is used).
+                                  On exit, stop only the agent session this viewer started.
+              --port N            Preferred port, 1-65535 (default 5170; tries up to 29 following ports).
               --no-agent          Do not start the companion agent.
               --no-browser        Do not open a browser.
-              --keep-agent        Leave the agent's tmux session running on exit.
+              --keep-agent        Leave the companion session running on exit.
           init [--force]          Write milligram.json from the namespaces in the source.
           ir                      Scan the source and write .milligram/model.json.
           crap [--coverage F]     Run tests with coverage (or read Cobertura file F) and score CRAP.
@@ -231,7 +248,9 @@ public static class Program
           tell display <ctx> [--focus id] | notify <text> | reload
                                   Send mail to the viewer.
           agent [status|start|stop|attach]
-                                  Manage the companion agent's tmux session.
+                                  Manage the companion agent session.
+                                  With an unreadable policy, stop checks both project backends.
+                                  Native attach uses this terminal; Ctrl+] then d detaches.
 
         Global: --project DIR     Project root (default: nearest directory with milligram.json).
         """;

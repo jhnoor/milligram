@@ -1,3 +1,5 @@
+using Milligram.Application;
+
 namespace Milligram.Adapters.Cli;
 
 /// <summary>Parsed arguments: a command, positional arguments, and --options (repeatable).</summary>
@@ -16,6 +18,10 @@ public sealed class CommandLine
 
     public string Command { get; }
     public IReadOnlyList<string> Arguments { get; }
+    public string? Subcommand => Arguments.FirstOrDefault();
+    public string? HostInstance => Command == "agent" && Subcommand == "host" ? Value("instance") : null;
+    public bool IsAgentCommand => Command == "agent" && Arguments.Count <= 1 &&
+        (Subcommand ?? "status") is "status" or "start" or "stop" or "attach" or "host";
 
     public static CommandLine Parse(IReadOnlyList<string> args)
     {
@@ -45,7 +51,13 @@ public sealed class CommandLine
 
     public IReadOnlyList<string> Values(string option) => options.TryGetValue(option, out var values) ? values : [];
 
-    public int IntValue(string option, int fallback) => int.TryParse(Value(option), out var value) ? value : fallback;
+    public int Port(int fallback)
+    {
+        var text = Value("port");
+        var port = text is null ? fallback : int.TryParse(text, out var parsed) ? parsed : 0;
+        if (port is < 1 or > 65535) throw new MilligramException("--port must be an integer from 1 to 65535.");
+        return port;
+    }
 
     private void Add(string name, string value)
     {

@@ -6,45 +6,70 @@ namespace Milligram.Adapters.Processes;
 
 public sealed partial class ProcessRunner : IProcessRunner
 {
+    private const string UndrainedOutput = "Stopped waiting for redirected output after the process exited; a child may still have the pipe open.";
+
     public async Task<int> RunAsync(string command, IReadOnlyList<string> args, string workingDirectory, Action<string> onLine, CancellationToken cancellation)
     {
+        cancellation.ThrowIfCancellationRequested();
         using var process = new Process { StartInfo = StartInfo(command, args, workingDirectory, redirect: true) };
-        process.OutputDataReceived += (_, e) => Forward(e.Data, onLine);
-        process.ErrorDataReceived += (_, e) => Forward(e.Data, onLine);
         if (!Start(process, command, onLine)) return 127;
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-        try
-        {
-            await process.WaitForExitAsync(cancellation);
-        }
-        catch (OperationCanceledException)
-        {
-            process.Kill(entireProcessTree: true);
-            throw;
-        }
-        process.WaitForExit();
-        return process.ExitCode;
+        int code;
+        bool drained;
+        await using (var output = new ProcessOutput(process.StandardOutput, process.StandardError,
+            line => Forward(line, onLine), line => Forward(line, onLine), lines: true))
+            (code, drained) = await CompleteAsync(process, output, cancellation);
+        if (!drained) onLine(UndrainedOutput);
+        return code;
     }
 
     /// <summary>Runs a short command synchronously and returns its exit code and combined output.</summary>
-    public static (int ExitCode, string Output) Capture(string command, params string[] args)
+    public static (int ExitCode, string Output) Capture(string command, params string[] args) =>
+        CaptureAsync(command, args).GetAwaiter().GetResult();
+
+    private static async Task<(int ExitCode, string Output)> CaptureAsync(string command, string[] args)
     {
         try
         {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             using var process = Process.Start(StartInfo(command, args, Environment.CurrentDirectory, redirect: true))!;
-            var output = process.StandardOutput.ReadToEndAsync();
-            var error = process.StandardError.ReadToEndAsync();
-            if (!process.WaitForExit(15000))
-            {
-                process.Kill(entireProcessTree: true);
-                return (124, "timed out");
-            }
-            return (process.ExitCode, output.Result + error.Result);
+            var stdout = new System.Text.StringBuilder();
+            var stderr = new System.Text.StringBuilder();
+            int code;
+            bool drained;
+            var output = new ProcessOutput(process.StandardOutput, process.StandardError,
+                text => stdout.Append(text), text => stderr.Append(text), lines: false);
+            await using (output.ConfigureAwait(false))
+                (code, drained) = await CompleteAsync(process, output, deadline.Token).ConfigureAwait(false);
+            return (code, stdout.ToString() + stderr + (drained ? "" : Environment.NewLine + UndrainedOutput));
         }
+        catch (OperationCanceledException) { return (124, "timed out"); }
         catch (System.ComponentModel.Win32Exception e)
         {
             return (127, e.Message);
+        }
+    }
+
+    /// <summary>Observe native exit separately from EOF, then give inherited pipes a bounded drain.</summary>
+    private static async Task<(int ExitCode, bool Drained)> CompleteAsync(Process process, ProcessOutput output, CancellationToken cancellation)
+    {
+        try
+        {
+            var exited = process.WaitForExitAsync(cancellation);
+            if (await Task.WhenAny(exited, output.Completion).ConfigureAwait(false) == output.Completion)
+                await output.Completion.ConfigureAwait(false);
+            await exited.ConfigureAwait(false);
+            var drained = await output.DrainAsync(TimeSpan.FromSeconds(2), cancellation).ConfigureAwait(false);
+            return (process.ExitCode, drained);
+        }
+        catch
+        {
+            try
+            {
+                if (!process.HasExited) process.Kill(entireProcessTree: true);
+                process.WaitForExit(2000);
+            }
+            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception && process.HasExited) { }
+            throw;
         }
     }
 

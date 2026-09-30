@@ -20,7 +20,7 @@ match.
 
 - .NET 10 SDK
 - For mutation scores: [Stryker.NET](https://stryker-mutator.io/docs/stryker-net/introduction/) (`dotnet tool install -g dotnet-stryker`)
-- For the agent: `tmux` and [GitHub Copilot CLI](https://github.com/github/copilot-cli)
+- For the default agent host: `tmux` and [GitHub Copilot CLI](https://github.com/github/copilot-cli)
 - For coverage: test projects that reference `coverlet.collector` (the default in `dotnet new xunit`)
 
 `milligram doctor` checks all of these for your project, plus whether it is restored, and prints the
@@ -33,7 +33,7 @@ The viewer, the editor integration, `crap` and `mutate` work the same everywhere
 | Linux | tmux, and a terminal emulator for its window (`x-terminal-emulator`, `gnome-terminal`, `konsole` or `xterm`). |
 | macOS | tmux from Homebrew (`brew install tmux`). The agent opens in Terminal. |
 | WSL2 (recommended on Windows) | tmux inside WSL. The agent opens in a Windows Terminal tab. On a Windows drive (`/mnt/c/…`), Linux isn't told about changes that Windows programs make, so Milligram also watches the project from Windows through `powershell.exe` (or polls, if WSL can't start Windows programs). A project in the Linux file system (for example `~/src`) scans faster and needs neither. |
-| Windows | Milligram can't start the agent yet: tmux doesn't run on native Windows ([#14](https://github.com/jhnoor/milligram/issues/14)). [Run your own](#run-the-agent-yourself). Copilot CLI needs PowerShell 7 (`winget install Microsoft.PowerShell`). |
+| Windows | The default tmux host is unavailable ([#14](https://github.com/jhnoor/milligram/issues/14)); the experimental native host provides a browser panel and `milligram agent attach` in your terminal. You can also [run your own](#run-the-agent-yourself). Install PowerShell 7 for Copilot CLI (`winget install Microsoft.PowerShell`). |
 
 ### Older .NET Framework projects
 
@@ -94,6 +94,11 @@ ordinary build output is ignored.
 Source discovery, project discovery and polling skip nested directory symlinks and Windows
 junctions, so a link back to a parent cannot trap a scan in a loop. Point `src` at the actual
 source directory when code lives behind such a link; an explicitly selected linked root works too.
+Source preview and editor requests also reject nested links that lead outside the project root.
+Links between files or directories inside that root remain usable.
+
+Opening a project through a directory symlink or Windows junction reuses the same agent as
+opening its physical directory. Agent names resolve aliases in the project root and its ancestors.
 
 Initialization also selects up to eight external libraries for the `foreign` ovals, ranked by
 how many of your types use them. It groups namespaces at two segments (three for `System.*`),
@@ -153,7 +158,7 @@ Optional keys:
 | `omitEdges` | Leave specific dependencies out of the drawing. |
 | `tests` | `{ "projects": [...], "filter": "..." }` — which test projects to run. The default is every detected test project. |
 | `thresholds` | `crapGood` / `crapBad` (5 / 30) and `mutationGood` / `mutationBad` (0.9 / 0.5). |
-| `agent` | `enabled`, `command`, `allowTools`, `model`, `terminal` (`"auto"`, `"none"`, or a command using `{session}`), `keepOnExit`. |
+| `agent` | `enabled`, `host` (`"tmux"` by default; experimental `"milligram"`), `command`, `args`, `allowTools`, `model`, `terminal` (`"auto"`, `"none"`, or a command using `{session}` for tmux or `{command}` for native attach), `keepOnExit`. |
 | `editor` | Command for **Open in editor**. The default is `code -g {file}:{line}`. |
 
 The real diagram *is* your namespace tree. Milligram never invents components. For a grouping that
@@ -213,7 +218,7 @@ summary stale. A new type stays unknown even if another type in its file was alr
 
 ## The agent
 
-`milligram` starts Copilot CLI in a tmux session for the project, and opens a terminal window on it
+By default, `milligram` starts Copilot CLI in a tmux session for the project, and opens a terminal window on it
 (Windows Terminal under WSL, Terminal on macOS). If no window appears, run `milligram agent attach`.
 The agent's instructions are in `.milligram/agent.md`, and each project keeps one conversation,
 resumed on every start.
@@ -228,7 +233,7 @@ agent tokens.
 
 ### Run the agent yourself
 
-With `--no-agent`, or where Milligram can't start the agent (native Windows, or no tmux), run it in a
+With `--no-agent`, or where the selected host's prerequisites are missing, run the agent in a
 terminal of your own. Milligram writes `.milligram/agent.md` every time it starts, and the banner says
 so. In the project folder:
 
@@ -244,7 +249,7 @@ viewer, tell the agent to run `milligram mail`.
 
 | Command | Does |
 |---------|------|
-| `milligram` | Viewer and agent. Options: `--port N`, `--no-agent`, `--no-browser`, `--keep-agent`, `--project DIR`. |
+| `milligram` | Viewer and agent. Options: `--port N` (1–65535, default 5170; tries up to 29 following ports), `--no-agent`, `--no-browser`, `--keep-agent`, `--project DIR`. |
 | `milligram init [--force]` | Write `milligram.json` from the source, inferring levels from the dependencies. |
 | `milligram ir` | Rescan the source. |
 | `milligram crap [--coverage file.xml]` | Run the tests with coverage (or read a Cobertura file) and score CRAP. |
@@ -252,7 +257,70 @@ viewer, tell the agent to run `milligram mail`.
 | `milligram doctor` | Check the SDK, restore, test projects, coverage collector, Stryker, and the agent; print the fix for anything missing. Exits 1 if something is. |
 | `milligram mail [--peek]` | Print and remove mail for the agent. |
 | `milligram tell display <real\|proposalId>` / `tell notify "text"` | Send mail to the viewer. |
-| `milligram agent status\|start\|stop\|attach` | Manage the agent session. |
+| `milligram agent status\|start\|stop\|attach` | Manage the session selected by `agent.host`. With an unreadable policy, `stop` attempts both project backends. Native `attach` uses the current terminal; Ctrl+] then d detaches. |
+
+The native host is under development in [AGENT_HOST.md](AGENT_HOST.md). To try it, set
+`"agent": { "host": "milligram" }`: `serve`, `agent start`, `agent status`, `agent stop` and
+`agent attach` use the detached native host. A terminal panel opens below the diagram when the
+agent is running. Native support
+targets Linux with glibc, macOS and Windows 10 version 1809 or later, each on x64 or ARM64.
+`doctor` checks its native library and, on Windows, `pwsh`. Copilot needs PowerShell 6 or later;
+PowerShell 7 is the recommended install.
+
+Native `agent attach` relays the current terminal, including Ctrl+C and resizes. Press **Ctrl+]**,
+then **d** to detach while leaving the agent running. Press Ctrl+] twice to send a literal Ctrl+].
+You can reattach or attach another client to the same session. Input and output must be terminals,
+so use `ssh -t` for an SSH connection. The command returns the agent's exit code when it exits.
+Terminal modes are restored on detach, connection failure, and handled termination signals;
+forced process termination such as SIGKILL cannot run cleanup.
+
+The browser panel has Start, Stop, Restart and Pop out controls. Pop out opens `/agent.html` on
+the same session; closing or collapsing a panel detaches it without stopping the agent. Drag the
+divider, or focus it and use the arrow keys, to resize it. Height, collapse and screen-reader
+preferences are remembered in the browser. `agent.terminal: "auto"` opens the panel automatically;
+`"none"` keeps it collapsed until you open it.
+
+For an external native terminal, set `agent.terminal` to a command ending in a separate
+`{command}` argument, for example:
+
+| Terminal | `agent.terminal` |
+|----------|------------------|
+| Windows Terminal | `"wt.exe new-tab {command}"` |
+| GNOME Terminal | `"gnome-terminal -- {command}"` |
+| WezTerm | `"wezterm start -- {command}"` |
+
+The template runs when Milligram starts a new host; reusing an existing host does not open
+another window. `{command}` expands to the same build's `agent attach --project DIR` as separate
+arguments, preserving paths with spaces. Double quotes group template arguments. Choose a
+terminal that accepts an executable and its arguments, rather than a shell command string.
+Milligram escapes generated semicolons for Windows Terminal's command parser. `doctor` reports
+invalid templates or a missing terminal executable. If the window cannot start, use
+`milligram agent attach` in your terminal. That command always attaches in the current terminal.
+Custom templates leave the viewer panel collapsed until you open it.
+
+With the tmux host, custom commands use the raw `{session}` name. Use tmux's exact selector,
+for example `"gnome-terminal -- tmux attach -t ={session}"`, so it cannot select another
+session whose name starts the same way. Built-in attachment and session controls use exact matches.
+
+**Ctrl+backtick** focuses or collapses the panel. Terminal keys stay out of the diagram's shortcuts.
+**Ctrl+C** copies a selection, or interrupts when nothing is selected. Paste uses the terminal's
+bracketed-paste mode when the agent enables it. **Ctrl/Cmd+click** on a C# `file:line` or `file(line)`
+opens the source viewer (the configured editor in the popout); paths must remain inside the project.
+The Screen reader checkbox enables xterm's accessible output. Browser-reserved shortcuts, such as
+Ctrl+L and Ctrl+W, remain browser shortcuts; use `milligram agent attach` for a full terminal window.
+After a connection loss the panel retries with bounded backoff and replays recent output. A hidden
+browser tab detaches until visible again. Replay is bounded history, so it may not reconstruct an
+old full-screen terminal display exactly.
+
+Stop the old session before changing `agent.host`, then restart the viewer. Each viewer keeps
+its initial backend so a policy reload cannot redirect its shutdown command. On exit, a viewer
+stops only the session it originally started. A replacement started later, including through
+the Restart button, stays running. The Stop button and `agent stop` stop the current session.
+If `milligram.json` is unreadable, `agent stop` attempts both backends for this project; other
+agent commands still require a valid policy.
+`--keep-agent` and `agent.keepOnExit` leave the original session running too.
+The internal `agent host --project DIR [--instance ID]` entry point is for the detached launcher
+and integration fixtures; the launcher supplies the identity used for automatic cleanup.
 
 ## Develop
 
