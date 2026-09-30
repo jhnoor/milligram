@@ -81,11 +81,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet pack spikes/PtyProbe -c Release --no-restore -p:Version=$version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./spikes/PtyProbe/long-path.ps1 -Version $version -ExpectedRuntime '${{ matrix.rid }}'
+          foreach ($layout in @('boundary', 'long')) {
+            ./spikes/PtyProbe/long-path.ps1 -Version $version -ExpectedRuntime '${{ matrix.rid }}' -Layout $layout
+          }
       - name: Upload both sides of the comparison
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pty-long-${{ matrix.os }}
-          path: artifacts/pty-long-results/*.md
+          path: artifacts/pty-long-results/**/*.md
           if-no-files-found: warn

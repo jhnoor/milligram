@@ -26,7 +26,7 @@ internal static class Program
             "# Porta.Pty 2.2.2 probe", "",
             $"Runtime: {RuntimeInformation.RuntimeIdentifier}; {RuntimeInformation.OSDescription}; {RuntimeInformation.FrameworkDescription}",
             $"Async I/O: {asynchronous}",
-            $"Selected terminal implementation: {PtyProvider.PseudoConsoleImplementation}",
+            "Selected terminal implementation: unavailable until first spawn completes",
             $"Application base path length: {AppContext.BaseDirectory.Length}",
             "", "| Check | Result | Milliseconds |", "|---|---|---|",
         };
@@ -42,16 +42,22 @@ internal static class Program
         var success = false;
         try
         {
+            if (args.Contains("--initialize-backend", StringComparer.Ordinal))
+            {
+                _ = PtyProvider.PseudoConsoleImplementation;
+                results.Add("| Explicit backend initialization before spawn | PASS | 0 |");
+            }
             if (args.Contains("--preload-long-path", StringComparer.Ordinal))
             {
                 Require(OperatingSystem.IsWindows(), "The extended-path preload experiment is Windows-only");
                 var library = Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeInformation.RuntimeIdentifier, "native", "conpty.dll");
-                Require(library.Length > 260, "The preload comparison needs a native DLL path longer than 260 characters");
+                var consoleHost = Path.Combine(Path.GetDirectoryName(library)!, RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant(), "OpenConsole.exe");
+                Require(consoleHost.Length > 260 && File.Exists(consoleHost), "The comparison needs a packaged console host beyond 260 characters");
                 Require(PtyProvider.PseudoConsoleImplementation == "oob", "The preload comparison requires the packaged ConPTY implementation");
                 var extended = library.StartsWith(@"\\?\", StringComparison.Ordinal) ? library
                     : library.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + library[2..] : @"\\?\" + library;
                 preloaded = NativeLibrary.Load(extended);
-                results.Add($"| Extended-path preload ({library.Length} characters) | PASS | 0 |");
+                results.Add($"| Extended-path preload (DLL {library.Length}, host {consoleHost.Length} characters) | PASS | 0 |");
             }
             var expectedIndex = Array.IndexOf(args, "--expected-rid");
             if (expectedIndex >= 0)
@@ -76,6 +82,7 @@ internal static class Program
                 },
             };
             terminal = await PtyProvider.SpawnAsync(options, CancellationToken.None).WaitAsync(Deadline);
+            results[4] = $"Selected terminal implementation: {PtyProvider.PseudoConsoleImplementation}";
             var exited = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
             terminal.ProcessExited += (_, e) => exited.TrySetResult(e.ExitCode);
             reading = capture.Read(terminal.ReaderStream, stopReading.Token);

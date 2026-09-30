@@ -89,7 +89,7 @@ the candidate's advertised minimum Windows version or compatibility with every o
 **Windows long-path limit:** [run 36648767857](https://github.com/jhnoor/milligram/actions/runs/36648767857)
 passed the added global-install checks on both Linux and both macOS targets, but failed on both
 Windows targets with `DllNotFoundException`, `conpty.dll`, error `0x800700CE` (path too long).
-Those temporary global installations put the native DLL beyond 260 characters. The same code
+Those temporary global installations used long paths. The same code
 and package passed in shorter tool-path and `dnx` locations. The normal smoke now uses a shorter
 temporary CLI home; `-GlobalDirectory` preserves the ability to reproduce the long installation.
 This is a candidate limitation, not a fixed library bug. A production host needs an explicit
@@ -98,12 +98,29 @@ a 285-character DLL path, so the failure is environment-dependent, not a univers
 Reports now record the selected implementation and application path length to make this visible.
 
 The opt-in `--preload-long-path` experiment loads the packaged DLL through its absolute extended
-Windows path before Porta opens a terminal. It requires an actual path over 260 characters and
+Windows path before Porta opens a terminal. It requires a packaged console-host path over 260 characters and
 the out-of-band implementation. `long-path.ps1` compares the default and preloaded paths using
 the same installed package in both I/O modes, recording the machine's `LongPathsEnabled` setting
-without changing it. Two additional Windows CI jobs run this comparison; results are pending.
+without changing it. Two additional Windows CI jobs run this comparison.
 Local Windows build 19045 passes both sides, which alone cannot prove the workaround fixes the
 hosted failure. Neither this experiment nor its dependency is part of the product.
+
+[Run 36650835484](https://github.com/jhnoor/milligram/actions/runs/36650835484) also passed both
+sides on both hosted Windows architectures, with `LongPathsEnabled: 1` and DLL paths of 328/330
+characters. That does **not** demonstrate a fix: the control stopped reproducing the failure.
+The probe now queries the backend only after the first spawn, since the previously added diagnostic
+initialized Porta before startup. A third arm, `--initialize-backend`, isolates early initialization
+from extended-path preloading. The comparison remains an experiment until its control reproduces.
+It also exercises two distinct layouts: a 257/259-character DLL path matching the original failing
+installations (the console-host executable is deeper), and a 330-character DLL path. The earlier
+description of the original DLL itself being over 260 characters was incorrect; the run did not
+record the resolved native path, and that boundary must be measured rather than inferred from the error.
+
+The revised local comparison **does reproduce** at a 257-character DLL path: both default startup
+and explicit early initialization fail with the original loader error; extended-path preloading
+passes both I/O modes. All three arms pass at 330 characters. The script now requires the boundary
+control to reproduce the specific DLL error, preventing a green comparison without a failing control.
+Hosted confirmation of this exact boundary is pending.
 
 The first hosted run exposed two probe assumptions, corrected before the passing run: a working
 directory can have different equivalent path spellings on macOS, and terminal dimensions can be
