@@ -134,6 +134,9 @@ Match the existing code. It is terse and consistent:
 - **Mail protocol.** Change `Domain/Mail/MailMessage.Ops`, `ViewerActions` (viewer → agent),
   `Program.Tell` and `ProjectWatcher.DeliverMail` (agent → viewer), the mail handling in `app.js`,
   and `AgentBriefing.Text` together.
+- **Agent host protocol.** Change `Adapters/Companion/HostProtocol.cs`, its host/client consumers,
+  their tests and [AGENT_HOST.md](AGENT_HOST.md) together. Keep frame sizes bounded and version
+  negotiation explicit; terminal replay and live delivery must share decoder state and ordering.
 - `AgentBriefing.Text` holds the instructions for the companion agent. Milligram writes them into
   *each examined project* as `.milligram/agent.md`. They are not instructions for you, but they are
   product copy, so keep them accurate.
