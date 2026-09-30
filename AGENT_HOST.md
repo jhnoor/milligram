@@ -120,7 +120,7 @@ connection also closes the library's kill-on-close job. Unix shutdown kills the 
 created by `forkpty`, including a descendant whose agent parent has exited. A process that
 deliberately creates a different Unix session is outside that process group.
 
-`tests/Milligram.AgentHost.Integration` is a standalone fake-agent program, outside the fast
+[The native integration fixture](tests/Milligram.AgentHost.Integration/README.md) is a standalone fake-agent program, outside the fast
 test solution. It exercises the production adapter with a real terminal: controlling TTY,
 arguments, a Unicode project path, working directory, the actual `milligram` shim, split UTF-8,
 resize, Ctrl+C, doorbell submission and nonzero exit. Separate cases exercise forced descendant
@@ -186,7 +186,7 @@ Selection is fixed for each viewer run after policy loading. Changing `agent.hos
 viewer restart; stop an old session before switching hosts.
 The six-platform terminal evidence and Windows loader workaround are on the separate
 [`codex/pty-spike` branch](https://github.com/jhnoor/milligram/tree/codex/pty-spike/spikes/PtyProbe).
-Real Copilot login, xterm.js rendering, WSL and the rollout criteria remain separate acceptance work.
+Real Copilot login and full-screen rendering, WSL and the rollout criteria remain separate acceptance work.
 
 ## Local terminal attachment
 
@@ -284,7 +284,9 @@ source/editor access still passes the server's project containment check, includ
 filesystem links. An explicitly linked project root defines the boundary; nested targets outside
 it are rejected before they are followed. Ancestor aliases such as macOS `/var` resolve back to
 that boundary; the alias walk never descends into an ordinary outside directory or switches
-filesystem roots to probe another drive or network share. This check is not an atomic defense against a local
+filesystem roots to probe another drive or network share. Windows comparisons use each component's
+stored spelling, preserving exact names when case-sensitive siblings exist and rejecting ambiguous matches.
+This check is not an atomic defense against a local
 process changing directory entries between checking and opening a file. Responses forbid
 framing with `Content-Security-Policy: frame-ancestors 'none'`.
 
@@ -298,3 +300,16 @@ real viewer, relay, pipe and session with a deterministic terminal peer. Its fiv
 workflow is separate from the fast test suite and from the native PTY fixture. WebKit does
 not establish Safari acceptance; real Copilot, IME and OS clipboard behavior still need hands-on
 validation before changing the default host.
+
+## Rollout requirements
+
+The native host remains opt-in. [Issue #26](https://github.com/jhnoor/milligram/issues/26)
+requires green cross-platform CI, the end-to-end viewer smoke test, an independent WebSocket
+security review and several weeks of daily use without regressions compared with tmux.
+Dogfooding must include Linux, macOS and Windows with an older .NET Framework codebase.
+Record the eventual decision to retain or retire tmux in that issue before changing the default.
+
+Automated native and browser fixtures provide reproducible evidence for their stated cases.
+They do not replace authenticated Copilot interaction, WSL, physical terminal applications,
+classic Windows console, Safari, IME or operating-system clipboard validation. Legacy build,
+coverage and mutation remain separate work documented in [LEGACY.md](LEGACY.md).
