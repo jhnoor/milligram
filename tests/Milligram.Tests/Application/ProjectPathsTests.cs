@@ -58,6 +58,23 @@ public class ProjectPathsTests
     }
 
     [UnixFact]
+    public void AChainCannotLeaveTheProjectAndReturnThroughAnotherLink()
+    {
+        using var project = new TempProject(("Inside.cs", "inside"));
+        using var outside = new TempProject();
+        File.CreateSymbolicLink(Path.Combine(outside.Root, "Return.cs"), Path.Combine(project.Root, "Inside.cs"));
+        File.CreateSymbolicLink(Path.Combine(project.Root, "return.cs"), Path.Combine(outside.Root, "Return.cs"));
+        Directory.CreateSymbolicLink(Path.Combine(outside.Root, "return"), project.Root);
+        Directory.CreateSymbolicLink(Path.Combine(project.Root, "return"), Path.Combine(outside.Root, "return"));
+        var paths = new ProjectPaths(project.Root);
+        foreach (var file in new[] { "return.cs", "return/Inside.cs" })
+        {
+            Assert.Equal("inside", File.ReadAllText(paths.Absolute(file)));
+            Assert.False(paths.Contains(file));
+        }
+    }
+
+    [UnixFact]
     public void InternalLinksAndChainsRemainUsable()
     {
         using var project = new TempProject(("inside/Target.cs", "inside"));

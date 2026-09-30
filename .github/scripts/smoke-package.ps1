@@ -46,6 +46,9 @@ namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } 
     New-Item -ItemType Directory -Path $outsideRoot | Out-Null
     [IO.File]::WriteAllText((Join-Path $outsideRoot 'Outside.cs'), 'generated outside-project fixture')
     New-Item -ItemType $linkType -Path (Join-Path $projectRoot 'outside-link') -Target $outsideRoot | Out-Null
+    $outsideReturn = Join-Path $outsideRoot 'return'
+    New-Item -ItemType $linkType -Path $outsideReturn -Target (Join-Path $projectRoot 'src') | Out-Null
+    New-Item -ItemType $linkType -Path (Join-Path $projectRoot 'outside-return') -Target $outsideReturn | Out-Null
     $projectAlias = Join-Path $smokeRoot 'project-alias'
     New-Item -ItemType $linkType -Path $projectAlias -Target $projectRoot | Out-Null
     New-Item -ItemType $linkType -Path (Join-Path $projectRoot 'alias-link') -Target (Join-Path $projectAlias 'src') | Out-Null
@@ -101,11 +104,13 @@ namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } 
         }
         $aliasedSource = Invoke-RestMethod ($address + 'api/source?file=alias-link/Smoke/Class1.cs')
         if ($aliasedSource.text -ne $source.text) { throw 'An ancestor alias hid an internal source file' }
-        $outsideSource = Invoke-WebRequest ($address + 'api/source?file=outside-link/Outside.cs') -SkipHttpErrorCheck
-        $outsideOpen = Invoke-WebRequest ($address + 'api/open') -Method Post -ContentType 'application/json' `
-            -Headers @{ 'X-Milligram' = '1' } -Body '{"file":"outside-link/Outside.cs","line":1}' -SkipHttpErrorCheck
-        if ($outsideSource.StatusCode -ne 404 -or $outsideOpen.StatusCode -ne 404) {
-            throw 'Source preview or editor access followed a link outside the project'
+        foreach ($outsideFile in @('outside-link/Outside.cs', 'outside-return/Smoke/Class1.cs')) {
+            $outsideSource = Invoke-WebRequest ($address + 'api/source?file=' + $outsideFile) -SkipHttpErrorCheck
+            $outsideOpen = Invoke-WebRequest ($address + 'api/open') -Method Post -ContentType 'application/json' `
+                -Headers @{ 'X-Milligram' = '1' } -Body (@{ file = $outsideFile; line = 1 } | ConvertTo-Json) -SkipHttpErrorCheck
+            if ($outsideSource.StatusCode -ne 404 -or $outsideOpen.StatusCode -ne 404) {
+                throw 'Source preview or editor access followed a link outside the project'
+            }
         }
         foreach ($file in @('milligram.json', '.milligram/agent.md', '.milligram/model.json')) {
             if (!(Test-Path -LiteralPath (Join-Path $projectRoot $file))) { throw "First run did not create $file" }
