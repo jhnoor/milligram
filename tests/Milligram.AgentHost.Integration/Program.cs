@@ -27,10 +27,13 @@ internal static class Program
         Console.WriteLine($"Native agent adapter: {RuntimeInformation.RuntimeIdentifier}; {RuntimeInformation.OSDescription}");
         try
         {
-            await Scenario(tree: false, parentExits: false);
-            await Scenario(tree: true, parentExits: false);
-            await Scenario(tree: true, parentExits: true);
-            Console.WriteLine("PASS: terminal controls, shim, exit, forced tree cleanup and parent-first tree cleanup");
+            foreach (var hosted in new[] { false, true })
+            {
+                await Scenario(tree: false, parentExits: false, hosted);
+                await Scenario(tree: true, parentExits: false, hosted);
+                await Scenario(tree: true, parentExits: true, hosted);
+            }
+            Console.WriteLine("PASS: terminal controls and tree cleanup directly and through the host runtime and pipe");
             return 0;
         }
         catch (Exception error)
@@ -40,7 +43,7 @@ internal static class Program
         }
     }
 
-    private static async Task Scenario(bool tree, bool parentExits)
+    private static async Task Scenario(bool tree, bool parentExits, bool hosted)
     {
         var fixture = Path.Combine(Path.GetTempPath(), "Milligram agent & 漢 " + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(fixture);
@@ -55,6 +58,10 @@ internal static class Program
         AgentBriefing.Write(paths);
         var launch = new AgentLaunches(paths, () => policy, [command, typeof(ProcessRunner).Assembly.Location]).Prepare(OperatingSystem.IsWindows());
         IAgentTerminal? terminal = null;
+        AgentSession? session = null;
+        AgentPipeServer? server = null;
+        AgentPipeClient? client = null;
+        Task<int>? running = null;
         Process? descendant = null;
         Task? reading = null;
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -62,7 +69,18 @@ internal static class Program
         try
         {
             terminal = await ProcessRunner.StartTerminalAsync(launch, new TerminalSize(80, 24), cancellation.Token).WaitAsync(Deadline);
-            reading = capture.Read(terminal.Output, cancellation.Token);
+            if (hosted)
+            {
+                var endpoint = "mg-fixture-" + Guid.NewGuid().ToString("N")[..16];
+                var greeting = new HostHello(HostProtocol.Version, "integration");
+                session = new AgentSession(terminal, new TerminalSize(80, 24));
+                server = new AgentPipeServer(session, endpoint, greeting, Console.Error.WriteLine);
+                var runtime = new AgentHostRuntime(terminal, session, server, Console.Error.WriteLine);
+                running = runtime.RunAsync(() => { }, cancellation.Token);
+                await server.Ready.WaitAsync(Deadline);
+                client = await AgentPipeClient.ConnectAsync(endpoint, greeting, cancellation.Token);
+            }
+            reading = client is null ? capture.Read(terminal.Output, cancellation.Token) : capture.Read(client, cancellation.Token);
             await capture.Wait("READY", cancellation.Token);
             foreach (var expected in new[] { "TTY:True", "ARG:True", "CWD:True", "SHIM:True", "SIZE:80x24" })
                 Require(capture.Text.Contains(expected, StringComparison.Ordinal), "Missing " + expected + "\n" + capture.Text);
@@ -76,16 +94,18 @@ internal static class Program
                 if (parentExits)
                 {
                     await Send("exit\r");
-                    Require(await terminal.Exited.WaitAsync(Deadline) == 17, "Lost the parent's nonzero exit code.");
+                    Require(await ExitCode().WaitAsync(Deadline) == 17, "Lost the parent's nonzero exit code.");
                 }
-                terminal.Stop();
-                await terminal.Exited.WaitAsync(Deadline);
+                if (!parentExits || client is null) await Stop();
+                await ExitCode().WaitAsync(Deadline);
             }
             else
             {
                 await Send("unicode\r");
                 await capture.Wait("UNICODE:" + Unicode, cancellation.Token);
-                terminal.Resize(new TerminalSize(96, 31));
+                var size = new TerminalSize(96, 31);
+                if (client is null) terminal.Resize(size);
+                else await client.SendAsync(HostProtocol.Resize(size), cancellation.Token);
                 if (!OperatingSystem.IsWindows()) await capture.Wait("SIGWINCH", cancellation.Token);
                 var started = Stopwatch.GetTimestamp();
                 while (!capture.Text.Contains("SIZE:96x31", StringComparison.Ordinal))
@@ -102,23 +122,36 @@ internal static class Program
                 await Send("\r");
                 await capture.Wait("ACK:" + AgentBriefing.Doorbell, cancellation.Token);
                 await Send("exit\r");
-                Require(await terminal.Exited.WaitAsync(Deadline) == 17, "Lost exit code 17.");
-                terminal.Stop();
+                Require(await ExitCode().WaitAsync(Deadline) == 17, "Lost exit code 17.");
+                if (client is null) terminal.Stop();
             }
             await reading.WaitAsync(Deadline);
-            await Task.Run(terminal.Dispose).WaitAsync(Deadline);
+            if (running is null) await Task.Run(terminal.Dispose).WaitAsync(Deadline);
+            else Require(await running.WaitAsync(Deadline) == 0, "The host reported a lifecycle failure.");
             terminal = null;
             if (descendant is not null)
             {
                 await descendant.WaitForExitAsync(cancellation.Token).WaitAsync(Deadline);
                 Require(descendant.HasExited, "An owned descendant survived terminal cleanup.");
             }
-            Console.WriteLine($"PASS: {(tree ? parentExits ? "parent exits before descendant" : "stop with descendant" : "terminal controls and nonzero exit")}");
+            Console.WriteLine($"PASS ({(hosted ? "hosted" : "direct")}): {(tree ? parentExits ? "parent exits before descendant" : "stop with descendant" : "terminal controls and nonzero exit")}");
 
             async Task Send(string text)
             {
-                await terminal.Input.WriteAsync(Encoding.UTF8.GetBytes(text), cancellation.Token);
-                await terminal.Input.FlushAsync(cancellation.Token);
+                if (client is not null) await client.SendAsync(new HostFrame(HostFrameKind.Input, Encoding.UTF8.GetBytes(text)), cancellation.Token);
+                else
+                {
+                    await terminal.Input.WriteAsync(Encoding.UTF8.GetBytes(text), cancellation.Token);
+                    await terminal.Input.FlushAsync(cancellation.Token);
+                }
+            }
+
+            Task<int> ExitCode() => client is null ? terminal.Exited : capture.Exited.Task;
+
+            async Task Stop()
+            {
+                if (client is null) terminal.Stop();
+                else await client.SendAsync(new HostFrame(HostFrameKind.Stop, []), cancellation.Token);
             }
         }
         finally
@@ -126,10 +159,14 @@ internal static class Program
             cancellation.Cancel();
             try
             {
-                if (terminal is not null) await Task.Run(terminal.Dispose).WaitAsync(TimeSpan.FromSeconds(5));
+                if (running is not null) await running.WaitAsync(Deadline);
+                else if (terminal is not null) await Task.Run(terminal.Dispose).WaitAsync(TimeSpan.FromSeconds(5));
             }
             finally
             {
+                if (client is not null) await client.DisposeAsync();
+                server?.Dispose();
+                session?.Dispose();
                 if (descendant is not null)
                 {
                     if (!descendant.HasExited) descendant.Kill(entireProcessTree: true);
@@ -226,7 +263,24 @@ internal static class Program
         private readonly Lock gate = new();
         private readonly StringBuilder received = new();
         private readonly Decoder decoder = new UTF8Encoding(false, throwOnInvalidBytes: true).GetDecoder();
+        public TaskCompletionSource<int> Exited { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string Text { get { lock (gate) return Regex.Replace(received.ToString(), "\u001B\\[[0-?]*[ -/]*[@-~]", ""); } }
+
+        public async Task Read(AgentPipeClient client, CancellationToken cancellation)
+        {
+            while (await client.ReadAsync(cancellation) is { } frame)
+            {
+                Require(!Exited.Task.IsCompleted, "The host sent output after exit.");
+                if (frame.Kind == HostFrameKind.Exited) Exited.TrySetResult(HostProtocol.ReadExitCode(frame));
+                else
+                {
+                    Require(frame.Kind == HostFrameKind.Output, "Unexpected host frame.");
+                    using var chunk = new MemoryStream(frame.Payload, writable: false);
+                    await Read(chunk, cancellation);
+                }
+            }
+            Require(Exited.Task.IsCompleted, "The host closed without an exit frame.");
+        }
 
         public async Task Read(Stream stream, CancellationToken cancellation)
         {

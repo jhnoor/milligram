@@ -1,8 +1,8 @@
 # Agent host protocol (in development)
 
 This branch builds the opt-in host tracked in #22. The default companion remains tmux.
-The framing, replay, terminal session, same-user pipe transport and project lease are implemented first;
-native process lifecycle and companion integration are not yet connected. This document describes
+Framing, replay, the terminal session, same-user pipes, project lease and native shutdown are implemented;
+the detached process command and companion integration are not yet connected. This document describes
 their wire contract, not a released host.
 
 ## Framing
@@ -112,10 +112,24 @@ deliberately creates a different Unix session is outside that process group.
 test solution. It exercises the production adapter with a real terminal: controlling TTY,
 arguments, a Unicode project path, working directory, the actual `milligram` shim, split UTF-8,
 resize, Ctrl+C, doorbell submission and nonzero exit. Separate cases exercise forced descendant
-cleanup and cleanup after the parent exits. The native workflow runs on Linux, macOS and Windows,
-each with x64 and ARM64 runners. It does not start real Copilot.
+cleanup and cleanup after the parent exits, both directly and through the host runtime and its
+pipe. The native workflow runs on Linux, macOS and Windows, each with x64 and ARM64 runners.
+It does not start real Copilot.
 
-The detached host lifecycle and companion integration remain part of the implementation.
+## Host shutdown
+
+`AgentHostRuntime` owns the terminal for one run. It starts the output pump and listener before
+invoking the discovery callback. Agent exit, a stop command, cancellation, or a failed output
+pump/listener starts cleanup. A clean terminal EOF gets a short grace period for the native exit
+event, so ordinary exit codes survive event ordering differences.
+
+Cleanup stops the owned tree, waits for the exit code and remaining output, then announces exit
+and stops accepting clients. Each wait has a three-second deadline. Clients can drain before
+cancellation closes stalled connections; terminal disposal releases the native handles. Failed
+stop, drain or disposal steps are recorded without skipping later cleanup. Only after cleanup
+does the runtime write its exit and error messages to the host log.
+
+The detached host command and companion integration remain part of the implementation.
 The six-platform terminal evidence and Windows loader workaround are on the separate
 [`codex/pty-spike` branch](https://github.com/jhnoor/milligram/tree/codex/pty-spike/spikes/PtyProbe).
 Real Copilot login, xterm.js rendering, WSL and the rollout criteria remain separate acceptance work.
