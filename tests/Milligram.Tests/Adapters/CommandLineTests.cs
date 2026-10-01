@@ -5,20 +5,39 @@ namespace Milligram.Tests.Adapters;
 
 public class CommandLineTests
 {
+    [Theory]
+    [InlineData("serve")]
+    [InlineData("init")]
+    [InlineData("ir")]
+    public void ScanCommandsShareConfigurationAndAnExplicitSourceOnlyFallback(string command)
+    {
+        var configured = CommandLine.Parse([command, "--configuration", "Release"]).ScanOptions()!;
+        Assert.Equal(Milligram.Domain.Policies.ScanMode.Auto, configured.Mode);
+        Assert.Equal("Release", configured.Configuration);
+        Assert.Empty(configured.Projects);
+        var explicitProject = CommandLine.Parse([command, "--msbuild", "App.csproj"]).ScanOptions()!;
+        Assert.Equal(Milligram.Domain.Policies.ScanMode.Msbuild, explicitProject.Mode);
+        Assert.Equal(["App.csproj"], explicitProject.Projects);
+        var source = CommandLine.Parse(["--source-only", command]);
+        Assert.Equal(command, source.Command);
+        Assert.Equal(Milligram.Domain.Policies.ScanMode.SourceOnly, source.ScanOptions()!.Mode);
+        Assert.Throws<MilligramException>(() => CommandLine.Parse([command, "--source-only", "--msbuild", "App.csproj"]).ScanOptions());
+    }
+
     [Fact]
     public void ProjectScansKeepRepeatedEntryFilesAndTheSelectedConfiguration()
     {
         var line = CommandLine.Parse(["ir", "--msbuild", "src/App.csproj", "--configuration", "Release", "--msbuild=Library.csproj"]);
-        Assert.Equal(["src/App.csproj", "Library.csproj"], line.ScanProjects());
+        Assert.Equal(["src/App.csproj", "Library.csproj"], line.ScanOptions()!.Projects);
         Assert.Equal("Release", line.Value("configuration"));
         Assert.Empty(line.Arguments);
-        Assert.Empty(CommandLine.Parse(["ir"]).ScanProjects());
-        Assert.Single(CommandLine.Parse(["ir", "--msbuild", "App.csproj"]).ScanProjects());
+        Assert.Null(CommandLine.Parse(["ir"]).ScanOptions());
+        Assert.Single(CommandLine.Parse(["ir", "--msbuild", "App.csproj"]).ScanOptions()!.Projects);
     }
 
     [Theory]
-    [InlineData("serve --msbuild App.csproj", "only by `milligram ir`")]
-    [InlineData("ir --configuration Release", "requires --msbuild")]
+    [InlineData("doctor --msbuild App.csproj", "Scan options are supported")]
+    [InlineData("ir --source-only --configuration Release", "cannot be combined")]
     [InlineData("ir --msbuild", "requires a C# project file")]
     [InlineData("ir --msbuild --configuration Release", "requires a C# project file")]
     [InlineData("ir --msbuild App.csproj --msbuild=", "requires a C# project file")]
@@ -26,7 +45,7 @@ public class CommandLineTests
     [InlineData("ir --msbuild App.csproj --configuration", "requires a configuration name")]
     [InlineData("ir --msbuild App.csproj --configuration --no-agent", "requires a configuration name")]
     public void ProjectScanOptionsCannotSilentlyUseTheSourceOnlyScanner(string command, string explanation) =>
-        Assert.Contains(explanation, Assert.Throws<MilligramException>(() => CommandLine.Parse(command.Split(' ')).ScanProjects()).Message, StringComparison.Ordinal);
+        Assert.Contains(explanation, Assert.Throws<MilligramException>(() => CommandLine.Parse(command.Split(' ')).ScanOptions()).Message, StringComparison.Ordinal);
 
     [Theory]
     [InlineData("agent", "host", "instance-id")]

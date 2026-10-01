@@ -67,6 +67,7 @@ public sealed class MutationService(Workspace workspace, IProjectLocator locator
     {
         var output = Path.Combine(workspace.Paths.RunDirectory, "stryker", $"{DateTime.UtcNow:yyyyMMddTHHmmss}-{project.Name}-{Guid.NewGuid():N}");
         var args = new List<string> { "stryker", "--project", Path.GetFileName(project.Path) };
+        if (workspace.ScanSettings.Configuration is { } configuration) args.AddRange(["--configuration", configuration]);
         foreach (var test in tests) args.AddRange(["--test-project", test.Path]);
         args.AddRange(["--reporter", "json", "--reporter", "progress", "--output", output]);
         foreach (var pattern in patterns) args.AddRange(["--mutate", pattern]);

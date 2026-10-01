@@ -20,7 +20,7 @@ public static class Program
         if (line.Has("help") || line.Command == "help") { Console.WriteLine(Help); return 0; }
         try
         {
-            var composition = new Composition(FindRoot(line.Value("project")), SelfCommand(), Version, line.ScanProjects(), line.Value("configuration"));
+            var composition = new Composition(FindRoot(line.Value("project")), SelfCommand(), Version, line.ScanOptions());
             return line.Command switch
             {
                 "serve" => await ServeAsync(composition, line),
@@ -252,9 +252,6 @@ public static class Program
               --keep-agent        Leave the companion session running on exit.
           init [--force]          Write milligram.json from the namespaces in the source.
           ir                      Scan the source and write .milligram/model.json.
-              --msbuild FILE      Evaluate a C# project and its project references (repeatable, experimental).
-                                  Paths are relative to --project. Replaces src selection; keeps excludes.
-              --configuration N   Project configuration; otherwise use the project's default.
           crap [--coverage F]     Run tests with coverage (or read Cobertura file F) and score CRAP.
           mutate [--all] [files]  Mutation-test changed members (Stryker.NET); --all for whole files.
           doctor                  Check what the metrics and the agent need; print the fix for anything missing.
@@ -267,5 +264,10 @@ public static class Program
                                   Native attach uses this terminal; Ctrl+] then d detaches.
 
         Global: --project DIR     Project root (default: nearest directory with milligram.json).
+        Scan options (serve, init, ir; saved when creating milligram.json):
+          --msbuild FILE          Select an entry C# project (repeatable). Replaces src selection; keeps excludes.
+          --configuration NAME    Select a build configuration; otherwise use the project's default.
+          --source-only           Use the approximate scanner without evaluating or executing project tasks.
+                                  Without an override, use scan settings from milligram.json (default: auto).
         """;
 }

@@ -8,6 +8,17 @@ namespace Milligram.Tests.Main;
 public class ProgramTests
 {
     [Fact]
+    public async Task SourceOnlyInitializationPersistsTheFallbackForSubsequentCommands()
+    {
+        using var project = new TempProject(("App.csproj", "broken XML"), ("Source.cs", "namespace App; public class Source {}"));
+        Assert.Equal(0, await global::Milligram.Main.Program.Main(["init", "--source-only", "--project", project.Root]));
+        var paths = new ProjectPaths(project.Root);
+        Assert.Equal(Milligram.Domain.Policies.ScanMode.SourceOnly, JsonFile.Read<Milligram.Domain.Policies.Policy>(paths.PolicyFile)!.Scan.Mode);
+        Assert.Equal(0, await global::Milligram.Main.Program.Main(["ir", "--project", project.Root]));
+        Assert.Equal("App.Source", Assert.Single(JsonFile.Read<CodeModel>(paths.ModelFile)!.Types).Id);
+    }
+
+    [Fact]
     public async Task PlainIrKeepsTheSourceOnlyFallbackAvailableWithoutAProject()
     {
         using var project = new TempProject(("Source.cs", "namespace App; public class Source {}"));

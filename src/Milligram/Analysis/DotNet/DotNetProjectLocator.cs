@@ -23,6 +23,8 @@ public sealed class DotNetProjectLocator : IProjectLocator
     public IReadOnlyList<BuildProject> Find(string root) =>
         Walk(root).Select(Read).OfType<BuildProject>().OrderBy(p => p.Path, StringComparer.Ordinal).ToList();
 
+    public IReadOnlyList<string> Files(string root) => Walk(root).Order(StringComparer.Ordinal).ToList();
+
     private static BuildProject? Read(string path)
     {
         try

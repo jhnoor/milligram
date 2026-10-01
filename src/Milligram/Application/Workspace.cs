@@ -14,15 +14,17 @@ public sealed class Workspace
     private readonly Lock gate = new();
     private readonly Lock scanGate = new();
     private readonly ILanguageScanner scanner;
+    private readonly ScanSettings? scanOverride;
     private readonly Dictionary<string, DiagramTree> trees = [];
     private Policy policy = new();
     private CodeModel model;
     private MetricsSet metrics = MetricsSet.Empty;
 
-    public Workspace(ProjectPaths paths, ILanguageScanner scanner)
+    public Workspace(ProjectPaths paths, ILanguageScanner scanner, ScanSettings? scanOverride = null)
     {
         Paths = paths;
         this.scanner = scanner;
+        this.scanOverride = scanOverride;
         ToAgent = new Mailbox(paths.ToAgentDirectory);
         ToViewer = new Mailbox(paths.ToViewerDirectory);
         model = CodeModel.Empty(DefaultTitle, "");
@@ -33,11 +35,14 @@ public sealed class Workspace
     public Mailbox ToViewer { get; }
     public string DefaultTitle => Path.GetFileName(Paths.Root);
     public string? PolicyError { get; private set; }
+    public string? ScanError { get; private set; }
     public long Version { get; private set; }
 
     public Policy Policy { get { lock (gate) return policy; } }
     public CodeModel Model { get { lock (gate) return model; } }
     public MetricsSet Metrics { get { lock (gate) return metrics; } }
+    public IScanInputs? ScanInputs => scanner.Inputs;
+    public ScanSettings ScanSettings => Policy.Scan.Override(scanOverride);
 
     public void Load()
     {
@@ -88,32 +93,48 @@ public sealed class Workspace
     {
         lock (scanGate)
         {
-            var current = Policy;
-            if (inputsUnchanged && PolicyError is null && initialization?.Model is { } initial && SameScanPolicy(initialization.Policy, current))
+            try
             {
-                progress?.Invoke("Reusing the initialization scan; source and project inputs are unchanged.");
-                JsonFile.Write(Paths.ModelFile, initial);
-                Update(() => model = initial);
-                return initial;
+                var current = Policy;
+                if (inputsUnchanged && PolicyError is null && initialization?.Model is { } initial && SameScanPolicy(initialization.Policy, current) &&
+                    (ScanInputs is not { } inputs || inputs.Version == inputs.ReadVersion()))
+                {
+                    progress?.Invoke("Reusing the initialization scan; source and project inputs are unchanged.");
+                    JsonFile.Write(Paths.ModelFile, initial);
+                    Update(() => model = initial);
+                    ScanError = null;
+                    return initial;
+                }
+                var request = new ScanRequest(
+                    Paths.Root,
+                    Paths.Absolute(current.Src),
+                    current.Exclude,
+                    current.Prefix,
+                    current.Foreign,
+                    current.Title ?? DefaultTitle)
+                { Scan = ScanSettings };
+                var scanned = scanner.Scan(request, progress);
+                JsonFile.Write(Paths.ModelFile, scanned);
+                Update(() => model = scanned);
+                ScanError = null;
+                return scanned;
             }
-            var request = new ScanRequest(
-                Paths.Root,
-                Paths.Absolute(current.Src),
-                current.Exclude,
-                current.Prefix,
-                current.Foreign,
-                current.Title ?? DefaultTitle);
-            var scanned = scanner.Scan(request, progress);
-            JsonFile.Write(Paths.ModelFile, scanned);
-            Update(() => model = scanned);
-            return scanned;
+            catch (Exception error)
+            {
+                ScanError = error.Message;
+                throw;
+            }
         }
     }
 
     private bool SameScanPolicy(Policy left, Policy right) =>
         Paths.Absolute(left.Src) == Paths.Absolute(right.Src) && left.Prefix == right.Prefix &&
         (left.Title ?? DefaultTitle) == (right.Title ?? DefaultTitle) &&
-        left.Exclude.SequenceEqual(right.Exclude, StringComparer.Ordinal) && left.Foreign.SequenceEqual(right.Foreign, StringComparer.Ordinal);
+        left.Exclude.SequenceEqual(right.Exclude, StringComparer.Ordinal) && left.Foreign.SequenceEqual(right.Foreign, StringComparer.Ordinal) &&
+        SameScanSettings(left.Scan.Override(scanOverride), right.Scan.Override(scanOverride));
+
+    private static bool SameScanSettings(ScanSettings left, ScanSettings right) => left.Mode == right.Mode &&
+        left.Configuration == right.Configuration && left.Projects.SequenceEqual(right.Projects, StringComparer.Ordinal);
 
     /// <summary>
     /// Applies a viewer edit. Only the keys it changes are rewritten, so comments and layout in milligram.json

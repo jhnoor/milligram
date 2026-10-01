@@ -58,6 +58,7 @@ public static class AgentBriefing
         | key | role |
         |-----|------|
         | `src`, `exclude` | Source root and globs to skip (tests are usually excluded). |
+        | `scan` | `mode`: `auto` discovers C# projects under/above `src`, `msbuild` requires projects, `sourceOnly` skips build evaluation. `projects`: optional root-relative entry `.csproj` paths; `configuration`: optional build configuration, also used by coverage and mutation. Startup, `ir`, and live refreshes use this selection. Evaluation runs project tasks/generators; failures preserve the old model. Compiler-context changes make existing metrics stale. |
         | `prefix` | Stripped from every namespace. The remaining dots are the component tree. |
         | `order` | Box order of existing top-level namespace segments. |
         | `levels` | Groups of namespace paths, **inner (level 0) first**. Same group = same level. Drives red arrows. |

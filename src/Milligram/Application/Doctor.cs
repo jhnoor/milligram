@@ -42,6 +42,11 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
             Agent(),
         ];
         if (ProjectFormat(projects) is { } format) checks.Insert(1, format);
+        var scan = workspace.ScanSettings;
+        checks.Add(Check.Skipped("Scanner", scan.Mode == ScanMode.SourceOnly
+            ? "source-only approximation: Compile membership, build conditions and target-framework references are not evaluated"
+            : $"MSBuild {(scan.Projects.Count > 0 ? "entry projects: " + string.Join(", ", scan.Projects) : "automatic project discovery under/above src")}; configuration: {scan.Configuration ?? "project default"}. Evaluation is checked when scanning; doctor does not run project tasks.",
+            "set scan.mode to sourceOnly in milligram.json, or use --source-only for an approximate scan without project evaluation"));
         if (watching.For(workspace.Paths.Root) is { } limit) checks.Add(Check.Skipped("Watching", limit.Detail, limit.Fix));
         return checks;
     }
@@ -80,8 +85,10 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
         var framework = projects.Where(p => p.TargetsNetFramework).ToList();
         if (legacy.Count == 0 && framework.Count == 0) return null;
         return Check.Skipped("Project format",
-            $"{Names(legacy.Concat(framework).Distinct().Select(p => p.Path))}: the scanner uses .NET 10 references, project.assets.json and explicit HintPaths; .NET Framework and unevaluated packages.config references may be missing",
-            "the scanner reads every .cs file under src without evaluating Compile items or build conditions; use exclude in milligram.json for inactive files",
+            $"{Names(legacy.Concat(framework).Distinct().Select(p => p.Path))}: " + (workspace.ScanSettings.Mode == ScanMode.SourceOnly
+                ? "the source-only scanner uses .NET 10 references, project.assets.json and explicit HintPaths; .NET Framework and unevaluated packages.config references may be missing"
+                : "project evaluation selects Compile items and framework references; install the project's SDK, restored packages and .NET Framework targeting packs to resolve all bindings"),
+            "sourceOnly reads every .cs file under src without evaluating Compile items or build conditions; use exclude for inactive files when choosing that fallback",
             "for legacy test projects, collect Cobertura with your existing test tools and import it with milligram crap --coverage report.xml",
             "Stryker on .NET Framework needs a solution in the source project's stryker-config.json and working MSBuild/NuGet tools (see README)");
     }

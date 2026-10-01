@@ -37,14 +37,13 @@ The viewer, the editor integration, `crap` and `mutate` work the same everywhere
 
 ### Older .NET Framework projects
 
-The source diagram can be useful, but it is incomplete for these projects. The scanner binds
-against .NET 10, `obj/project.assets.json` and explicit assembly `HintPath` entries in `.csproj`
-files. Restored `packages.config` libraries bind when these entries point to their DLLs. Missing
-or invalid assemblies are reported during scans; conditional or property-based paths are reported
-as needing MSBuild evaluation. The scanner does not resolve .NET Framework reference assemblies.
-It also reads all `.cs` files under `src` without evaluating
-`Compile` items or build conditions. Use `exclude` for inactive files. `milligram doctor` flags
-these limitations and recognizes test frameworks listed in `packages.config`.
+Project scans evaluate `Compile` items, configuration, imports and framework references with
+MSBuild. Install the appropriate SDK, .NET Framework targeting packs and restored packages first.
+Missing assemblies are diagnosed; source membership can still be useful while bindings are
+incomplete. Full legacy build, coverage and mutation acceptance remains unverified.
+The explicit `--source-only` fallback binds against .NET 10, restored assets and direct `HintPath`
+entries, and reads all `.cs` files under `src` without evaluating conditions. Its diagram is an
+approximation; use `exclude` for inactive files. `doctor` explains the selected scan mode.
 
 Automatic coverage requires SDK-style test projects with `coverlet.collector`. SDK-style projects
 targeting .NET Framework still need a compatible Windows test environment. For old-style test
@@ -57,7 +56,9 @@ and [configuration](https://stryker-mutator.io/docs/stryker-net/configuration/).
 
 The [legacy investigation](LEGACY.md) measures recovered library edges and extra scanned files
 on an actual MVC 4 / .NET Framework 4.5 application. Building it, collecting coverage and running
-mutation remain unverified; [#27](https://github.com/jhnoor/milligram/issues/27) tracks that work.
+mutation remain unverified; [#36](https://github.com/jhnoor/milligram/issues/36),
+[#38](https://github.com/jhnoor/milligram/issues/38) and [#39](https://github.com/jhnoor/milligram/issues/39)
+track the remaining acceptance work.
 
 ## Install
 
@@ -94,9 +95,10 @@ agent in a terminal. Edit code, a `.csproj` or `milligram.json` and the diagram 
 Restored `obj/project.assets.json` files and generated global usings also trigger a new scan;
 ordinary build output is ignored.
 
-Source discovery, project discovery and polling skip nested directory symlinks and Windows
+Source-only discovery, project discovery and polling skip nested directory symlinks and Windows
 junctions, so a link back to a parent cannot trap a scan in a loop. Point `src` at the actual
 source directory when code lives behind such a link; an explicitly selected linked root works too.
+Evaluated source membership follows the project's MSBuild inputs.
 Source preview and editor requests also reject nested links that lead outside the project root.
 Links between files or directories inside that root remain usable.
 
@@ -109,15 +111,16 @@ keeps choices such as `System.Text.Json`, and leaves out routine collections, LI
 compiler services and nullability annotations. These are namespace names, not package ids.
 Restore your projects first so package references bind; edit `foreign` to choose what matters.
 
-The default scanner uses one source compilation rather than evaluating MSBuild. It reads generated global
-usings from the latest build, or falls back to explicit, unconditional `ImplicitUsings` settings
-in project XML (`enable` or `true`). Imported and conditional settings and stale generated files
-can therefore differ from the actual build; project-input evaluation remains a known limit.
+By default, Milligram discovers C# projects under `src` and in its ancestor directories up to the
+examined root, applying `exclude` to entry projects. It evaluates their compiler inputs with
+MSBuild and follows project references. When no project is found it reports the approximate
+source-only fallback. Evaluation failures preserve the previous diagram and explain how to fix
+the project or select that fallback explicitly.
 
-For an **experimental, explicit project scan**, run:
+To select entry projects and a configuration, run:
 
 ```bash
-milligram ir --msbuild src/App/App.csproj --configuration Release
+milligram --msbuild src/App/App.csproj --configuration Release
 ```
 
 Repeat `--msbuild` for additional entry projects. Paths are relative to the examined root
@@ -131,20 +134,35 @@ properties, preprocessor symbols and fresh SDK global usings. Each project keeps
 and reference assemblies. Repeated type names get project-qualified IDs when needed. Install the
 project's SDK and reference packs and restore its packages first; missing references produce
 diagnostics and incomplete edges. A project that fails normal MSBuild evaluation leaves the old
-model intact. Run plain `milligram ir` to explicitly choose the approximate source-only fallback.
-The configuration defaults to the project's choice when omitted.
+model intact. Run `milligram ir --source-only` to explicitly choose the approximate source-only fallback.
+The configuration defaults to the project's choice when omitted. These options also work with
+`init` and `ir`. A first run saves them in `milligram.json`; with an existing policy they override
+that invocation only. Set `scan.projects` and `scan.configuration` in the policy to persist changes.
+Coverage and mutation commands also use the selected `scan.configuration`. Evaluated member
+fingerprints include the configuration, project identity, compiler flags, symbols and referenced
+assembly identities, so changing these makes old metrics stale and includes members in the next
+differential mutation run. Imported coverage reports must come from the same configuration.
+Coverage and mutation attribution for one linked file shared by several projects or target
+frameworks remains incomplete ([#64](https://github.com/jhnoor/milligram/issues/64)); those
+per-context scores are not yet reliable.
 
 On Windows, old-style projects also need a short tool installation path: Roslyn's .NET Framework
 host can time out when its `.exe.config` path reaches 260 characters. The command diagnoses deep
 installations; use a shorter `dotnet tool install ... --tool-path DIR` when this occurs.
 
 Project evaluation runs design-time targets and source generators, which can execute project tasks
-and write `obj` files. This is a manual `ir` option: startup, initialization, the live watcher and
-`doctor` still use the default source-only path. A later ordinary scan replaces the evaluated
-snapshot. Do not run this experiment alongside a live viewer of the same project. Automatic
-project selection, watcher invalidation and large project-graph measurements remain
-[#37](https://github.com/jhnoor/milligram/issues/37); this option does not complete that issue.
-The [project-scan checks](PROJECT_SCANNING.md) describe the automated fixtures and remaining work.
+and write `obj` files. Use `--source-only` or `"scan": { "mode": "sourceOnly" }` for an approximate
+scan without executing these tasks. That fallback combines source into one compilation, uses
+generated global usings from the latest build, and cannot reproduce project membership or conditions.
+
+Startup, refresh, metrics-triggered scans and `ir` share the policy's scan settings. The viewer
+also polls evaluated imports, linked sources, wildcard directories, additional generator inputs
+and metadata references, including inputs outside the examined root. Polling starts at two seconds
+and backs off when walking the inputs is expensive. Unrelated `bin`/`obj` output is ignored;
+explicit evaluated inputs in those directories remain tracked. Edits to `scan` settings re-evaluate
+the live diagram. A failed refresh retains the last good model and continues watching for repairs.
+The [project-scan checks](PROJECT_SCANNING.md) describe the fixtures and remaining large-graph and
+multi-target acceptance work in [#37](https://github.com/jhnoor/milligram/issues/37).
 
 File-local types keep separate identities and source cards even when their names match. Other
 repeated source type names are kept distinct when Roslyn provides separate symbols, and the scan
@@ -210,6 +228,7 @@ Optional keys:
 
 | Key | Purpose |
 |-----|---------|
+| `scan` | `mode`: `auto` (default), `msbuild` (require evaluated projects), or `sourceOnly` (approximate, no project tasks). `projects`: optional root-relative entry `.csproj` paths, replacing `src` selection; `configuration`: optional build configuration. |
 | `omitEdges` | Leave specific dependencies out of the drawing. |
 | `tests` | `{ "projects": [...], "filter": "..." }` — which test projects to run. The default is every detected test project. |
 | `thresholds` | `crapGood` / `crapBad` (5 / 30) and `mutationGood` / `mutationBad` (0.9 / 0.5). |
@@ -306,13 +325,18 @@ viewer, tell the agent to run `milligram mail`.
 |---------|------|
 | `milligram` | Viewer and agent. Options: `--port N` (1–65535, default 5170; tries up to 29 following ports), `--no-agent`, `--no-browser`, `--keep-agent`, `--project DIR`. |
 | `milligram init [--force]` | Write `milligram.json` from the source, inferring levels from the dependencies. |
-| `milligram ir [--msbuild FILE.csproj] [--configuration NAME]` | Rescan the source. Experimental `--msbuild` evaluates the selected project and its references; repeat it for more entry projects. |
+| `milligram ir` | Rescan with the policy's project selection and configuration. |
 | `milligram crap [--coverage file.xml]` | Run the tests with coverage (or read a Cobertura file) and score CRAP. |
 | `milligram mutate [--all] [files…]` | Mutation-test changed members, including initializers (every file if you list none). |
 | `milligram doctor` | Check the SDK, restore, test projects, coverage collector, Stryker, and the agent; print the fix for anything missing. Exits 1 if something is. |
 | `milligram mail [--peek]` | Print and remove mail for the agent. |
 | `milligram tell display <real\|proposalId>` / `tell notify "text"` | Send mail to the viewer. |
 | `milligram agent status\|start\|stop\|attach` | Manage the session selected by `agent.host`. With an unreadable policy, `stop` attempts both project backends. Native `attach` uses the current terminal; Ctrl+] then d detaches. |
+
+`milligram`, `init` and `ir` accept `--msbuild FILE.csproj` (repeatable), `--configuration NAME`,
+or `--source-only`. First-run initialization saves this selection; later overrides apply only to
+that invocation. Restart the viewer after changing the SDK selected by `global.json`; an existing
+process cannot replace loaded MSBuild assemblies and reports this instead of publishing a stale scan.
 
 The native host is under development in [AGENT_HOST.md](AGENT_HOST.md). To try it, set
 `"agent": { "host": "milligram" }`: `serve`, `agent start`, `agent status`, `agent stop` and

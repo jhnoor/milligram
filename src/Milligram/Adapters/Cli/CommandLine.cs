@@ -1,4 +1,5 @@
 using Milligram.Application;
+using Milligram.Domain.Policies;
 
 namespace Milligram.Adapters.Cli;
 
@@ -6,7 +7,7 @@ namespace Milligram.Adapters.Cli;
 public sealed class CommandLine
 {
     private static readonly HashSet<string> Flags =
-        ["no-agent", "no-browser", "all", "peek", "force", "keep-agent", "help", "version", "json"];
+        ["no-agent", "no-browser", "all", "peek", "force", "keep-agent", "help", "version", "json", "source-only"];
 
     private readonly Dictionary<string, List<string>> options = new(StringComparer.Ordinal);
 
@@ -51,17 +52,22 @@ public sealed class CommandLine
 
     public IReadOnlyList<string> Values(string option) => options.TryGetValue(option, out var values) ? values : [];
 
-    /// <summary>Project evaluation is explicit until startup and watcher invalidation support the same inputs.</summary>
-    public IReadOnlyList<string> ScanProjects()
+    /// <summary>A command override is also persisted when it creates the initial policy.</summary>
+    public ScanSettings? ScanOptions()
     {
-        if (!Has("msbuild") && !Has("configuration")) return [];
-        if (Command != "ir") throw new MilligramException("--msbuild and --configuration are supported only by `milligram ir`.");
-        if (!Has("msbuild")) throw new MilligramException("--configuration requires --msbuild FILE.csproj.");
+        if (!Has("msbuild") && !Has("configuration") && !Has("source-only")) return null;
+        if (Command is not ("ir" or "serve" or "init")) throw new MilligramException("Scan options are supported by `milligram`, `milligram init` and `milligram ir`.");
+        if (Has("source-only") && (Has("msbuild") || Has("configuration"))) throw new MilligramException("--source-only cannot be combined with --msbuild or --configuration.");
         if (Values("msbuild").Any(string.IsNullOrWhiteSpace) || Values("msbuild").Any(value => value.StartsWith("--", StringComparison.Ordinal)))
             throw new MilligramException("--msbuild requires a C# project file; repeat it to scan several entry projects.");
         if (Has("configuration") && (string.IsNullOrWhiteSpace(Value("configuration")) || Value("configuration")!.StartsWith("--", StringComparison.Ordinal)))
             throw new MilligramException("--configuration requires a configuration name, such as Debug or Release.");
-        return Values("msbuild");
+        return new ScanSettings
+        {
+            Mode = Has("source-only") ? ScanMode.SourceOnly : Has("msbuild") ? ScanMode.Msbuild : ScanMode.Auto,
+            Projects = Values("msbuild"),
+            Configuration = Value("configuration")
+        };
     }
 
     public int Port(int fallback)

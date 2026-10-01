@@ -22,6 +22,7 @@ public sealed class ProjectWatcher : IDisposable
     private readonly Debouncer debounce = new();
     private readonly WindowsSideWatcher? windowsSide;
     private readonly ChangePoller? poller;
+    private readonly ScanInputPoller scanInputs;
 
     public ProjectWatcher(ProjectPaths paths, Workspace workspace, ViewerActions actions, IViewerEvents events, bool windowsDrive = false)
     {
@@ -41,6 +42,8 @@ public sealed class ProjectWatcher : IDisposable
             if (windowsSide is null) poller = new ChangePoller(Watched, OnChange, TimeSpan.FromSeconds(2));
         }
         DeliverMail();
+        scanInputs = new ScanInputPoller(() => workspace.ScanInputs,
+            () => actions.Regenerate("Scan (project inputs changed)", inputsOnly: true), TimeSpan.FromSeconds(2));
     }
 
     /// <summary>How changes made outside Linux reach the viewer, for the banner; null when events see them all.</summary>
@@ -105,6 +108,7 @@ public sealed class ProjectWatcher : IDisposable
         else if (relative == ".milligram/model.json") debounce.Run("model", 300, ModelChanged);
         else if (relative.StartsWith(".milligram/metrics/", StringComparison.Ordinal)) debounce.Run("metrics", 300, MetricsChanged);
         else if (relative.StartsWith(".milligram/mail/to-viewer/", StringComparison.Ordinal)) debounce.Run("mail", 150, DeliverMail);
+        else if (workspace.ScanInputs is not null) return;
         else if ((relative.EndsWith(".cs", StringComparison.Ordinal) && IsScanned(relative)) || IsProjectInput(relative))
             debounce.Run("source", 800, SourceChanged);
         else if (IsProjectInput(relative + "/project.assets.json") || (IsScanned(relative, directory: true) && (Directory.Exists(fullPath) ||
@@ -115,6 +119,7 @@ public sealed class ProjectWatcher : IDisposable
     /// <summary>A folder move may raise no events for the source files it carries.</summary>
     private void DirectoryChanged(string fullPath)
     {
+        if (workspace.ScanInputs is not null) return;
         var relative = paths.Relative(fullPath);
         if (IsScanned(relative, directory: true) || IsProjectInput(relative + "/project.assets.json"))
             debounce.Run("source", 800, SourceChanged);
@@ -162,7 +167,7 @@ public sealed class ProjectWatcher : IDisposable
         events.Publish("metrics");
     }
 
-    private void SourceChanged() => actions.Regenerate("Scan (source changed)");
+    private void SourceChanged() => actions.Regenerate("Scan (source changed)", inputsOnly: workspace.ScanInputs is not null);
 
     private void DeliverMail()
     {
@@ -171,6 +176,7 @@ public sealed class ProjectWatcher : IDisposable
 
     public void Dispose()
     {
+        scanInputs.Dispose();
         windowsSide?.Dispose();
         poller?.Dispose();
         foreach (var watcher in watchers) watcher.Dispose();

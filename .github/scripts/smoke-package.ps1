@@ -35,6 +35,7 @@ function Invoke-Action([hashtable]$Body) {
 Invoke-DotNet tool install Milligram --tool-path $toolRoot --source $packageSource --version $Version
 $tool = Join-Path $toolRoot $(if ($IsWindows) { 'milligram.exe' } else { 'milligram' })
 & (Join-Path $PSScriptRoot 'project-scan-fixture.ps1') -ToolPath $tool
+& (Join-Path $PSScriptRoot 'project-live-fixture.ps1') -ToolPath $tool
 Push-Location $projectRoot
 try {
     Invoke-DotNet new classlib -n Smoke -o src/Smoke --no-restore

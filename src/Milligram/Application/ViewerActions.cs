@@ -66,9 +66,14 @@ public sealed class ViewerActions(
     }
 
     /// <summary>The returned task completes when the scan does, so `serve` can report what the first one found.</summary>
-    public Task Regenerate(string reason = "Scan") =>
+    public Task Regenerate(string reason = "Scan", bool inputsOnly = false) =>
         jobs.Enqueue(reason, (log, _) =>
         {
+            if (inputsOnly && workspace.ScanInputs is { } inputs && inputs.Version == inputs.ReadVersion())
+            {
+                if (workspace.ScanError is { } error) throw new MilligramException(error);
+                return Task.FromResult("Project inputs were already refreshed.");
+            }
             var model = workspace.Generate(log);
             events.Publish("model");
             return Task.FromResult($"{model.Types.Count} types, {model.Edges.Count} dependencies.");

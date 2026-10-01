@@ -17,16 +17,15 @@ public sealed class Composition
     private readonly Func<CancellationToken, Task<AgentPipeClient>> connectTerminal;
 
     public Composition(string root, IReadOnlyList<string> selfCommand, string version,
-        IReadOnlyList<string>? scanProjects = null, string? scanConfiguration = null)
+        ScanSettings? scanSettings = null)
     {
         Paths = new ProjectPaths(root);
         Events = new EventHub();
         var processes = new ProcessRunner();
-        ILanguageScanner scanner = scanProjects is { Count: > 0 }
-            ? new ProjectScanner(processes.EvaluateProjectsAsync, scanProjects, scanConfiguration)
-            : new CSharpScanner();
         var locator = new DotNetProjectLocator();
-        Workspace = new Workspace(Paths, scanner);
+        var scanner = new ConfiguredScanner(new CSharpScanner(), locator,
+            (files, configuration) => new ProjectScanner(processes.EvaluateProjectsAsync, files, configuration, () => processes.ScanInputs));
+        Workspace = new Workspace(Paths, scanner, scanSettings);
         Jobs = new JobQueue(Events);
         Companion = new ConfiguredCompanion(() => Workspace.Policy.Agent.Host,
             new TmuxCompanion(Paths, () => Workspace.Policy, selfCommand),
@@ -35,7 +34,7 @@ public sealed class Composition
         Crap = new CrapService(Workspace, locator, processes, new CoberturaReader());
         Mutation = new MutationService(Workspace, locator, processes, new StrykerReportReader());
         Actions = new ViewerActions(Workspace, new PolicyEditor(Workspace), Crap, Mutation, Jobs, Companion, Events);
-        Initializer = new ProjectInitializer(Paths, scanner, locator, new NewFilePublisher());
+        Initializer = new ProjectInitializer(Paths, scanner, locator, new NewFilePublisher(), scanSettings);
         WatchLimits = new DrvFs();
         Doctor = new Doctor(Workspace, Crap, locator, processes, Companion, WatchLimits);
         Agent = new AgentLauncher(Workspace, Companion);

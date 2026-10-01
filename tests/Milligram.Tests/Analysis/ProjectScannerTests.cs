@@ -2,12 +2,65 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Milligram.Analysis.CSharp;
 using Milligram.Application;
+using Milligram.Domain.Metrics;
 using Milligram.Domain.Model;
 
 namespace Milligram.Tests.Analysis;
 
 public class ProjectScannerTests
 {
+    [Theory]
+    [InlineData("configuration")]
+    [InlineData("symbols")]
+    [InlineData("optimization")]
+    public void AChangedCompilerContextMakesExistingMetricsStaleEvenWhenSourceIsUnchanged(string change)
+    {
+        using var root = new TempProject();
+        var project = Project(root, "App", [("A.cs", "public class A { public int Read() => 1; }")], ["DEBUG", "TRACE"]);
+        var request = Request(root);
+        var original = ProjectScanner.Collect([project], request, _ => { });
+        var type = Assert.Single(original.Types);
+        var member = Assert.Single(type.Members);
+        var hits = new LineHits(new Dictionary<string, IReadOnlyDictionary<int, int>> { ["A.cs"] = new Dictionary<int, int> { [1] = 1 } });
+        var crap = Crap.Compute(original, hits, DateTimeOffset.UtcNow);
+        var mutation = MutationMapper.Merge(MutationSnapshot.Empty, original, [], [member.Id], ["A.cs"], DateTimeOffset.UtcNow);
+        Assert.False(TypeMetrics.Crap(type, crap)!.Stale);
+        Assert.False(TypeMetrics.Mutation(type, mutation)!.Stale);
+
+        var reordered = Project(root, "App", [("A.cs", "public class A { public int Read() => 1; }")], ["TRACE", "DEBUG"]);
+        Assert.Equal(member.Hash, Assert.Single(Assert.Single(Scan(root, [reordered]).Types).Members).Hash);
+        if (change == "configuration") request = request with { Scan = request.Scan with { Configuration = "Release" } };
+        else if (change == "symbols") project = Project(root, "App", [("A.cs", "public class A { public int Read() => 1; }")], ["TRACE"]);
+        else project = project with { Compilation = project.Compilation.WithOptions(project.Compilation.Options.WithOptimizationLevel(OptimizationLevel.Release)) };
+        var changed = Assert.Single(ProjectScanner.Collect([project], request, _ => { }).Types);
+        Assert.True(TypeMetrics.Crap(changed, crap)!.Stale);
+        Assert.True(TypeMetrics.Mutation(changed, mutation)!.Stale);
+        Assert.Single(MutationMapper.Changed(mutation, changed.Members));
+    }
+
+    [Fact]
+    public void FailedEvaluationPublishesTheNewInputMonitorInsteadOfThePreviousCompilationSnapshot()
+    {
+        using var root = new TempProject(("App.csproj", "<Project/>"));
+        var previous = new Milligram.Adapters.Files.EvaluatedInputs().Complete();
+        var next = new Milligram.Adapters.Files.EvaluatedInputs().Complete();
+        IScanInputs? observed = null;
+        var project = Project(root, "App", [("A.cs", "class A {}")]) with { Inputs = previous };
+        var scanner = new ProjectScanner((_, _, _) =>
+        {
+            if (observed is not null) { observed = next; throw new InvalidOperationException("missing import"); }
+            observed = previous;
+            return Task.FromResult<IReadOnlyList<ProjectCompilation>>([project]);
+        }, ["App.csproj"], inputState: () => observed);
+        scanner.Scan(Request(root));
+        Assert.Same(previous, scanner.Inputs);
+        Assert.Throws<MilligramException>(() => scanner.Scan(Request(root)));
+        Assert.Same(next, scanner.Inputs);
+        var withoutProvider = new ProjectScanner((_, _, _) => Task.FromResult<IReadOnlyList<ProjectCompilation>>([project]), ["App.csproj"]);
+        withoutProvider.Scan(Request(root));
+        Assert.Same(previous, withoutProvider.Inputs);
+    }
+
     [Fact]
     public void AProjectWithDuplicateDeclarationsReportsTheSourceErrorInsteadOfAskingForEvaluation()
     {
@@ -170,7 +223,7 @@ public class ProjectScannerTests
 
         var error = Assert.Throws<MilligramException>(() => workspace.Generate());
         Assert.Contains("SDK unavailable", error.Message, StringComparison.Ordinal);
-        Assert.Contains("without --msbuild", error.Message, StringComparison.Ordinal);
+        Assert.Contains("--source-only", error.Message, StringComparison.Ordinal);
         Assert.Equal("Previous", workspace.Model.Title);
         Assert.Equal("Previous", JsonFile.Read<CodeModel>(paths.ModelFile)!.Title);
     }
