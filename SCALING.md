@@ -50,10 +50,10 @@ boxes appeared separately; opening the Version 1 shim's card and source displaye
 file and declaration. A small file-local-type fixture also verified separate member cards and
 edges for two identically named helpers.
 
-The unfiltered root view contained 11,464 nodes and 13,484 edges. It rendered, but this is too
-crowded for a useful first screen; namespace focus is necessary. [#51](https://github.com/jhnoor/milligram/issues/51)
-tracks this onboarding limit, especially while imported test-project settings leave fixtures in
-the input. All 28,153 type IDs and 308,716 member IDs in the saved model were unique.
+The original unfiltered root view contained 11,464 nodes and 13,484 edges. It rendered, but was
+too crowded for a useful first screen. The bounded overview measured below addresses
+[#51](https://github.com/jhnoor/milligram/issues/51). Imported test-project settings still leave
+fixtures in the input. All 28,153 type IDs and 308,716 member IDs in the saved model were unique.
 
 ## Reproduce
 
@@ -155,6 +155,47 @@ checkout without `milligram.json`. Running `init` first measures existing-policy
 The Windows measurement predates the follow-up correction to atomic policy creation on Unix;
 that correction changes file publication, not scan reuse.
 
+## Bounded overview
+
+The follow-up for #51 pages views that would expand beyond 80 interior boxes. The first
+page shows up to 20 real namespaces or types, with a dotted summary for other entries.
+At most 12 exterior boxes appear, including a summary when needed. Auto mode packs large
+views into a grid; dependency markers retain incoming/outgoing pairs and their reference
+counts. Collapsed boxes show internal reference counts and level violations. Small views
+retain the existing expanded layout. Names can be filtered on each level without editing policy.
+
+On the same pinned model, the root now contains **29 nodes and 89 dependency bundles**.
+Its bundles plus collapsed counts preserve all **2,741,410 references**, including **19,669
+violating references**, from the model's 225,090 pairs. These inferred-level violations include
+the source-fixture and binding limitations already described; they are not a production-only
+architecture assessment.
+
+Local headless Chrome at 1440 × 1000 measured the existing model's first fitted overview in
+**1,158 ms**, the next page in **378 ms**, and filtering for `Microsoft` in **867 ms**. Opening
+that namespace finished **369 ms** after the search. These are single desktop observations
+of API requests plus browser layout and drawing, excluding process startup, cached-model
+deserialization and source scanning. They are not cross-platform performance guarantees.
+
+The browser check drills through `Microsoft` → `AspNetCore` → `Mvc` → `Razor`, finds all three
+`RenderAsyncDelegate` identities, and opens a card and its source. A generated fixture has
+500 global types and 120 nested namespaces: 620 types and references. At 1000 × 700, its
+first model arrives over SSE after the empty screen and fits automatically; first layout was
+356 ms, paging 96 ms, and filtering for the last global type took 88 ms; its card and source also opened.
+The fixture also verifies reference totals, red violations, source links and cameras across
+pages, filters, namespace navigation, browser history and proposal switches.
+
+Run the generated check with:
+
+```bash
+dotnet run --project tests/Milligram.Browser.Integration -c Release -- chrome --diagram
+```
+
+For the pinned checkout's already-generated model, append
+`--cached-project /absolute/path/to/roslyn-scale`. This fixture reads the cached model rather
+than running Roslyn's build or a fresh scan. Append `--serve` for manual inspection; screenshots
+are written under ignored `artifacts/browser/` during automated checks. The generated check
+also runs across the browser CI matrix.
+
 ## Remaining limits
 
 - [Project input evaluation (#37)](https://github.com/jhnoor/milligram/issues/37): all source is
@@ -165,6 +206,5 @@ that correction changes file publication, not scan reuse.
   are now released, with the measured reduction above. Parsing, compilation and the cached model
   still consume substantial memory; this does not make the measured checkout
   suitable for a low-memory machine.
-- [Initial overview (#51)](https://github.com/jhnoor/milligram/issues/51): avoiding a second
-  scan does not reduce the 11,464-node unfiltered root view. Namespace focus remains necessary
-  for this source tree; a useful initial overview is separate work.
+- Dense detailed arrows can still be hard to read. Use the overview, filter names and open
+  namespaces for detail; an actual company pilot remains necessary to assess day-to-day use.

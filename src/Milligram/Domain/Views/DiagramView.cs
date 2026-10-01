@@ -7,7 +7,7 @@ public sealed record ContextInfo(string Id, string Name, bool IsProposal);
 
 public sealed record NodeRef(string Id, string Label);
 
-public enum ViewNodeKind { Component, Package, Type, External, Foreign }
+public enum ViewNodeKind { Component, Package, Type, External, Foreign, Summary }
 
 /// <summary>One box on screen. <see cref="Parent"/> is the containing component, if any.</summary>
 public sealed record ViewNode
@@ -30,6 +30,8 @@ public sealed record ViewNode
 
     public bool IsGroup { get; init; }
     public int TypeCount { get; init; }
+    public int InternalReferences { get; init; }
+    public int InternalViolations { get; init; }
     public IReadOnlyList<string> Contents { get; init; } = [];
     public IReadOnlyList<ViewMember> Members { get; init; } = [];
     public Grades Grades { get; init; } = Grades.Unknown;
@@ -49,7 +51,13 @@ public sealed record DiagramView(
     IReadOnlyList<NodeRef> Breadcrumbs,
     IReadOnlyList<ViewNode> Nodes,
     IReadOnlyList<ViewEdge> Edges,
-    int? MaxLevel);
+    int? MaxLevel)
+{
+    public ViewPage? Page { get; init; }
+}
+
+/// <summary>Paging changes only presentation; other entries remain represented in the dependency graph.</summary>
+public sealed record ViewPage(int Index, int Size, int Total, int Matches, string Query);
 
 public sealed record CardMember(
     string Id,
