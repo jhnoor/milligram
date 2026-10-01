@@ -12,10 +12,23 @@ internal sealed class TypeAccumulator(INamedTypeSymbol symbol, string root)
     private readonly Dictionary<string, MemberNode> members = [];
 
     public INamedTypeSymbol Symbol { get; } = symbol;
-    public string Id { get; } = SymbolNames.TypeId(symbol);
+    public string Id { get; private set; } = SymbolNames.TypeId(symbol);
+
+    public SourceSpan FirstSpan => spans[0];
 
     /// <summary>Syntax to walk for dependencies, with the semantic model that binds it.</summary>
     public List<(SyntaxNode Node, SemanticModel Model)> Parts { get; } = [];
+
+    /// <summary>File-local and repeated names need distinct metric and edge identities without changing their display names.</summary>
+    public void QualifyId(int occurrence)
+    {
+        var original = Id;
+        Id += "@" + Uri.EscapeDataString(FirstSpan.File);
+        if (occurrence > 1) Id += "#" + occurrence.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var renamed = members.Values.Select(m => m with { Id = Id + m.Id[original.Length..] }).ToList();
+        members.Clear();
+        foreach (var member in renamed) members.Add(member.Id, member);
+    }
 
     public void AddPart(SyntaxNode node, SemanticModel model)
     {
@@ -90,7 +103,7 @@ internal sealed class TypeCollector(CSharpCompilation compilation, string root)
     private readonly Dictionary<INamedTypeSymbol, TypeAccumulator> types = new(SymbolEqualityComparer.Default);
 
     /// <summary><paramref name="onTree"/> runs after each file, so the caller can report binding progress.</summary>
-    public IReadOnlyDictionary<INamedTypeSymbol, TypeAccumulator> Collect(IEnumerable<SyntaxTree> trees, Action? onTree = null)
+    public IReadOnlyDictionary<INamedTypeSymbol, TypeAccumulator> Collect(IEnumerable<SyntaxTree> trees, Action? onTree = null, Action<string>? progress = null)
     {
         foreach (var tree in trees)
         {
@@ -108,7 +121,31 @@ internal sealed class TypeCollector(CSharpCompilation compilation, string root)
                 Get(entry.ContainingType).AddTopLevelStatements(unit, model);
             onTree?.Invoke();
         }
+        QualifyIds(progress);
         return types;
+    }
+
+    /// <summary>File-local ids stay stable when another file is added; invalid repeated declarations remain individually inspectable.</summary>
+    private void QualifyIds(Action<string>? progress)
+    {
+        var repeated = new List<string>();
+        foreach (var group in types.Values.GroupBy(t => t.Id, StringComparer.Ordinal))
+        {
+            var ambiguous = group.Count(t => !t.Symbol.IsFileLocal) > 1;
+            if (ambiguous) repeated.Add(group.Key);
+            var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var type in group.Where(t => ambiguous || t.Symbol.IsFileLocal)
+                .OrderBy(t => t.FirstSpan.File, StringComparer.Ordinal).ThenBy(t => t.FirstSpan.Start))
+            {
+                var occurrence = occurrences.GetValueOrDefault(type.FirstSpan.File) + 1;
+                occurrences[type.FirstSpan.File] = occurrence;
+                type.QualifyId(occurrence);
+            }
+        }
+        if (repeated.Count == 0) return;
+        progress?.Invoke($"Repeated source type names: {repeated.Count}. File-qualified IDs keep declarations separate; project/configuration binding still needs MSBuild evaluation.");
+        foreach (var name in repeated.Order(StringComparer.Ordinal).Take(10)) progress?.Invoke($"  Repeated source type: {name}");
+        if (repeated.Count > 10) progress?.Invoke($"  and {repeated.Count - 10} more repeated names.");
     }
 
     private TypeAccumulator Get(INamedTypeSymbol symbol)
