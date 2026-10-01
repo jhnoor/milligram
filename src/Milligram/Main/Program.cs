@@ -49,7 +49,7 @@ public static class Program
     private static async Task<int> ServeAsync(Composition c, CommandLine line)
     {
         var preferredPort = line.Port(DefaultPort);
-        var initialization = c.Initializer.Initialize(force: false);
+        var initialization = c.Initializer.Initialize(force: false, Console.WriteLine);
         if (initialization is not null)
         {
             Console.WriteLine("Wrote milligram.json from the namespaces found in the source.");
@@ -93,7 +93,7 @@ public static class Program
 
     private static int Init(Composition c, CommandLine line)
     {
-        if (c.Initializer.Initialize(line.Has("force")) is not { } initialization)
+        if (c.Initializer.Initialize(line.Has("force"), Console.WriteLine) is not { } initialization)
         {
             Console.WriteLine("milligram.json already exists (use --force to replace it).");
             return 0;

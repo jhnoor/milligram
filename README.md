@@ -80,7 +80,8 @@ cd /path/to/your/csharp/project
 milligram
 ```
 
-The first run writes `milligram.json` from the namespaces it finds. It also infers the
+The first run reports parsing, binding and dependency progress while it scans, then writes
+`milligram.json` from the namespaces it finds. It also infers the
 **levels** from the dependencies: a namespace that depends on nothing is innermost, and each of
 the others sits just outside the namespaces it uses. When namespaces depend on each other in a
 cycle, Milligram breaks the cycle at its lightest link (the fewest references) and leaves that
