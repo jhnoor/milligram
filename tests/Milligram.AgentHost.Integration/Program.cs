@@ -22,6 +22,7 @@ internal static class Program
         Console.OutputEncoding = new UTF8Encoding(false);
         if (args.FirstOrDefault() == "--process-child") return await ProcessRunnerFixture.Child(args[1..]);
         if (args.FirstOrDefault() == "--process-fixture") { await ProcessRunnerFixture.Run(); return 0; }
+        if (args.FirstOrDefault() == "--watcher-fixture") { await WindowsWatcherFixture.Run(); return 0; }
         if (args.FirstOrDefault() == "--detached-fixture") { await DetachedHostFixture.Run(); return 0; }
         if (args.FirstOrDefault() == "--child") return await Child(args);
         if (args.FirstOrDefault() == "--record-terminal")
@@ -48,6 +49,7 @@ internal static class Program
         {
             if (ProcessRunner.TerminalIssue() is { } issue) throw new InvalidOperationException(issue);
             await ProcessRunnerFixture.Run();
+            await WindowsWatcherFixture.Run();
             foreach (var hosted in new[] { false, true })
             {
                 await Scenario(tree: false, parentExits: false, hosted);

@@ -92,14 +92,14 @@ public sealed partial class ProcessRunner : IProcessRunner
     /// Starts a process that runs alongside this one and hands over each line it prints, in UTF-8. Stopping it closes
     /// the process's input, which tells a well-behaved child to finish, and kills it if it hasn't within two seconds.
     /// </summary>
-    public static Followed? Follow(string command, IReadOnlyList<string> args, Action<string> onLine)
+    public static Followed? Follow(string command, IReadOnlyList<string> args, Action<string> onLine, Action<string>? onError = null)
     {
         var info = StartInfo(command, args, Environment.CurrentDirectory, redirect: true);
         info.RedirectStandardInput = true;
         info.StandardOutputEncoding = System.Text.Encoding.UTF8;
         var process = new Process { StartInfo = info };
         process.OutputDataReceived += (_, e) => { if (e.Data is { } line) onLine(line); };
-        process.ErrorDataReceived += (_, _) => { };
+        process.ErrorDataReceived += (_, e) => { if (e.Data is { } line) onError?.Invoke(line); };
         try
         {
             process.Start();
@@ -117,15 +117,30 @@ public sealed partial class ProcessRunner : IProcessRunner
     public sealed class Followed(Process process) : IDisposable
     {
         /// <summary>True when the process finished on its own once its input closed.</summary>
-        public bool Stop()
+        public bool Stop() => Stop(out _);
+
+        /// <summary>Explains which bounded shutdown stage failed without recording the command or its arguments.</summary>
+        public bool Stop(out string diagnostic)
         {
+            var clock = Stopwatch.StartNew();
+            var stage = "Closing input";
             try
             {
                 process.StandardInput.Close();
-                if (process.WaitForExit(2000)) return true;
+                stage = "Waiting for exit";
+                if (process.WaitForExit(2000))
+                {
+                    diagnostic = $"Exited after {clock.ElapsedMilliseconds} ms (code {process.ExitCode}).";
+                    return true;
+                }
+                stage = "Stopping the process tree";
                 process.Kill(entireProcessTree: true);
+                diagnostic = $"The 2000 ms exit grace period elapsed; stopped the process tree after {clock.ElapsedMilliseconds} ms.";
             }
-            catch (Exception e) when (e is InvalidOperationException or IOException) { }
+            catch (Exception e) when (e is InvalidOperationException or IOException)
+            {
+                diagnostic = $"{stage} failed after {clock.ElapsedMilliseconds} ms: {e.GetType().Name}: {e.Message}";
+            }
             return false;
         }
 

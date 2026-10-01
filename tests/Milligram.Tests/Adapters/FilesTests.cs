@@ -179,8 +179,17 @@ public class WindowsSideWatcherTests
     {
         using var project = new TempProject(("src/A.cs", "a"), ("src/obj/B.cs", "b"));
         var lines = new System.Collections.Concurrent.BlockingCollection<string>();
-        var script = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(WindowsSideWatcher.Script(project.Root)));
-        var watcher = ProcessRunner.Follow("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", script], lines.Add);
+        var errors = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        var source = "[Console]::Error.WriteLine('PowerShell ' + $PSVersionTable.PSVersion + '; CLR ' + [Environment]::Version)\n"
+            + WindowsSideWatcher.Script(project.Root) + "\n[Console]::Error.WriteLine('Watcher script completed.')\n";
+        var script = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(source));
+        var watcher = ProcessRunner.Follow("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", script],
+            lines.Add, line =>
+            {
+                line = line.Replace(project.Root, "<fixture>", StringComparison.OrdinalIgnoreCase);
+                errors.Enqueue(line.Length > 1024 ? line[..1024] : line);
+                while (errors.Count > 8) errors.TryDequeue(out _);
+            });
         Assert.NotNull(watcher);
         try
         {
@@ -200,7 +209,9 @@ public class WindowsSideWatcherTests
                 reported.Add(line);
             }
             Assert.DoesNotContain(Path.Combine(project.Root, "src", "obj", "B.cs"), reported);
-            Assert.True(watcher.Stop(), "the watcher kept running after its input closed");
+            var stopped = watcher.Stop(out var diagnostic);
+            Assert.True(stopped, diagnostic + Environment.NewLine + string.Join(Environment.NewLine, errors));
+            Assert.EndsWith("(code 0).", diagnostic, StringComparison.Ordinal);
         }
         finally
         {

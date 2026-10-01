@@ -30,6 +30,8 @@ internal static class ProcessRunnerFixture
         await CaptureTimeout();
         await OutputBeforeExit(callbackFailure: false);
         await OutputBeforeExit(callbackFailure: true);
+        await FollowedExit(ignoreInput: false);
+        await FollowedExit(ignoreInput: true);
         Console.WriteLine("PASS: redirected output drains, inherited pipes are bounded, cancellation joins readers and preserves owned descendants");
     }
 
@@ -43,6 +45,22 @@ internal static class ProcessRunnerFixture
         }
         var root = args[1];
         JsonFile.Write(Path.Combine(root, args[0] == "descendant" ? "descendant.json" : "parent.json"), new Identity(Environment.ProcessId));
+        if (args[0] is "follow" or "ignore-input")
+        {
+            if (args[0] == "ignore-input")
+            {
+                if (!ProcessRunner.Launch(Program.Dotnet(), Args("descendant", root), root)) return 1;
+                await Marker(root, "descendant.json");
+            }
+            Console.WriteLine("followed ready");
+            if (args[0] == "ignore-input") await Marker(root, "release");
+            else
+            {
+                await Console.In.ReadLineAsync();
+                Console.Error.WriteLine("input closed");
+            }
+            return 17;
+        }
         if (args[0] == "hold")
         {
             if (!ProcessRunner.Launch(Program.Dotnet(), Args("descendant", root), root)) return 1;
@@ -77,6 +95,41 @@ internal static class ProcessRunnerFixture
         }
         await Marker(root, "release");
         return 0;
+    }
+
+    private static async Task FollowedExit(bool ignoreInput)
+    {
+        var root = TemporaryRoot();
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var errors = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var followed = ProcessRunner.Follow(Program.Dotnet(), Args(ignoreInput ? "ignore-input" : "follow", root),
+            line => { if (line == "followed ready") ready.TrySetResult(); }, line => errors.TrySetResult(line))
+            ?? throw new InvalidOperationException("Could not start the followed child.");
+        Process? child = null;
+        Process? descendant = null;
+        try
+        {
+            await ready.Task.WaitAsync(Deadline);
+            child = await ChildProcess(root, "parent.json");
+            if (ignoreInput) descendant = await ChildProcess(root, "descendant.json");
+            var graceful = followed.Stop(out var diagnostic);
+            Require(graceful != ignoreInput, diagnostic);
+            await child.WaitForExitAsync().WaitAsync(Deadline);
+            if (descendant is not null) await descendant.WaitForExitAsync().WaitAsync(Deadline);
+            if (ignoreInput) Require(diagnostic.Contains("2000 ms exit grace period elapsed", StringComparison.Ordinal), diagnostic);
+            else
+            {
+                Require(diagnostic.EndsWith("(code 17).", StringComparison.Ordinal), diagnostic);
+                Require(await errors.Task.WaitAsync(Deadline) == "input closed", "Lost the followed child's stderr.");
+            }
+        }
+        finally
+        {
+            followed.Dispose();
+            await Finish(child);
+            await Finish(descendant);
+            Delete(root);
+        }
     }
 
     private static async Task HeldPipes(bool capture, bool cancel)
