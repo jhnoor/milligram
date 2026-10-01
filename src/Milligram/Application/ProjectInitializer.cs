@@ -35,7 +35,7 @@ public sealed record Initialization(Policy Policy, IReadOnlyList<DependencyEdge>
 }
 
 /// <summary>Writes a first milligram.json from what is actually in the source: no invented components.</summary>
-public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scanner, IProjectLocator locator)
+public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scanner, IProjectLocator locator, INewFilePublisher publisher)
 {
     /// <summary>Levels come from the dependencies (see <see cref="Layering"/>); boxes are ordered outer first, as drawn.</summary>
     public Initialization Propose(Action<string>? progress = null)
@@ -76,8 +76,15 @@ public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scan
         if (File.Exists(paths.PolicyFile) && !force) return null;
         var initialization = Propose(progress);
         var text = PolicyText.Starter(initialization);
-        if (force) JsonFile.WriteText(paths.PolicyFile, text);
-        else if (!JsonFile.TryCreateText(paths.PolicyFile, text)) return null;
+        try
+        {
+            if (force) JsonFile.WriteText(paths.PolicyFile, text);
+            else if (!JsonFile.TryCreateText(paths.PolicyFile, text, publisher)) return null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new MilligramException($"Could not write {paths.PolicyFile}: {e.Message}");
+        }
         return initialization;
     }
 

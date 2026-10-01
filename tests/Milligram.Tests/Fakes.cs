@@ -4,6 +4,11 @@ using Milligram.Domain.Metrics;
 
 namespace Milligram.Tests;
 
+internal sealed class FakeNewFilePublisher(Func<string, string, bool> publish) : INewFilePublisher
+{
+    public bool TryPublish(string completedFile, string destination) => publish(completedFile, destination);
+}
+
 /// <summary>Records every command and lets a test decide what each one does (e.g. write a report).</summary>
 internal sealed class FakeProcessRunner(Func<string, IReadOnlyList<string>, string, int>? onRun = null) : IProcessRunner
 {

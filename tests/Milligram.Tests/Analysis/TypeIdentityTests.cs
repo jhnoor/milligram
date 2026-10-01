@@ -1,3 +1,4 @@
+using Milligram.Adapters.Files;
 using Milligram.Analysis.CSharp;
 using Milligram.Application;
 using Milligram.Domain.Model;
@@ -14,7 +15,7 @@ public class TypeIdentityTests
             ("B.cs", "namespace Shop; public class Second { private Helper Make() => new(); } file class Helper { public Second Get() => new(); }"));
         var paths = new ProjectPaths(project.Root);
         var scanner = new CSharpScanner();
-        Assert.NotNull(new ProjectInitializer(paths, scanner, new FakeProjectLocator()).Initialize(force: false));
+        Assert.NotNull(new ProjectInitializer(paths, scanner, new FakeProjectLocator(), new NewFilePublisher()).Initialize(force: false));
         var workspace = new Workspace(paths, scanner);
         workspace.Load();
         var model = workspace.Generate();

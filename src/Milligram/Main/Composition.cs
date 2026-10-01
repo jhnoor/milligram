@@ -32,7 +32,7 @@ public sealed class Composition
         Crap = new CrapService(Workspace, locator, processes, new CoberturaReader());
         Mutation = new MutationService(Workspace, locator, processes, new StrykerReportReader());
         Actions = new ViewerActions(Workspace, new PolicyEditor(Workspace), Crap, Mutation, Jobs, Companion, Events);
-        Initializer = new ProjectInitializer(Paths, scanner, locator);
+        Initializer = new ProjectInitializer(Paths, scanner, locator, new NewFilePublisher());
         WatchLimits = new DrvFs();
         Doctor = new Doctor(Workspace, Crap, locator, processes, Companion, WatchLimits);
         Agent = new AgentLauncher(Workspace, Companion);

@@ -3,6 +3,12 @@ using Milligram.Domain.Model;
 
 namespace Milligram.Application;
 
+/// <summary>Atomically publishes a completed file only if no destination exists; the caller removes the temporary name.</summary>
+public interface INewFilePublisher
+{
+    bool TryPublish(string completedFile, string destination);
+}
+
 public sealed record ScanRequest(
     string Root,
     string SourceDirectory,

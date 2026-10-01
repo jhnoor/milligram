@@ -15,7 +15,7 @@ public class StartupScanTests
         var paths = new ProjectPaths(project.Root);
         using var inputs = new InitializationInputs(paths);
         var scanner = new CountingScanner();
-        var initialization = new ProjectInitializer(paths, scanner, new FakeProjectLocator()).Initialize(false)!;
+        var initialization = new ProjectInitializer(paths, scanner, new FakeProjectLocator(), new NewFilePublisher()).Initialize(false)!;
         var workspace = new Workspace(paths, scanner);
         workspace.Load();
         var metrics = workspace.Metrics;
@@ -51,7 +51,7 @@ public class StartupScanTests
         {
             AfterFirstScan = () => project.Write("Order.cs", "namespace Shop; public class Order { } public class Added { }"),
         };
-        var initialization = new ProjectInitializer(paths, scanner, new FakeProjectLocator()).Initialize(false)!;
+        var initialization = new ProjectInitializer(paths, scanner, new FakeProjectLocator(), new NewFilePublisher()).Initialize(false)!;
         Assert.Single(initialization.Model!.Types);
         var workspace = new Workspace(paths, scanner);
         workspace.Load();
@@ -75,7 +75,7 @@ public class StartupScanTests
         using var project = new TempProject(("Order.cs", "namespace Shop; public class Order { }"));
         var paths = new ProjectPaths(project.Root);
         var scanner = new CountingScanner();
-        var initialization = new ProjectInitializer(paths, scanner, new FakeProjectLocator()).Initialize(false)!;
+        var initialization = new ProjectInitializer(paths, scanner, new FakeProjectLocator(), new NewFilePublisher()).Initialize(false)!;
         var workspace = new Workspace(paths, scanner);
         workspace.Load();
         var original = workspace.Policy;
@@ -104,7 +104,7 @@ public class StartupScanTests
         using var project = new TempProject(("Order.cs", "namespace Shop; public class Order { }"));
         var paths = new ProjectPaths(project.Root);
         var scanner = new CountingScanner();
-        var initialization = new ProjectInitializer(paths, scanner, new FakeProjectLocator()).Initialize(false)!;
+        var initialization = new ProjectInitializer(paths, scanner, new FakeProjectLocator(), new NewFilePublisher()).Initialize(false)!;
         var workspace = new Workspace(paths, scanner);
         workspace.Load();
         workspace.EditPolicy(policy => policy with { Levels = [["Domain"]], Editor = "editor {file}" });
@@ -137,7 +137,7 @@ public class StartupScanTests
         using var project = new TempProject(("Order.cs", "namespace Shop; public class Order { }"));
         var paths = new ProjectPaths(project.Root);
         var scanner = new CountingScanner();
-        var initialization = new ProjectInitializer(paths, scanner, new FakeProjectLocator()).Initialize(false)!;
+        var initialization = new ProjectInitializer(paths, scanner, new FakeProjectLocator(), new NewFilePublisher()).Initialize(false)!;
         var workspace = new Workspace(paths, scanner);
         workspace.Load();
         var events = new FakeEvents();

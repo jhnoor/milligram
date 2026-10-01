@@ -133,7 +133,7 @@ through the API. It excludes browser layout time.
 | Build | Scans | Initial model ready | Peak working set | Peak private memory |
 |-------|-------|---------------------|------------------|---------------------|
 | Streaming JSON baseline | 2 | 763.2 s | 7.55 GiB | 7.59 GiB |
-| Reuse unchanged initialization | 1 | 388.4 s | 6.77 GiB | 6.77 GiB |
+| Reuse unchanged initialization (`6d49b1d`) | 1 | 388.4 s | 6.77 GiB | 6.77 GiB |
 
 Startup time fell **49.1%** in this pair. These remain single desktop measurements, with
 filesystem-cache and background-activity effects. The candidate's startup job explicitly
@@ -152,6 +152,8 @@ initialization, concurrent policy creation, and existing-policy startup.
 
 To reproduce first-run startup, invoke `milligram serve --no-agent --no-browser` in a fresh
 checkout without `milligram.json`. Running `init` first measures existing-policy startup instead.
+The Windows measurement predates the follow-up correction to atomic policy creation on Unix;
+that correction changes file publication, not scan reuse.
 
 ## Remaining limits
 
