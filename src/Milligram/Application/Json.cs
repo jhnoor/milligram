@@ -52,16 +52,24 @@ public static class JsonFile
     }
 
     public static void Write<T>(string path, T value) =>
-        WriteText(path, JsonSerializer.Serialize(value, MilligramJson.Options) + "\n");
+        WriteAtomic(path, temp =>
+        {
+            using var stream = File.Create(temp);
+            JsonSerializer.Serialize(stream, value, MilligramJson.Options);
+            stream.WriteByte((byte)'\n');
+        });
 
     /// <summary>Writes to a temporary sibling and renames, so readers never see half a file.</summary>
-    public static void WriteText(string path, string text)
+    public static void WriteText(string path, string text) =>
+        WriteAtomic(path, temp => File.WriteAllText(temp, text));
+
+    private static void WriteAtomic(string path, Action<string> write)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
-        File.WriteAllText(temp, text);
         try
         {
+            write(temp);
             Replace(temp, path);
         }
         catch
