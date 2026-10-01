@@ -13,15 +13,26 @@ public sealed class AgentPipeClient : IAsyncDisposable
 
     public HostHello? Greeting { get; private init; }
 
-    public static async Task<AgentPipeClient> ConnectAsync(string endpoint, HostHello greeting, CancellationToken cancellation)
+    public static Task<AgentPipeClient> ConnectAsync(string endpoint, HostHello greeting, CancellationToken cancellation) =>
+        ConnectAsync(endpoint, greeting, cancellation, cancellation, null);
+
+    internal static async Task<AgentPipeClient> ConnectAsync(string endpoint, HostHello greeting,
+        CancellationToken connectionCancellation, CancellationToken cancellation, AgentProbeTrace? trace)
     {
         var pipe = new NamedPipeClientStream(".", endpoint, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         try
         {
-            await pipe.ConnectAsync(cancellation);
-            await HostProtocol.WriteAsync(pipe, HostProtocol.Json(HostFrameKind.Hello, greeting), cancellation);
+            trace?.Mark("pipe-created");
+            await pipe.ConnectAsync(connectionCancellation);
+            trace?.Mark("connected");
+            var hello = HostProtocol.Json(HostFrameKind.Hello, greeting);
+            trace?.Mark("serialized");
+            await HostProtocol.WriteAsync(pipe, hello, cancellation);
+            trace?.Mark("sent");
             var response = await HostProtocol.ReadAsync(pipe, cancellation) ?? throw new EndOfStreamException("The agent host closed before greeting the client.");
+            trace?.Mark("received");
             var host = HostProtocol.ReadHello(response);
+            trace?.Mark("validated");
             if (host.Protocol != greeting.Protocol)
                 throw new MilligramException($"Agent host uses protocol {host.Protocol} (Milligram {host.Version}); restart it with a matching Milligram version.");
             return new AgentPipeClient(pipe) { Greeting = host };

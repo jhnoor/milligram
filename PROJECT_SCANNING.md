@@ -48,6 +48,19 @@ It checks optional imports appearing/disappearing, idle stability, failed-import
 and recovery after selecting another project whose external import is initially missing. The
 server process is stopped in `finally`.
 
+`framework-scan-fixture.ps1` runs against the installed package in the same three-platform smoke.
+It restores the real .NET Framework 4.8 reference-assembly package, builds two small metadata-only
+dependencies, and checks conditional/property-expanded HintPaths in an old-style project. It also
+checks a pair of SDK projects targeting both net48 and net10.0: each framework retains its own
+types, matching project-reference edges and framework APIs (`HttpApplication` versus `Lock`).
+Removing a referenced DLL must report incomplete bindings without inventing its edge; restoring
+it recovers the dependency. The default scanner does not substitute .NET 10's core library.
+
+The separately runnable `legacy-scan-fixture.ps1` fetches the pinned Music Store application,
+extracts its original packages without install scripts, and supplies pinned web targets and net45
+reference assemblies through added build-configuration files. It checks the original project file's
+hash, exact source/type/edge counts and restored inheritance. See `LEGACY.md` for setup and limits.
+
 Evaluated input snapshots record files returned by MSBuild, its actual import graph, wildcard
 matches and Roslyn's documents, additional documents, analyzer configuration and metadata references.
 Import declarations are also observed so optional files can appear later. MSBuild's own glob matcher
@@ -105,9 +118,10 @@ Windows installations; the exact CLR failure detail was not captured.
 
 ## Work still required
 
-Large real evaluated project graphs still need measured acceptance. Multi-target selection and
-legacy targeting-pack/reference resolution also need the acceptance work in
-[#36](https://github.com/jhnoor/milligram/issues/36). Linked files shared by multiple compiler contexts
+Large real evaluated project graphs still need measured acceptance. The framework fixtures and
+pinned legacy sample provide the source/reference evidence for
+[#36](https://github.com/jhnoor/milligram/issues/36); they do not prove legacy build or metric collection.
+Linked files shared by multiple compiler contexts
 also need project-aware metric ownership and report attribution; see
 [#64](https://github.com/jhnoor/milligram/issues/64). Their per-context coverage and mutation scores
 are not yet reliable. Arbitrary tasks may read environment variables,

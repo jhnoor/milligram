@@ -74,9 +74,13 @@ Milligram runs Stryker from each source project, so put `solution` in that direc
 name Framework 4.6+, while this sample targets 4.5. Compatibility needs an actual configured
 build and test run; changing the target framework is not part of this investigation.
 
-## Follow-up work from #27
+## Follow-up issues from #27
 
-The investigation is complete; the implementation and acceptance work is tracked separately.
+These scopes became [#36](https://github.com/jhnoor/milligram/issues/36),
+[#37](https://github.com/jhnoor/milligram/issues/37),
+[#38](https://github.com/jhnoor/milligram/issues/38) and
+[#39](https://github.com/jhnoor/milligram/issues/39). The text below records the original gaps;
+the evaluated-scan measurement later in this document supersedes the source-only limitations.
 
 1. **[Resolve legacy references (#36)](https://github.com/jhnoor/milligram/issues/36).** Explicit, unconditional HintPaths now work (see below).
    Resolve conditional/property-based package references and the target framework's reference
@@ -120,6 +124,57 @@ finds **32 types and 95 dependencies**. It restores **12 System.Web edges and 11
 System.Data.Entity edges**, including HomeController → Controller and MusicStoreEntities →
 DbContext inheritance. Remaining packages were not restored, and their missing paths are now
 reported. This does not prove that every dependency binds or remove the other limits above.
+
+## Evaluated framework and package inputs
+
+On October 1, 2026, the evaluated scanner from `5ed50fd` rescanned the same pinned application
+on Windows x64 with .NET SDK 10.0.401. The original `.csproj` and tracked source were unchanged.
+Its project-file SHA-256 remained
+`FCBF302346268DC13D707336361E7E67AE364EB276F16A761EF09798279D57F9`.
+
+This machine has no Visual Studio or Web Build Tools. An unprepared evaluated scan failed promptly
+on the missing `Microsoft.WebApplication.targets` import and preserved the old model. The prepared
+copy used all 29 original `packages.config` packages, extracted into their original versioned hint
+paths without running package install scripts, plus two pinned build inputs:
+
+| Package | Version | Package SHA-256 |
+|---------|---------|-----------------|
+| Microsoft.NETFramework.ReferenceAssemblies.net45 | 1.0.3 | `23A9F94EA3E2CB88CD8341AF75B811C6FB5CB82516FC696E95ED4620279128E3` |
+| MSBuild.Microsoft.VisualStudio.Web.targets | 14.0.0.3 | `74B942705CB634BFC5EE8786FAA801CF9634CDD905511F273D3BBC8A60654419` |
+
+An added `Directory.Build.props` set `VSToolsPath` to the web package's `tools/VSToolsPath` directory.
+An added `Directory.Build.targets` imported the reference package's `build/Microsoft.NETFramework.ReferenceAssemblies.net45.targets`.
+This is explicit fixture setup, not something Milligram installs or changes in examined repositories.
+The original target framework remained v4.5. Microsoft documents the
+[reference-assembly package alternative](https://learn.microsoft.com/en-us/dotnet/framework/migration-guide/reference-assemblies);
+the [web-target package](https://www.nuget.org/packages/MSBuild.Microsoft.VisualStudio.Web.targets/14.0.0.3)
+contains the Visual Studio 2015 web targets.
+
+With the same five `foreign` prefixes as the earlier 95-edge measurement, the scan took about
+4.0 seconds and produced **27 evaluated source files, 32 types and 98 dependencies**:
+
+- System.Web now has 15 edges, including newly recovered AppConfig, BundleConfig and WebApiConfig dependencies.
+- System.Data.Entity retains 11 edges, including MusicStoreEntities → DbContext inheritance.
+- HomeController → Controller inheritance remains present. MvcApplication → System.Web changes
+  from a generic dependency to correctly bound HttpApplication inheritance.
+- The unlisted Compile probe is excluded. No compiler declaration error or MSBuild failure was
+  reported. Roslyn still warns that it is using the .NET Core SDK because Visual Studio is absent.
+
+The reproducible check creates a fresh temporary checkout, records all downloaded package hashes
+and leaves its model, log and result JSON under `.milligram/evidence` inside that checkout:
+
+```powershell
+dotnet publish src/Milligram -c Release -o .milligram/dogfood
+./.github/scripts/legacy-scan-fixture.ps1 -ToolPath (Get-Command dotnet).Source `
+  -PrefixArguments (Join-Path $PWD '.milligram/dogfood/Milligram.dll')
+```
+
+Unlike the original source-only investigation, this scan executes design-time build targets.
+It does not execute the application, run package install scripts, build a deployable web application,
+collect coverage or run mutation. The sample still has no tests. Those acceptance gaps remain
+[#38](https://github.com/jhnoor/milligram/issues/38) and
+[#39](https://github.com/jhnoor/milligram/issues/39). Shared-file and multi-target metric attribution
+is tracked separately in [#64](https://github.com/jhnoor/milligram/issues/64).
 
 ## Follow-up measurement: stale SDK imports
 

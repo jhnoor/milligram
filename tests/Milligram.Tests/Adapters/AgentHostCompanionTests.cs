@@ -9,6 +9,101 @@ namespace Milligram.Tests.Adapters;
 
 public class AgentHostCompanionTests
 {
+    [Fact]
+    public async Task AConnectedHostCanReplyAfterTheConnectionWindowCloses()
+    {
+        await using var fixture = new Fixture();
+        using var server = Server(fixture.Files.Endpoint);
+        var accepting = server.WaitForConnectionAsync(fixture.Token);
+        var probing = Task.Run(fixture.Companion.IsRunning);
+        await accepting;
+        Assert.Equal(HostFrameKind.Hello, (await HostProtocol.ReadAsync(server, fixture.Token))!.Kind);
+        await Task.Delay(600, fixture.Token);
+        Assert.False(probing.IsCompleted);
+        await HostProtocol.WriteAsync(server, HostProtocol.Json(HostFrameKind.Hello, new HostHello(HostProtocol.Version, "test-version")), fixture.Token);
+        Assert.True(await probing.WaitAsync(fixture.Token));
+    }
+
+    [Fact]
+    public async Task AConnectedButSilentHostHasAnAbsoluteGreetingDeadline()
+    {
+        var logs = new List<string>();
+        await using var fixture = new Fixture(probeLog: logs.Add, greetingTimeout: TimeSpan.FromMilliseconds(100));
+        using var server = Server(fixture.Files.Endpoint);
+        var accepting = server.WaitForConnectionAsync(fixture.Token);
+        var probing = Task.Run(fixture.Companion.IsRunning);
+        await accepting;
+        Assert.Equal(HostFrameKind.Hello, (await HostProtocol.ReadAsync(server, fixture.Token))!.Kind);
+        Assert.False(await probing.WaitAsync(fixture.Token));
+        Assert.Contains("greeting-deadline=", Assert.Single(logs));
+        Assert.Null(await HostProtocol.ReadAsync(server, fixture.Token));
+    }
+
+    [Fact]
+    public async Task CallerCancellationStillClosesAConnectedStartupProbe()
+    {
+        await using var fixture = new Fixture();
+        using var server = Server(fixture.Files.Endpoint);
+        using var cancellation = new CancellationTokenSource();
+        var accepting = server.WaitForConnectionAsync(fixture.Token);
+        var starting = fixture.Companion.StartAsync(cancellation.Token);
+        await accepting;
+        await HostProtocol.ReadAsync(server, fixture.Token);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
+        Assert.Null(await HostProtocol.ReadAsync(server, fixture.Token));
+        Assert.Equal(0, fixture.Launches);
+    }
+
+    [Fact]
+    public async Task ADisconnectedGreetingCannotRenewAnExpiredConnectionWindow()
+    {
+        var logs = new List<string>();
+        await using var fixture = new Fixture(probeLog: logs.Add);
+        using var first = Server(fixture.Files.Endpoint);
+        var accepting = first.WaitForConnectionAsync(fixture.Token);
+        var probing = Task.Run(fixture.Companion.IsRunning);
+        await accepting;
+        await HostProtocol.ReadAsync(first, fixture.Token);
+        await Task.Delay(600, fixture.Token);
+        using var next = Server(fixture.Files.Endpoint);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(fixture.Token);
+        var retry = next.WaitForConnectionAsync(cancellation.Token);
+        first.Dispose();
+        Assert.False(await probing.WaitAsync(fixture.Token));
+        Assert.False(retry.IsCompleted);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => retry);
+        var trace = Assert.Single(logs);
+        Assert.Contains("retry-io=", trace);
+        Assert.Contains("connection-deadline=", trace);
+    }
+
+    [Fact]
+    public async Task ProbeDiagnosticsDistinguishAnAbsentHostFromACompletedGreetingWithoutRecordingData()
+    {
+        var logs = new List<string>();
+        await using var fixture = new Fixture(probeLog: logs.Add);
+        Assert.False(await Task.Run(fixture.Companion.IsRunning));
+        var absent = Assert.Single(logs);
+        Assert.Contains("deadline=", absent);
+        Assert.DoesNotContain("connected=", absent);
+
+        await fixture.Companion.StartAsync(fixture.Token);
+        logs.Clear();
+        Assert.True(await Task.Run(fixture.Companion.IsRunning));
+        var present = Assert.Single(logs);
+        Assert.Contains("connected=", present);
+        Assert.Contains("serialized=", present);
+        Assert.Contains("sent=", present);
+        Assert.Contains("received=", present);
+        Assert.Contains("validated=", present);
+        Assert.Contains("running=", present);
+        Assert.DoesNotContain(fixture.Paths.Root, present);
+        Assert.DoesNotContain(fixture.Files.Endpoint, present);
+        Assert.DoesNotContain("test-version", present);
+    }
+
     [Theory]
     [InlineData("auto")]
     [InlineData("none")]
@@ -612,7 +707,7 @@ public class AgentHostCompanionTests
         public IReadOnlyList<string>? Arguments { get; private set; }
         public CancellationToken Token => deadline.Token;
 
-        public Fixture(TimeSpan? timeout = null, TimeSpan? probeTimeout = null)
+        public Fixture(TimeSpan? timeout = null, TimeSpan? probeTimeout = null, Action<string>? probeLog = null, TimeSpan? greetingTimeout = null)
         {
             Paths = new ProjectPaths(project.Root);
             Files = new AgentHostFiles(Paths);
@@ -620,6 +715,8 @@ public class AgentHostCompanionTests
                 command => Available && (command != "terminal-stub" || TerminalInstalled), Launch)
             {
                 ProbeTimeout = probeTimeout ?? TimeSpan.FromMilliseconds(300),
+                ProbeGreetingTimeout = greetingTimeout ?? TimeSpan.FromSeconds(3),
+                ProbeLog = probeLog,
                 StartupTimeout = timeout ?? TimeSpan.FromSeconds(3),
                 CommandTimeout = timeout ?? TimeSpan.FromSeconds(3),
                 RetryDelay = TimeSpan.FromMilliseconds(10),

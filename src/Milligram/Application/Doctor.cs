@@ -89,6 +89,7 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
                 ? "the source-only scanner uses .NET 10 references, project.assets.json and explicit HintPaths; .NET Framework and unevaluated packages.config references may be missing"
                 : "project evaluation selects Compile items and framework references; install the project's SDK, restored packages and .NET Framework targeting packs to resolve all bindings"),
             "sourceOnly reads every .cs file under src without evaluating Compile items or build conditions; use exclude for inactive files when choosing that fallback",
+            "legacy ASP.NET projects also need Microsoft.WebApplication.targets from their web build tools; configure VSToolsPath if those imports are unavailable (see LEGACY.md)",
             "for legacy test projects, collect Cobertura with your existing test tools and import it with milligram crap --coverage report.xml",
             "Stryker on .NET Framework needs a solution in the source project's stryker-config.json and working MSBuild/NuGet tools (see README)");
     }
