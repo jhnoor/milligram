@@ -97,6 +97,18 @@ internal sealed class FakeEvents : IViewerEvents
     public IReadOnlyList<string> Types => published.Select(p => p.Type).ToList();
 
     public void Publish(string type, object? payload = null) => published.Enqueue((type, payload));
+
+    /// <summary>Observes completed events even when a later job has replaced the queue's current status.</summary>
+    public async Task<object?> WaitFor(string type, Func<object?, bool>? matches = null)
+    {
+        for (var i = 0; i < 400; i++)
+        {
+            foreach (var item in published)
+                if (item.Type == type && (matches is null || matches(item.Payload))) return item.Payload;
+            await Task.Delay(25);
+        }
+        throw new TimeoutException($"Event '{type}' was not published with the expected payload.");
+    }
 }
 
 internal sealed class FakeWatchLimits(WatchLimit? limit = null) : IWatchLimits
