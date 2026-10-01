@@ -57,6 +57,101 @@ public class PolicyJsonTests
 
 public class JsonFileTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TypedWritesReachDiskBeforeFinishingEnumerationAndKeepTheOldFileUntilSuccess(bool fail)
+    {
+        using var project = new TempProject(("state.json", "old"));
+        var path = Path.Combine(project.Root, "state.json");
+        var chunk = new string('x', 4096);
+        var streamed = false;
+
+        IEnumerable<string> Values()
+        {
+            for (var i = 0; i < 64; i++) yield return chunk;
+            Assert.Equal("old", File.ReadAllText(path));
+            var temporary = Directory.GetFiles(project.Root, "*.tmp");
+            streamed = temporary.Length == 1 && new FileInfo(temporary[0]).Length > 0;
+            if (fail) throw new InvalidOperationException("Enumeration failed.");
+            yield return "last";
+        }
+
+        if (fail)
+        {
+            var error = Assert.Throws<InvalidOperationException>(() => JsonFile.Write(path, Values()));
+            Assert.Equal("Enumeration failed.", error.Message);
+            Assert.Equal("old", File.ReadAllText(path));
+        }
+        else
+        {
+            JsonFile.Write(path, Values());
+            var saved = JsonFile.Read<string[]>(path)!;
+            Assert.Equal(65, saved.Length);
+            Assert.All(saved.Take(64), value => Assert.Equal(chunk, value));
+            Assert.Equal("last", saved[^1]);
+        }
+
+        Assert.True(streamed, "The temporary file should receive chunks before the source is fully enumerated.");
+        Assert.Equal([path], Directory.GetFiles(project.Root));
+    }
+
+    [Fact]
+    public void TypedWritesKeepTheExistingUtf8FormatOptionsAndFinalNewline()
+    {
+        using var project = new TempProject();
+        var path = Path.Combine(project.Root, "nested", "state.json");
+        var value = new { Name = "Grüße 漢字 <Tag> + \"quoted\"", Kind = MemberKind.TopLevel, Missing = (string?)null };
+        var expected = System.Text.Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(value, MilligramJson.Options) + "\n");
+
+        JsonFile.Write(path, value);
+
+        Assert.Equal(expected, File.ReadAllBytes(path));
+        Assert.Equal([path], Directory.GetFiles(Path.GetDirectoryName(path)!));
+    }
+
+    [Theory]
+    [InlineData(null, "null\n")]
+    [InlineData("", "\"\"\n")]
+    public void TypedWritesPreserveNullAndEmptyValues(string? value, string expected)
+    {
+        using var project = new TempProject();
+        var path = Path.Combine(project.Root, "state.json");
+
+        JsonFile.Write(path, value);
+
+        Assert.Equal(expected, File.ReadAllText(path));
+    }
+
+    [WindowsFact]
+    public void ATypedWriteWaitsForAReaderBeforeReplacingTheFile()
+    {
+        using var project = new TempProject(("state.json", "old"));
+        var path = Path.Combine(project.Root, "state.json");
+        var release = ReleaseSoon(HoldOpen(path));
+
+        JsonFile.Write(path, new[] { "new" });
+
+        release.Join();
+        Assert.Equal(["new"], JsonFile.Read<string[]>(path)!);
+        Assert.Equal([path], Directory.GetFiles(project.Root));
+    }
+
+    [WindowsFact]
+    public void AFailedTypedReplacementKeepsTheOldFileAndRemovesTheTemporaryFile()
+    {
+        using var project = new TempProject(("state.json", "old"));
+        var path = Path.Combine(project.Root, "state.json");
+        using (HoldOpen(path))
+        {
+            var refused = Assert.Throws<MilligramException>(() => JsonFile.Write(path, new[] { "new" }));
+            Assert.Contains(path, refused.Message);
+        }
+
+        Assert.Equal("old", File.ReadAllText(path));
+        Assert.Equal([path], Directory.GetFiles(project.Root));
+    }
+
     /// <summary>Opens a file the way a virus scanner or an editor might: reading, and sharing neither writes nor deletes.</summary>
     private static FileStream HoldOpen(string path) => new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
 

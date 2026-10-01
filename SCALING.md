@@ -91,10 +91,30 @@ model, omitting only the root `generatedAt` line and normalizing line endings, p
 same SHA-256: `342655c806a96c2b251a6dbcb2203c97fe1417325d5204dc05b1b4092449d382`.
 This comparison includes every type, member, source span, hash, foreign group and dependency.
 
-The final write still raises peak memory: the candidate's sampled working-set peak was about
-6.8 GiB near the end of scanning and 8.86 GiB after completion. Typed JSON currently passes
-through a complete UTF-16 string before the atomic file write. [#52](https://github.com/jhnoor/milligram/issues/52)
-tracks streaming that output without weakening atomic replacement.
+## Streaming model writes
+
+The semantic-model candidate still reached 8.86 GiB after a scan-stage peak of about 6.8 GiB.
+Typed JSON passed through complete UTF-16 strings before the atomic file write. The follow-up
+for [#52](https://github.com/jhnoor/milligram/issues/52) streams JSON to the temporary sibling,
+appends the existing LF terminator, closes the stream, then uses the existing replacement and
+Windows lock retries. Serialization failures preserve the previous file and remove the temporary
+file. Policy edits still use `PolicyText` so hand-written comments survive.
+
+The same pinned checkout, policy and cached model were measured in another fresh `ir` process,
+again without concurrent builds or tests. The comparison baseline is #53 at `e638e87`.
+
+| Build | Total wall time | Reported scan time | Peak working set | Peak private memory |
+|-------|-----------------|--------------------|------------------|---------------------|
+| Release completed semantic models | 384.4 s | 378.5 s | 8.86 GiB | 9.09 GiB |
+| Also stream typed JSON writes | 383.9 s | 378.9 s | 6.93 GiB | 6.95 GiB |
+
+Peak working set fell a further **21.8%**, or **39.4%** relative to the original 11.44 GiB
+baseline. The final write no longer raised the measured peak above the scan-stage peak.
+These remain single desktop measurements, with no demonstrated speed improvement. All
+8,862,487 model lines matched the previous output using the timestamp exclusion and line-ending
+normalization described above, with the same SHA-256. Unit tests additionally compare exact
+UTF-8 bytes, including the final newline, and exercise partial serialization failures and
+Windows replacement locks.
 
 ## Remaining limits
 
@@ -103,8 +123,8 @@ tracks streaming that output without weakening atomic replacement.
   declarations can still bind differently from the real projects. Distinct IDs prevent the
   crash; they do not resolve ambiguous references or symbols Roslyn has already merged.
 - [Memory use (#48)](https://github.com/jhnoor/milligram/issues/48): completed semantic models
-  are now released, with the measured reduction above. Parsing, compilation, the cached model
-  and JSON output still consume substantial memory; this does not make the measured checkout
+  are now released, with the measured reduction above. Parsing, compilation and the cached model
+  still consume substantial memory; this does not make the measured checkout
   suitable for a low-memory machine.
 - [First-run rescan (#49)](https://github.com/jhnoor/milligram/issues/49): `serve` scans again
   after inferring a new policy. A one-command first run therefore pays for two scans. Reuse

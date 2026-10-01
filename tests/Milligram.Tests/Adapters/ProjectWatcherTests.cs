@@ -252,7 +252,14 @@ public class ProjectWatcherTests
 
         watcher.RefreshAll();
 
-        Assert.Equal(JobState.Succeeded, (await Jobs.Finished(jobs, "Scan (source changed)")).State);
+        foreach (var name in new[] { "Scan (source changed)", "Scan (milligram.json changed)" })
+        {
+            var status = Assert.IsType<JobStatus>(await events.WaitFor("job",
+                payload => payload is JobStatus status && status.Name == name && status.State is JobState.Succeeded or JobState.Failed));
+            Assert.Equal(JobState.Succeeded, status.State);
+        }
+        await events.WaitFor("policy");
+        await events.WaitFor("metrics");
         Assert.Equal("Recovered", workspace.Model.Title);
         Assert.Equal(2, workspace.Model.Types.Count);
         Assert.Contains("policy", events.Types);
