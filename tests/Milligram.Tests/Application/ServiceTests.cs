@@ -82,6 +82,7 @@ public class CrapServiceTests
         var (command, args, _) = Assert.Single(processes.Calls);
         Assert.Equal("dotnet", command);
         Assert.Equal(["test", fixture.TestProject.Path, "--collect", "XPlat Code Coverage"], args.Take(4));
+        Assert.DoesNotContain("--configuration", args);
         Assert.Single(reader.Reports);
         Assert.Equal(2, result.Members);
         Assert.Equal(0, result.TestExitCode);
@@ -98,7 +99,7 @@ public class CrapServiceTests
     [Fact]
     public async Task ConfiguredTestProjectsAndFilterWin()
     {
-        using var fixture = new ServiceFixture("""{ "prefix": "App", "src": "src", "tests": { "projects": ["tests/Other/Other.csproj"], "filter": "Category=Fast" } }""");
+        using var fixture = new ServiceFixture("""{ "prefix": "App", "src": "src", "scan": { "configuration": "Release" }, "tests": { "projects": ["tests/Other/Other.csproj"], "filter": "Category=Fast" } }""");
         var processes = new FakeProcessRunner(WriteCoverage);
         var service = new CrapService(fixture.Workspace, new FakeProjectLocator(fixture.TestProject), processes, new FakeCoverageReader(Hits));
 
@@ -107,6 +108,7 @@ public class CrapServiceTests
         var args = Assert.Single(processes.Calls).Args;
         Assert.Equal(fixture.Workspace.Paths.Absolute("tests/Other/Other.csproj"), args[1]);
         Assert.Equal("Category=Fast", FakeProcessRunner.After(args, "--filter"));
+        Assert.Equal("Release", FakeProcessRunner.After(args, "--configuration"));
     }
 
     [Fact]
@@ -254,6 +256,7 @@ public class MutationServiceTests
         var (command, args, directory) = Assert.Single(processes.Calls);
         Assert.Equal("dotnet", command);
         Assert.Equal("stryker", args[0]);
+        Assert.DoesNotContain("--configuration", args);
         Assert.Equal("App.csproj", FakeProcessRunner.After(args, "--project"));
         Assert.Equal(fixture.AppProject.Directory, directory);
         Assert.Equal(fixture.TestProject.Path, FakeProcessRunner.After(args, "--test-project"));
@@ -265,6 +268,15 @@ public class MutationServiceTests
         Assert.Equal(1, snapshot.Members["App.A.One()"].Killed);
         Assert.Equal((1, 1), (snapshot.Members["App.A.Two(bool)"].Survived, snapshot.Members["App.A.Two(bool)"].Uncovered));
         Assert.True(snapshot.Tested("src/App/A.cs"));
+    }
+
+    [Fact]
+    public async Task MutationUsesTheSelectedBuildConfiguration()
+    {
+        using var fixture = new ServiceFixture("""{ "src": "src", "scan": { "configuration": "Release" } }""");
+        var (service, processes) = Service(fixture);
+        await service.RunAsync(["src/App/A.cs"], all: false, _ => { }, CancellationToken.None);
+        Assert.Equal("Release", FakeProcessRunner.After(Assert.Single(processes.Calls).Args, "--configuration"));
     }
 
     [Fact]

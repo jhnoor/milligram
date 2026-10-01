@@ -35,7 +35,7 @@ public sealed record Initialization(Policy Policy, IReadOnlyList<DependencyEdge>
 }
 
 /// <summary>Writes a first milligram.json from what is actually in the source: no invented components.</summary>
-public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scanner, IProjectLocator locator, INewFilePublisher publisher)
+public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scanner, IProjectLocator locator, INewFilePublisher publisher, ScanSettings? scanSettings = null)
 {
     /// <summary>Levels come from the dependencies (see <see cref="Layering"/>); boxes are ordered outer first, as drawn.</summary>
     public Initialization Propose(Action<string>? progress = null)
@@ -49,7 +49,8 @@ public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scan
         var exclude = Policy.DefaultExclude.Concat(testDirectories).Distinct().ToList();
         var title = Path.GetFileName(paths.Root);
 
-        var model = scanner.Scan(new ScanRequest(paths.Root, paths.Absolute(src), exclude, "", [], title, DiscoverForeign: true), progress);
+        var settings = scanSettings ?? new ScanSettings();
+        var model = scanner.Scan(new ScanRequest(paths.Root, paths.Absolute(src), exclude, "", [], title, DiscoverForeign: true) { Scan = settings }, progress);
         var prefix = CommonPrefix(model.Types.Select(t => t.Namespace).Where(n => n.Length > 0).Distinct().ToList());
         var layers = Layering.TopLevel(model, prefix);
         var order = layers.Levels.Reverse().SelectMany(names => names).ToList();
@@ -57,6 +58,7 @@ public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scan
         {
             Title = title,
             Src = src,
+            Scan = settings,
             Exclude = exclude,
             Prefix = prefix,
             Order = order,

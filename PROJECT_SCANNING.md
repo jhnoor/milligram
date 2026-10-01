@@ -1,9 +1,9 @@
 # Project-input scan checks
 
-The experimental `ir --msbuild FILE.csproj [--configuration NAME]` path addresses the compiler-input
-portion of [#37](https://github.com/jhnoor/milligram/issues/37). It is explicit so that startup reuse
-and live invalidation cannot silently claim freshness for imported targets, external linked files
-or generated compiler inputs they do not yet track.
+Normal startup, `init`, `ir` and viewer refreshes share the policy's `scan` settings. Auto mode
+discovers projects under/above `src`; explicit `projects` replace that selection, and `configuration`
+selects the build configuration. Source-only mode remains available without project evaluation.
+Malformed selected projects fail with a fallback diagnostic instead of silently switching scanners.
 
 ## Automated checks
 
@@ -11,6 +11,9 @@ or generated compiler inputs they do not yet track.
 imports, duplicate and linked type identities, generic project-reference edges, policy exclusions,
 physical source boundaries, deterministic ordering and preservation of the previous model after
 evaluation failure. These run in the fast suite without executing MSBuild.
+Service tests verify that coverage and Stryker receive the selected configuration. Scanner tests
+verify that changing configuration, symbols or optimization invalidates old metrics even when the
+member's source is unchanged; symbol ordering alone does not change the fingerprint.
 
 The package smoke invokes `.github/scripts/project-scan-fixture.ps1` against the **installed tool**.
 It creates SDK and old-style projects in a new temporary directory and runs real MSBuild/Roslyn:
@@ -36,11 +39,53 @@ dotnet build src/Milligram -c Release -warnaserror
   -PrefixArguments (Join-Path $PWD 'src/Milligram/bin/Release/net10.0/Milligram.dll')
 ```
 
+`project-live-fixture.ps1` also starts the installed tool with no policy and no scan flags. It
+checks automatic discovery, persisted settings, omission of unlisted source, imported settings
+with a nonstandard extension outside the root, linked source edits and new wildcard files outside
+`src`, external AdditionalFiles, live Debug/Release changes and custom intermediate output paths.
+The configuration change also invalidates the metric fingerprint of an unchanged method.
+It checks optional imports appearing/disappearing, idle stability, failed-import model preservation,
+and recovery after selecting another project whose external import is initially missing. The
+server process is stopped in `finally`.
+
+Evaluated input snapshots record files returned by MSBuild, its actual import graph, wildcard
+matches and Roslyn's documents, additional documents, analyzer configuration and metadata references.
+Import declarations are also observed so optional files can appear later. MSBuild's own glob matcher
+filters wildcard inputs; watching every file in an import directory would loop on build-cache writes.
+The poller compares file existence, size and write time and backs off on expensive walks. It keeps
+the pre-evaluation observation of known inputs, so edits during evaluation cause another refresh.
+Unrelated output is ignored; explicitly evaluated output files remain tracked. Initialization reuse
+also requires the existing content fingerprint and an unchanged evaluated input snapshot. A failed
+evaluation retains the previous model, reports the error, and watches repairs to both the attempted
+selection and the previous graph. A redundant queued refresh cannot hide that error. Automatic
+project discovery is checked again during polling, including new or moved project directories.
+
 Roslyn's design-time loader ignores missing imports, so Milligram first requires ordinary MSBuild
 evaluation to succeed, using `-getProperty` without build targets. The workspace then obtains each
 project's compiler inputs. Reference-resolution failures can still yield usable source membership;
 the command reports the resulting incomplete bindings. This does not establish legacy build,
 coverage or mutation support, and it does not replace the pinned evidence in `LEGACY.md`.
+
+## Synthetic project graph
+
+On Windows x64 with .NET SDK 10.0.401, the evaluated path scanned a restored graph of 32 SDK
+projects, 1,015,871 physical C# lines and 16,384 types in 40.3 seconds. All 31 expected
+project-reference edges were retained and unlisted files were absent. The main process peaked at
+1,787,904,000 bytes of working set (about 1.67 GiB); that figure excludes its MSBuild child hosts.
+Milligram's own project scanned without binding diagnostics in 8.8 seconds (178 types, 723 edges).
+
+The synthetic graph uses explicit Compile items and a chain of project references, without package
+dependencies, analyzers or source generators. These numbers do not establish performance on a
+large company's real solution. The source-only Roslyn benchmark remains a different workload.
+The graph and assertions are reproducible outside the regular CI suite:
+
+```powershell
+dotnet publish src/Milligram -c Release -o .milligram/dogfood
+./.github/scripts/project-scale-fixture.ps1 -ToolAssembly (Join-Path $PWD '.milligram/dogfood/Milligram.dll')
+```
+
+The script uses a fresh temporary directory, restores its own projects, checks the resulting
+model, records elapsed time and main-process peak memory, and leaves its logs and model there.
 
 ## Windows installation path limit
 
@@ -60,9 +105,13 @@ Windows installations; the exact CLR failure detail was not captured.
 
 ## Work still required
 
-Before using this path by default, #37 needs project discovery and policy selection, watcher
-invalidation for all imported/project/generated inputs, safe initialization reuse, and measurements
-on a large real project graph. Multi-target selection and legacy targeting-pack/reference resolution
-also need the acceptance work in [#36](https://github.com/jhnoor/milligram/issues/36). The source-only
+Large real evaluated project graphs still need measured acceptance. Multi-target selection and
+legacy targeting-pack/reference resolution also need the acceptance work in
+[#36](https://github.com/jhnoor/milligram/issues/36). Linked files shared by multiple compiler contexts
+also need project-aware metric ownership and report attribution; see
+[#64](https://github.com/jhnoor/milligram/issues/64). Their per-context coverage and mutation scores
+are not yet reliable. Arbitrary tasks may read environment variables,
+network resources or files not declared as project inputs; use Refresh after such changes. Changes
+to the SDK selected by global.json require restarting the viewer. The source-only
 Roslyn-tree benchmark in `SCALING.md` remains a different workload; its numbers do not describe
 MSBuild evaluation.

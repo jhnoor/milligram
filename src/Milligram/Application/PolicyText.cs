@@ -27,6 +27,8 @@ public static class PolicyText
               // The source root and the globs to leave out, relative to this file.
               "src": {{Value(policy.Src)}},
               "exclude": {{Value(policy.Exclude)}},
+              // Auto evaluates discovered C# projects. sourceOnly is the approximate, build-free fallback.
+              "scan": {{Value(policy.Scan)}},
               // Stripped from every namespace before drawing.
               "prefix": {{Value(policy.Prefix)}},
               // Box order, outer first.

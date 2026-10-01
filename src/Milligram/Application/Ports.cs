@@ -1,5 +1,6 @@
 using Milligram.Domain.Metrics;
 using Milligram.Domain.Model;
+using Milligram.Domain.Policies;
 
 namespace Milligram.Application;
 
@@ -16,11 +17,23 @@ public sealed record ScanRequest(
     string Prefix,
     IReadOnlyList<string> Foreign,
     string Title,
-    bool DiscoverForeign = false);
+    bool DiscoverForeign = false)
+{
+    public ScanSettings Scan { get; init; } = new();
+}
+
+/// <summary>Records the inputs used by an evaluated scan, including imports and files outside the examined root.</summary>
+public interface IScanInputs
+{
+    string Version { get; }
+    string? ReadVersion();
+}
 
 /// <summary>Reads a source tree and emits the topology: types, members, and dependencies.</summary>
 public interface ILanguageScanner
 {
+    IScanInputs? Inputs => null;
+
     /// <summary><paramref name="progress"/> reports each stage as it advances, so a long scan never looks like a hang.</summary>
     CodeModel Scan(ScanRequest request, Action<string>? progress = null);
 }
@@ -49,6 +62,7 @@ public sealed record BuildProject(string Path, string Name, bool IsTest, IReadOn
 public interface IProjectLocator
 {
     IReadOnlyList<BuildProject> Find(string root);
+    IReadOnlyList<string> Files(string root) => Find(root).Select(project => project.Path).ToList();
 
     /// <summary>
     /// Whether <paramref name="project"/> uses <paramref name="package"/>: true when its project file names it; otherwise

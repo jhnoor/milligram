@@ -69,6 +69,9 @@ public class StartupScanTests
     [InlineData("src")]
     [InlineData("exclude")]
     [InlineData("foreign")]
+    [InlineData("scanMode")]
+    [InlineData("scanConfiguration")]
+    [InlineData("scanProjects")]
     [InlineData("broken")]
     public void ChangedScanSettingsOrAnInvalidPolicyCannotReuseTheInitialModel(string change)
     {
@@ -86,6 +89,9 @@ public class StartupScanTests
             "prefix" => policy with { Prefix = "Changed" },
             "src" => policy with { Src = "different" },
             "exclude" => policy with { Exclude = ["**"] },
+            "scanMode" => policy with { Scan = new ScanSettings { Mode = ScanMode.SourceOnly } },
+            "scanConfiguration" => policy with { Scan = new ScanSettings { Configuration = "Release" } },
+            "scanProjects" => policy with { Scan = new ScanSettings { Projects = ["App.csproj"] } },
             _ => policy with { Foreign = ["System"] },
         });
         workspace.ReloadPolicy();
@@ -165,15 +171,46 @@ public class StartupScanTests
             new MutationService(workspace, projects, processes, new FakeMutationReader()), jobs, new FakeCompanion(), events);
     }
 
+    [Fact]
+    public async Task ARedundantInputRefreshCannotHideThePreviousEvaluationFailure()
+    {
+        using var project = new TempProject(("Source.cs", "class Original {}"));
+        var inputs = new EvaluatedInputs();
+        inputs.AddFiles([Path.Combine(project.Root, "Source.cs")]);
+        inputs.Complete();
+        var scanner = new CountingScanner { Inputs = inputs };
+        var workspace = new Workspace(new ProjectPaths(project.Root), scanner);
+        workspace.Generate();
+        var events = new FakeEvents();
+        var jobs = new JobQueue(events);
+        var actions = Actions(workspace, events, jobs);
+        scanner.Fails = true;
+        await actions.Regenerate();
+        await actions.Regenerate("Input refresh", inputsOnly: true);
+        Assert.Equal(JobState.Failed, jobs.Status.State);
+        Assert.Equal("Invalid project import", jobs.Status.Message);
+        Assert.Equal(2, scanner.Calls);
+        Assert.Equal("Original", Assert.Single(workspace.Model.Types).Id);
+        scanner.Fails = false;
+        project.Write("Source.cs", "class Repaired {}");
+        await actions.Regenerate("Input refresh", inputsOnly: true);
+        Assert.Equal(JobState.Succeeded, jobs.Status.State);
+        Assert.Equal("Repaired", Assert.Single(workspace.Model.Types).Id);
+        Assert.Null(workspace.ScanError);
+    }
+
     private sealed class CountingScanner : ILanguageScanner
     {
         private readonly CSharpScanner scanner = new();
         public int Calls { get; private set; }
+        public IScanInputs? Inputs { get; init; }
+        public bool Fails { get; set; }
         public Action? AfterFirstScan { get; init; }
 
         public CodeModel Scan(ScanRequest request, Action<string>? progress = null)
         {
             Calls++;
+            if (Fails) throw new MilligramException("Invalid project import");
             var model = scanner.Scan(request, progress);
             if (Calls == 1) AfterFirstScan?.Invoke();
             return model;

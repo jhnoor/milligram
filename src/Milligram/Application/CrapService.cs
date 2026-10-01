@@ -54,6 +54,7 @@ public sealed class CrapService(Workspace workspace, IProjectLocator projects, I
         {
             log($"dotnet test {workspace.Paths.Relative(test)} (coverage)");
             var args = new List<string> { "test", test, "--collect", "XPlat Code Coverage", "--results-directory", output };
+            if (workspace.ScanSettings.Configuration is { } configuration) args.AddRange(["--configuration", configuration]);
             if (workspace.Policy.Tests.Filter is { Length: > 0 } filter) args.AddRange(["--filter", filter]);
             var code = await processes.RunAsync("dotnet", args, workspace.Paths.Root, log, cancellation);
             if (code != 0) log($"dotnet test exited {code}; using whatever coverage it produced.");

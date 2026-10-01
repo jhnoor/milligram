@@ -12,6 +12,7 @@ public sealed record Policy
 
     public string? Title { get; init; }
     public string Src { get; init; } = ".";
+    public ScanSettings Scan { get; init; } = new();
     public IReadOnlyList<string> Exclude { get; init; } = DefaultExclude;
     public string Prefix { get; init; } = "";
     public IReadOnlyList<string> Order { get; init; } = [];
@@ -34,6 +35,24 @@ public sealed record Policy
     public string? Editor { get; init; }
 
     public Proposal? FindProposal(string id) => Proposals.FirstOrDefault(p => p.Id == id);
+}
+
+public enum ScanMode { Auto, SourceOnly, Msbuild }
+
+/// <summary>One compiler-input selection shared by startup, commands and live refreshes.</summary>
+public sealed record ScanSettings
+{
+    public ScanMode Mode { get; init; }
+    public IReadOnlyList<string> Projects { get; init; } = [];
+    public string? Configuration { get; init; }
+
+    /// <summary>Command-line options change only the selected fields of an existing policy.</summary>
+    public ScanSettings Override(ScanSettings? options) => options is null ? this : this with
+    {
+        Mode = options.Mode == ScanMode.Auto ? Mode : options.Mode,
+        Projects = options.Projects.Count == 0 ? Projects : options.Projects,
+        Configuration = options.Configuration ?? Configuration,
+    };
 }
 
 /// <summary>Matches edges whose ends are covered by <see cref="From"/> and <see cref="To"/> (namespace paths or type names).</summary>

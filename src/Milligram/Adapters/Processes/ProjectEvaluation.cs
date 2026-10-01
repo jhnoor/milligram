@@ -3,16 +3,36 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.MSBuild;
 using Milligram.Analysis.CSharp;
+using Milligram.Adapters.Files;
+using Milligram.Application;
 
 namespace Milligram.Adapters.Processes;
 
 public sealed partial class ProcessRunner
 {
     private static readonly Lock msbuildGate = new();
+    private static string? registeredSdk;
+    private EvaluatedInputs? evaluatedInputs;
+    public IScanInputs? ScanInputs => Volatile.Read(ref evaluatedInputs);
 
     /// <summary>Roslyn owns the design-time build hosts; their workspace is disposed after every explicit project scan.</summary>
     public async Task<IReadOnlyList<ProjectCompilation>> EvaluateProjectsAsync(
         IReadOnlyList<string> files, string? configuration, Action<string> report)
+    {
+        var inputs = new EvaluatedInputs();
+        inputs.AddFiles(files);
+        foreach (var file in files) inputs.AddAncestors(Path.GetDirectoryName(file)!);
+        try { return await EvaluateProjectsAsync(files, configuration, report, inputs).ConfigureAwait(false); }
+        catch
+        {
+            if (evaluatedInputs is { } previous) inputs.Include(previous);
+            throw;
+        }
+        finally { Volatile.Write(ref evaluatedInputs, inputs.Complete()); }
+    }
+
+    private async Task<IReadOnlyList<ProjectCompilation>> EvaluateProjectsAsync(
+        IReadOnlyList<string> files, string? configuration, Action<string> report, EvaluatedInputs inputs)
     {
         RegisterMsBuild(Path.GetDirectoryName(files[0])!, report);
         if (LegacyHostPathWarning(Path.GetDirectoryName(typeof(MSBuildWorkspace).Assembly.Location)!, OperatingSystem.IsWindows()) is { } warning)
@@ -23,9 +43,11 @@ public sealed partial class ProcessRunner
         workspace.LoadMetadataForReferencedProjects = false;
         workspace.SkipUnrecognizedProjects = false;
         var validated = new HashSet<string>(StringComparer.Ordinal);
+        var inspected = new HashSet<string>(StringComparer.Ordinal);
         foreach (var file in files)
         {
             if (workspace.CurrentSolution.Projects.Any(project => string.Equals(project.FilePath, file, StringComparison.Ordinal))) continue;
+            ProjectInputFiles.Read(file, configuration, inputs, inspected);
             await ValidateProjectAsync(file, configuration).ConfigureAwait(false);
             validated.Add(file);
             report($"Evaluating {file}" + (configuration is null ? " (project default configuration)." : $" ({configuration})."));
@@ -34,14 +56,21 @@ public sealed partial class ProcessRunner
         var result = new List<ProjectCompilation>();
         foreach (var project in workspace.CurrentSolution.Projects.OrderBy(project => project.FilePath, StringComparer.Ordinal).ThenBy(project => project.Name, StringComparer.Ordinal))
         {
-            if (project.FilePath is { } path && validated.Add(path)) await ValidateProjectAsync(path, configuration).ConfigureAwait(false);
+            if (project.FilePath is { } path && validated.Add(path))
+            {
+                ProjectInputFiles.Read(path, configuration, inputs, inspected);
+                await ValidateProjectAsync(path, configuration).ConfigureAwait(false);
+            }
             if (project.FilePath is null || await project.GetCompilationAsync().ConfigureAwait(false) is not CSharpCompilation compilation)
                 throw new InvalidOperationException($"Cannot obtain a C# compilation for {project.Name}.");
             var errors = compilation.GetDeclarationDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error).Take(11).ToList();
             foreach (var error in errors.Take(10)) report($"Binding {project.Name}: {error}");
             if (errors.Count > 10) report($"Binding {project.Name}: additional errors omitted.");
             if (errors.Count > 0) report($"{project.Name} has incomplete bindings; fix the reported source errors or missing packages/framework reference assemblies. Its evaluated source membership is retained.");
-            result.Add(new ProjectCompilation(project.FilePath, project.Name, compilation));
+            inputs.AddFiles(compilation.SyntaxTrees.Select(tree => tree.FilePath));
+            inputs.AddFiles(project.AdditionalDocuments.Concat(project.AnalyzerConfigDocuments).Select(document => document.FilePath).OfType<string>());
+            inputs.AddFiles(project.MetadataReferences.OfType<PortableExecutableReference>().Select(reference => reference.FilePath).OfType<string>());
+            result.Add(new ProjectCompilation(project.FilePath, project.Name, compilation) { Inputs = inputs });
         }
         foreach (var diagnostic in workspace.Diagnostics) report($"MSBuild {diagnostic.Kind}: {diagnostic.Message}");
         return result;
@@ -81,13 +110,19 @@ public sealed partial class ProcessRunner
     {
         lock (msbuildGate)
         {
-            if (MSBuildLocator.IsRegistered) return;
             var instance = MSBuildLocator.QueryVisualStudioInstances(new VisualStudioInstanceQueryOptions
             {
                 WorkingDirectory = directory,
                 DiscoveryTypes = DiscoveryType.DotNetSdk,
             }).FirstOrDefault() ?? throw new InvalidOperationException("No compatible .NET SDK was found for the examined project.");
+            if (MSBuildLocator.IsRegistered)
+            {
+                if (registeredSdk is not null && !string.Equals(registeredSdk, instance.MSBuildPath, StringComparison.Ordinal))
+                    throw new InvalidOperationException("The selected .NET SDK changed. Restart Milligram to load the new SDK; the running process cannot replace MSBuild assemblies.");
+                return;
+            }
             MSBuildLocator.RegisterInstance(instance);
+            registeredSdk = instance.MSBuildPath;
             report($"MSBuild SDK: {instance.MSBuildPath}");
         }
     }

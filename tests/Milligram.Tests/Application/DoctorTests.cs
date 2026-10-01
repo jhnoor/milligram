@@ -31,9 +31,9 @@ public class DoctorTests
         var checks = await Doctor(fixture, locator, processes, new FakeCompanion()).RunAsync(CancellationToken.None);
 
         var format = checks.Single(c => c.Name == "Project format");
-        Assert.Contains(".NET 10 references", format.Detail);
-        Assert.Contains("packages.config", format.Detail);
-        Assert.Contains("explicit HintPaths", format.Detail);
+        Assert.Contains("framework references", format.Detail);
+        Assert.Contains("restored packages", format.Detail);
+        Assert.Contains("targeting packs", format.Detail);
         Assert.Contains("src/App/App.csproj", format.Detail);
         Assert.Contains("tests/App.Tests/App.Tests.csproj", format.Detail);
         Assert.Contains(format.Fixes, f => f.Contains("Compile items", StringComparison.Ordinal));
@@ -81,6 +81,8 @@ public class DoctorTests
             ✓ Coverage: coverlet.collector in the test project
             ✓ Stryker.NET: `dotnet stryker` runs
             ✓ Agent: tmux and copilot found
+            – Scanner: MSBuild automatic project discovery under/above src; configuration: project default. Evaluation is checked when scanning; doctor does not run project tasks.
+                Fix: set scan.mode to sourceOnly in milligram.json, or use --source-only for an approximate scan without project evaluation
             """,
             Report(checks));
         Assert.Equal([("dotnet", "--version"), ("dotnet", "stryker --help")], processes.Calls.Select(c => (c.Command, string.Join(' ', c.Args))));
@@ -123,6 +125,8 @@ public class DoctorTests
                 Fix: install what the agent needs (see the README's Requirements for your platform)
                 Fix: or run your own: start copilot in the project folder and tell it to read .milligram/agent.md
                 Fix: or turn the agent off: "agent": { "enabled": false }
+            – Scanner: MSBuild automatic project discovery under/above src; configuration: project default. Evaluation is checked when scanning; doctor does not run project tasks.
+                Fix: set scan.mode to sourceOnly in milligram.json, or use --source-only for an approximate scan without project evaluation
             """,
             Report(checks));
     }

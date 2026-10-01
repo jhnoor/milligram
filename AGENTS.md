@@ -152,13 +152,14 @@ Match the existing code. It is terse and consistent:
 
 ## Known limits
 
-- The default scanner puts every file into one ad-hoc Roslyn compilation in memory, with no MSBuild.
-  That is simple and needs no build, but memory and time grow with the codebase. At millions of
-  lines, this is the first thing that needs work.
-- Experimental `ir --msbuild FILE.csproj` uses separate evaluated compiler contexts. Its build hosts
+- The default scanner discovers C# projects and uses separate evaluated compiler contexts. `scan`
+  settings are shared by initialization, commands and live refreshes. Source-only mode is the explicit
+  approximate fallback (or automatic when no project exists); it combines sources without MSBuild.
+- Evaluated scans run project tasks and generators. Their build hosts
   are owned by `ProcessRunner` through Roslyn's disposable workspace. The package smoke runs
-  `.github/scripts/project-scan-fixture.ps1` against the installed tool on all three operating systems.
-  Startup and watchers still use the source-only scanner; #37 tracks that integration.
+  `.github/scripts/project-scan-fixture.ps1` and `project-live-fixture.ps1` against the installed tool
+  on all three operating systems. Evaluated imports, linked files, wildcard directories and additional
+  inputs are polled. Large evaluated project graphs and multi-target acceptance remain #37/#36.
 - C# only. `ILanguageScanner` is the seam for other languages.
 - Coverage comes from coverlet (Cobertura) and mutation from Stryker.NET. Both are .NET-specific
   readers behind ports.
