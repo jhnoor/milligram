@@ -49,6 +49,25 @@ jobs:
           dotnet pack src/Milligram -c Release -warnaserror -p:Version=$version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./.github/scripts/smoke-package.ps1 -PackageDirectory ./artifacts -Version $version
+          $package = "Milligram.$version.nupkg"
+          $hash = (Get-FileHash (Join-Path ./artifacts $package) -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText((Join-Path ./artifacts 'VERSION.txt'), "$version`n")
+          [IO.File]::WriteAllText((Join-Path ./artifacts 'SHA256SUMS'), "$hash  $package`n")
+          $source = "Commit: $env:GITHUB_SHA`nRun: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID`n"
+          [IO.File]::WriteAllText((Join-Path ./artifacts 'SOURCE.txt'), $source)
+
+      - name: Retain the tested preview package
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: milligram-preview
+          path: |
+            artifacts/Milligram.0.0.0-ci.*.nupkg
+            artifacts/VERSION.txt
+            artifacts/SHA256SUMS
+            artifacts/SOURCE.txt
+          if-no-files-found: error
+          retention-days: 30
 
   # Formatting doesn't depend on the platform, so it is checked once.
   format:
