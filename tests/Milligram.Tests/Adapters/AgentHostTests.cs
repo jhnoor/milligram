@@ -8,6 +8,37 @@ namespace Milligram.Tests.Adapters;
 public class AgentHostTests
 {
     [Fact]
+    public async Task TheHostDoesNotReenterNativeDisposalAfterTheRuntimeDeadline()
+    {
+        using var fixture = new Fixture();
+        var queued = new TaskCompletionSource<Action>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new AgentHost(fixture.Paths, () => fixture.Policy, ["milligram-test"], "test-version",
+            (_, _, _) => Task.FromResult<IAgentTerminal>(fixture.Terminal), () => { })
+        {
+            ShutdownTimeout = TimeSpan.FromMilliseconds(100),
+            DispatchCleanup = dispose => { queued.SetResult(dispose); return completed.Task; },
+        };
+        var running = host.RunAsync(fixture.Token);
+        fixture.Terminal.Finish();
+        var cleanup = await queued.Task.WaitAsync(fixture.Token);
+        try
+        {
+            Assert.Equal(1, await running.WaitAsync(fixture.Token));
+            Assert.False(fixture.Terminal.Disposed);
+            Assert.Null(AgentHostLease.ReadDiscovery(fixture.Files));
+            Assert.Contains("Terminal cleanup:", File.ReadAllText(fixture.Files.LogFile));
+            using var next = new AgentHostLease(fixture.Files);
+        }
+        finally
+        {
+            cleanup();
+            completed.SetResult();
+        }
+        Assert.True(fixture.Terminal.Disposed);
+    }
+
+    [Fact]
     public async Task TheOwnerPreparesTheLaunchBeforePublishingAndRemovesOnlyItsDiscovery()
     {
         using var fixture = new Fixture();

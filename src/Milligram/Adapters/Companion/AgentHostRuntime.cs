@@ -1,10 +1,16 @@
 namespace Milligram.Adapters.Companion;
 
-/// <summary>Stops the owned terminal tree, drains output and exit to clients, then releases native handles.</summary>
+/// <summary>Stops the owned tree, drains output and exit to clients, and bounds the wait for native cleanup.</summary>
 public sealed class AgentHostRuntime(IAgentTerminal terminal, AgentSession session, AgentPipeServer pipe, Action<string> log)
 {
     private int running;
     internal TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(3);
+    internal Func<Action, Task> DispatchCleanup { get; init; } = StartCleanup;
+    internal Task? TerminalCleanup { get; private set; }
+
+    /// <summary>Native disposal can block; it must not wait for or occupy the pool serving the output and pipe tasks.</summary>
+    internal static Task StartCleanup(Action dispose) =>
+        Task.Factory.StartNew(dispose, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
     public async Task<int> RunAsync(Action ready, CancellationToken cancellation)
     {
@@ -45,7 +51,25 @@ public sealed class AgentHostRuntime(IAgentTerminal terminal, AgentSession sessi
         catch (Exception error) { errors.Add("Agent clients: " + error.Message); }
 
         Attempt("Agent cancellation", operations.Cancel);
-        await AttemptAsync("Terminal cleanup", async () => await Task.Run(terminal.Dispose).WaitAsync(ShutdownTimeout));
+        await AttemptAsync("Terminal cleanup", async () =>
+        {
+            var started = 0;
+            TerminalCleanup = DispatchCleanup(() =>
+            {
+                Volatile.Write(ref started, 1);
+                terminal.Dispose();
+            });
+            // A timed-out native close can fail later, after the host log and lease have closed.
+            _ = TerminalCleanup.ContinueWith(task => { _ = task.Exception; }, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            try { await TerminalCleanup.WaitAsync(ShutdownTimeout); }
+            catch (TimeoutException) when (!TerminalCleanup.IsCompleted)
+            {
+                throw new TimeoutException(Volatile.Read(ref started) == 0
+                    ? "Disposal did not start before the shutdown deadline."
+                    : "Disposal started but did not finish before the shutdown deadline.");
+            }
+        });
         foreach (var task in new[] { output, listening })
         {
             try { await task.WaitAsync(ShutdownTimeout); }

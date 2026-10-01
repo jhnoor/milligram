@@ -9,6 +9,85 @@ namespace Milligram.Tests.Adapters;
 public class AgentHostRuntimeTests
 {
     [Fact]
+    public async Task NativeCleanupDoesNotWaitForAThreadPoolWorkerOrKeepTheProcessAlive()
+    {
+        await using var host = new Host();
+        host.Terminal.Finish(17);
+        Assert.Equal(0, await host.Running.WaitAsync(host.Token));
+        Assert.False(host.Terminal.DisposalThreadPool);
+        Assert.True(host.Terminal.DisposalBackground);
+    }
+
+    [Fact]
+    public async Task ADelayedCleanupDispatchIsReportedAndStillRunsAfterTheDeadline()
+    {
+        var queued = new TaskCompletionSource<Action>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var host = new Host(timeout: TimeSpan.FromMilliseconds(100), dispatch: dispose =>
+        {
+            queued.SetResult(dispose);
+            return completed.Task;
+        });
+        host.Terminal.Finish(17);
+        var cleanup = await queued.Task.WaitAsync(host.Token);
+        try
+        {
+            Assert.Equal(1, await host.Running.WaitAsync(host.Token));
+            Assert.Equal(0, host.Terminal.Disposals);
+            Assert.Contains("Terminal cleanup: Disposal did not start before the shutdown deadline.", host.Logs);
+        }
+        finally
+        {
+            cleanup();
+            completed.SetResult();
+        }
+        await host.Runtime.TerminalCleanup!.WaitAsync(host.Token);
+        Assert.Equal(1, host.Terminal.Disposals);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BlockedNativeCleanupIsBoundedAndCanFinishOrFailAfterShutdown(bool fail)
+    {
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var host = new Host(timeout: TimeSpan.FromMilliseconds(100));
+        host.Terminal.BeforeDispose = () => { entered.TrySetResult(); release.Wait(); };
+        if (fail) host.Terminal.DisposeError = new IOException("late native failure");
+        host.Terminal.Finish(17);
+        string[] logs = [];
+        try
+        {
+            await entered.Task.WaitAsync(host.Token);
+            Assert.Equal(1, await host.Running.WaitAsync(host.Token));
+            Assert.Contains("Terminal cleanup: Disposal started but did not finish before the shutdown deadline.", host.Logs);
+            Assert.False(host.Runtime.TerminalCleanup!.IsCompleted);
+            logs = host.Logs.ToArray();
+        }
+        finally { release.Set(); }
+        if (fail)
+        {
+            var error = await Assert.ThrowsAsync<IOException>(() => host.Runtime.TerminalCleanup!.WaitAsync(host.Token));
+            Assert.Same(host.Terminal.DisposeError, error);
+        }
+        else await host.Runtime.TerminalCleanup!.WaitAsync(host.Token);
+        Assert.Equal(1, host.Terminal.Disposals);
+        Assert.True(host.Terminal.Disposed.Task.IsCompletedSuccessfully);
+        Assert.Equal(logs, host.Logs);
+    }
+
+    [Fact]
+    public async Task ANativeTimeoutErrorIsNotMistakenForTheCleanupDeadline()
+    {
+        await using var host = new Host();
+        host.Terminal.DisposeError = new TimeoutException("native timeout");
+        host.Terminal.Finish(17);
+        Assert.Equal(1, await host.Running.WaitAsync(host.Token));
+        Assert.Contains("Terminal cleanup: native timeout", host.Logs);
+    }
+
+    [Fact]
     public async Task FinalOutputDrainsBeforeTheNonzeroExitAndAllClientsClose()
     {
         await using var host = new Host();
@@ -148,6 +227,7 @@ public class AgentHostRuntimeTests
         Assert.Contains(host.Logs, line => line.StartsWith("Terminal output:", StringComparison.Ordinal));
         Assert.Contains("Agent exited (-1).", host.Logs);
         Assert.DoesNotContain(host.Logs, line => line.StartsWith("Agent I/O cleanup:", StringComparison.Ordinal));
+        await host.Runtime.TerminalCleanup!.WaitAsync(host.Token);
         Assert.Equal(1, host.Terminal.Disposals);
         Assert.True(host.Terminal.OutputStream.Cancelled);
     }
@@ -162,6 +242,7 @@ public class AgentHostRuntimeTests
         {
             host.Cancel();
             Assert.Equal(1, await host.Running.WaitAsync(host.Token));
+            await host.Runtime.TerminalCleanup!.WaitAsync(host.Token);
             Assert.Equal(1, host.Terminal.Disposals);
             Assert.Contains(host.Logs, line => line.StartsWith("Agent I/O cleanup:", StringComparison.Ordinal));
         }
@@ -229,7 +310,8 @@ public class AgentHostRuntimeTests
     public async Task TheRuntimeCannotStartAnotherOutputReaderOrListener()
     {
         await using var host = new Host();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => host.Runtime.RunAsync(() => { }, host.Token));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => host.Runtime.RunAsync(() => { }, host.Token));
+        Assert.Equal("The agent host is already running.", error.Message);
         Assert.Equal(0, host.Terminal.Stops);
         host.Terminal.Finish(17);
         Assert.Equal(0, await host.Running.WaitAsync(host.Token));
@@ -272,7 +354,8 @@ public class AgentHostRuntimeTests
         public ConcurrentQueue<string> Logs { get; } = new();
         public CancellationToken Token => deadline.Token;
 
-        public Host(Action? ready = null, Action<string>? log = null, string? endpoint = null, bool cancelled = false, TimeSpan? timeout = null)
+        public Host(Action? ready = null, Action<string>? log = null, string? endpoint = null, bool cancelled = false, TimeSpan? timeout = null,
+            Func<Action, Task>? dispatch = null)
         {
             Endpoint = endpoint ?? "mg-test-" + Guid.NewGuid().ToString("N")[..16];
             if (cancelled) lifetime.Cancel();
@@ -281,6 +364,7 @@ public class AgentHostRuntimeTests
             Runtime = new AgentHostRuntime(Terminal, Session, Server, log ?? Logs.Enqueue)
             {
                 ShutdownTimeout = timeout ?? TimeSpan.FromSeconds(2),
+                DispatchCleanup = dispatch ?? AgentHostRuntime.StartCleanup,
             };
             Running = Runtime.RunAsync(() => { ready?.Invoke(); Ready.TrySetResult(); }, lifetime.Token);
         }
@@ -299,10 +383,19 @@ public class AgentHostRuntimeTests
         public async ValueTask DisposeAsync()
         {
             lifetime.Cancel();
+            Terminal.OutputStream.Release.TrySetResult();
             Terminal.Finish(-1);
             try { await Running.WaitAsync(TimeSpan.FromSeconds(5)); }
             catch (IOException) { }
-            finally { Server.Dispose(); Session.Dispose(); lifetime.Dispose(); deadline.Dispose(); }
+            finally
+            {
+                try
+                {
+                    if (Runtime.TerminalCleanup is { } cleanup) await cleanup.WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                catch (Exception error) when (ReferenceEquals(error, Terminal.DisposeError)) { }
+                finally { Server.Dispose(); Session.Dispose(); lifetime.Dispose(); deadline.Dispose(); }
+            }
         }
     }
 
@@ -319,8 +412,11 @@ public class AgentHostRuntimeTests
         public bool FinishOnStop { get; set; } = true;
         public Exception? StopError { get; set; }
         public Exception? DisposeError { get; set; }
+        public Action? BeforeDispose { get; set; }
         public int Stops { get; private set; }
         public int Disposals { get; private set; }
+        public bool DisposalThreadPool { get; private set; }
+        public bool DisposalBackground { get; private set; }
         public void Resize(TerminalSize size) { }
         public void Finish(int code) { Exit.TrySetResult(code); OutputStream.End(); }
         public void Stop()
@@ -332,7 +428,10 @@ public class AgentHostRuntimeTests
         }
         public void Dispose()
         {
+            DisposalThreadPool = Thread.CurrentThread.IsThreadPoolThread;
+            DisposalBackground = Thread.CurrentThread.IsBackground;
             Disposals++;
+            BeforeDispose?.Invoke();
             Finish(-1);
             Input.Dispose();
             OutputStream.Dispose();

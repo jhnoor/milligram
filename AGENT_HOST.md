@@ -143,6 +143,14 @@ cancellation closes stalled connections; terminal disposal releases the native h
 stop, drain or disposal steps are recorded without skipping later cleanup. Only after cleanup
 does the runtime write its exit and error messages to the host log.
 
+Native disposal runs once on a separate background thread, so thread-pool load cannot leave
+it queued behind scanning or pipe work. The deadline still bounds the host's wait when native
+cleanup blocks; its log distinguishes disposal that has not started from disposal that has
+started but not finished. The outer host does not synchronously dispose the terminal again
+after the runtime returns. A timed-out cleanup may finish later, but cannot keep the host
+process alive. Test fixtures explicitly release and await any delayed cleanup before disposing
+their own resources.
+
 ## Detached process
 
 The internal `agent host --project DIR` command owns the lease, log and native runtime.
