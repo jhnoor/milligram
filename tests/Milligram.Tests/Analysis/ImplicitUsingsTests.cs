@@ -6,6 +6,89 @@ namespace Milligram.Tests.Analysis;
 public class ImplicitUsingsTests
 {
     [Fact]
+    public void ATemporarilyBrokenProjectKeepsItsGeneratedImportsWithoutCrashingTheScan()
+    {
+        using var project = new TempProject(("App.csproj", "<Project><PropertyGroup>"),
+            ("obj/Debug/App.GlobalUsings.g.cs", "global using System.Net.Http;"),
+            ("Order.cs", "namespace Shop; public class Order { public HttpClient? Client { get; } }"));
+
+        var model = new CSharpScanner().Scan(new ScanRequest(project.Root, project.Root, [], "Shop", ["System.Net.Http"], "Shop"));
+
+        Assert.Contains(model.Edges, edge => edge.To == "x:System.Net.Http");
+    }
+
+    [Theory]
+    [InlineData("disable")]
+    [InlineData("false")]
+    [InlineData("FALSE")]
+    public void DisabledImplicitUsingsDoNotKeepDependenciesFromStaleGeneratedSdkImports(string setting)
+    {
+        using var project = new TempProject(("App.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><ImplicitUsings>{setting}</ImplicitUsings></PropertyGroup></Project>"),
+            ("obj/Debug/App.GlobalUsings.g.cs", "global using global::System.Net.Http;"),
+            ("Order.cs", "namespace Shop; public class Order { public HttpClient? Client { get; } }"));
+
+        var model = new CSharpScanner().Scan(new ScanRequest(project.Root, project.Root, [], "Shop", ["System.Net.Http"], "Shop"));
+
+        Assert.DoesNotContain(model.Edges, edge => edge.To == "x:System.Net.Http");
+    }
+
+    [Theory]
+    [InlineData("<Using Include=\"System.Net.Http\" />", "global using global::System.Net.Http;", "HttpClient")]
+    [InlineData("<Using Include=\"System.Text;System.Net.Http\" />", "global using System.Net.Http;", "HttpClient")]
+    [InlineData("", "global using Web = global::System.Net.Http;", "Web.HttpClient")]
+    public void DisablingSdkImportsPreservesExplicitAndAliasedImports(string items, string generated, string type)
+    {
+        using var project = new TempProject(("App.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><ImplicitUsings>disable</ImplicitUsings></PropertyGroup><ItemGroup>{items}</ItemGroup></Project>"),
+            ("obj/Debug/App.GlobalUsings.g.cs", generated),
+            ("Order.cs", $"namespace Shop; public class Order {{ public {type}? Client {{ get; }} }}"));
+
+        var model = new CSharpScanner().Scan(new ScanRequest(project.Root, project.Root, [], "Shop", ["System.Net.Http"], "Shop"));
+
+        Assert.Contains(model.Edges, edge => edge.To == "x:System.Net.Http");
+    }
+
+    [Fact]
+    public void DisablingSdkImportsPreservesCustomGeneratedNamespaces()
+    {
+        using var project = new TempProject(("App.csproj", "<Project><PropertyGroup><ImplicitUsings>disable</ImplicitUsings></PropertyGroup></Project>"),
+            ("obj/Debug/App.GlobalUsings.g.cs", "global using System.Text.Json; global using System.Net.Http;"),
+            ("Order.cs", "namespace Shop; public class Order { public JsonSerializerOptions? Options { get; } public HttpClient? Client { get; } }"));
+
+        var model = new CSharpScanner().Scan(new ScanRequest(project.Root, project.Root, [], "Shop", ["System.Text.Json", "System.Net.Http"], "Shop"));
+
+        Assert.Contains(model.Edges, edge => edge.To == "x:System.Text.Json");
+        Assert.DoesNotContain(model.Edges, edge => edge.To == "x:System.Net.Http");
+    }
+
+    [Theory]
+    [InlineData("<ImplicitUsings>enable</ImplicitUsings>")]
+    [InlineData("<ImplicitUsings>true</ImplicitUsings>")]
+    [InlineData("<ImplicitUsings Condition=\"false\">disable</ImplicitUsings>")]
+    [InlineData("")]
+    public void GeneratedImportsRemainWhenTheProjectDoesNotExplicitlyDisableThem(string settings)
+    {
+        using var project = new TempProject(("App.csproj", $"<Project><PropertyGroup>{settings}</PropertyGroup></Project>"),
+            ("obj/Debug/App.GlobalUsings.g.cs", "global using System.Net.Http;"),
+            ("Order.cs", "namespace Shop; public class Order { public HttpClient? Client { get; } }"));
+
+        var model = new CSharpScanner().Scan(new ScanRequest(project.Root, project.Root, [], "Shop", ["System.Net.Http"], "Shop"));
+
+        Assert.Contains(model.Edges, edge => edge.To == "x:System.Net.Http");
+    }
+
+    [Fact]
+    public void DisablingWebSdkImportsRemovesStaleWebDependencies()
+    {
+        using var project = new TempProject(("App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk.Web\"><PropertyGroup><ImplicitUsings>disable</ImplicitUsings></PropertyGroup></Project>"),
+            ("obj/Debug/App.GlobalUsings.g.cs", "global using Microsoft.AspNetCore.Builder;"),
+            ("Order.cs", "namespace Shop; public class Order { public WebApplication? App { get; } }"));
+
+        var model = new CSharpScanner().Scan(new ScanRequest(project.Root, project.Root, [], "Shop", ["Microsoft.AspNetCore"], "Shop"));
+
+        Assert.DoesNotContain(model.Edges, edge => edge.To == "x:Microsoft.AspNetCore");
+    }
+
+    [Fact]
     public void TheNewestGeneratedUsingsUnderObjTakePrecedence()
     {
         using var project = new TempProject(("App.csproj", "<Project />"),

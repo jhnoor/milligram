@@ -74,17 +74,17 @@ Milligram runs Stryker from each source project, so put `solution` in that direc
 name Framework 4.6+, while this sample targets 4.5. Compatibility needs an actual configured
 build and test run; changing the target framework is not part of this investigation.
 
-## Follow-up work to split from #27
+## Follow-up work from #27
 
-These are proposed issue scopes, not completed features or already-created issues.
+The investigation is complete; the implementation and acceptance work is tracked separately.
 
-1. **Resolve legacy references.** Explicit, unconditional HintPaths now work (see below).
+1. **[Resolve legacy references (#36)](https://github.com/jhnoor/milligram/issues/36).** Explicit, unconditional HintPaths now work (see below).
    Resolve conditional/property-based package references and the target framework's reference
    assemblies, with explicit diagnostics for missing inputs. Avoid
    mixing incompatible core libraries in the scanner's single compilation. Acceptance:
    the sample's Controller and DbContext dependencies bind, and modern SDK projects retain
    their existing results. Test missing packages and solutions mixing target frameworks.
-2. **Respect legacy Compile membership.** Evaluate explicit, linked and conditional source
+2. **[Respect project source membership (#37)](https://github.com/jhnoor/milligram/issues/37).** Evaluate explicit, linked and conditional source
    inputs and preprocessor symbols. Keep a documented source-only fallback when evaluation
    is unavailable. Acceptance: the unlisted probe disappears, included/linked files remain,
    inactive configurations do not invent dependencies, and excludes still apply. Include SDK
@@ -93,11 +93,15 @@ These are proposed issue scopes, not completed features or already-created issue
    with an unqualified `HttpClient` property: the dependency remains after disabling the setting.
    File timestamps alone cannot fix this; the SDK writes generated usings only when their
    content changes, so valid generated files can also be older than the project definition.
-3. **Prove legacy coverage collection.** Choose a real old-style test project that builds on
+   The targeted fix in [#40](https://github.com/jhnoor/milligram/issues/40) filters stale SDK
+   namespaces when the project explicitly sets `ImplicitUsings` to `disable` or `false`,
+   preserving local `Using` items, aliases and custom namespaces. Imported and conditional
+   `Using` items still need project evaluation; the scanner cannot infer their effective values.
+3. **[Prove legacy coverage collection (#38)](https://github.com/jhnoor/milligram/issues/38).** Choose a real old-style test project that builds on
    Windows, record the VS Build Tools/runner/collector versions, and produce Cobertura.
    Add any supported runner through the process port. Acceptance: failing tests remain
    visible and a covered/uncovered source line reaches the correct live card.
-4. **Prove Framework mutation setup.** Use a supported Framework target and real tests;
+4. **[Prove Framework mutation setup (#39)](https://github.com/jhnoor/milligram/issues/39).** Use a supported Framework target and real tests;
    validate solution resolution, NuGet/MSBuild discovery and a known surviving mutation.
    Decide whether Milligram needs a documented MSBuild override. Acceptance: a configured
    run succeeds, missing prerequisites produce useful diagnostics, and full/differential
@@ -116,3 +120,13 @@ finds **32 types and 95 dependencies**. It restores **12 System.Web edges and 11
 System.Data.Entity edges**, including HomeController → Controller and MusicStoreEntities →
 DbContext inheritance. Remaining packages were not restored, and their missing paths are now
 reported. This does not prove that every dependency binds or remove the other limits above.
+
+## Follow-up measurement: stale SDK imports
+
+On October 1, 2026, a local .NET 10 project with an unqualified `HttpClient` property was
+built and scanned. With implicit usings enabled, the scan contained one HTTP dependency.
+After disabling them, the SDK correctly failed compilation with CS0246 but retained its old
+generated usings file. The corrected scanner reported zero HTTP dependencies. Adding an
+explicit `Using Include="System.Net.Http"` item restored both compilation and the one edge.
+This verifies the explicit-setting regression in #40; it does not establish full project or
+configuration evaluation under #37.
