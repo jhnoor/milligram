@@ -134,6 +134,10 @@ diagnostics and incomplete edges. A project that fails normal MSBuild evaluation
 model intact. Run plain `milligram ir` to explicitly choose the approximate source-only fallback.
 The configuration defaults to the project's choice when omitted.
 
+On Windows, old-style projects also need a short tool installation path: Roslyn's .NET Framework
+host can time out when its `.exe.config` path reaches 260 characters. The command diagnoses deep
+installations; use a shorter `dotnet tool install ... --tool-path DIR` when this occurs.
+
 Project evaluation runs design-time targets and source generators, which can execute project tasks
 and write `obj` files. This is a manual `ir` option: startup, initialization, the live watcher and
 `doctor` still use the default source-only path. A later ordinary scan replaces the evaluated

@@ -5,7 +5,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $packageSource = (Resolve-Path -LiteralPath $PackageDirectory).Path
-$smokeRoot = Join-Path ([IO.Path]::GetTempPath()) ("Milligram smoke " + [guid]::NewGuid().ToString('N'))
+# The .NET Framework build host must find its .exe.config below MAX_PATH; retain spaces in the fixture path.
+$smokeRoot = Join-Path ([IO.Path]::GetTempPath()) ("mg smoke " + [guid]::NewGuid().ToString('N').Substring(0, 12))
 $toolRoot = Join-Path $smokeRoot 'tool'
 $projectRoot = Join-Path $smokeRoot 'project'
 New-Item -ItemType Directory -Path $projectRoot -Force | Out-Null

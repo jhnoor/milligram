@@ -15,6 +15,8 @@ public sealed partial class ProcessRunner
         IReadOnlyList<string> files, string? configuration, Action<string> report)
     {
         RegisterMsBuild(Path.GetDirectoryName(files[0])!, report);
+        if (LegacyHostPathWarning(Path.GetDirectoryName(typeof(MSBuildWorkspace).Assembly.Location)!, OperatingSystem.IsWindows()) is { } warning)
+            report(warning);
         var properties = new Dictionary<string, string>();
         if (configuration is not null) properties["Configuration"] = configuration;
         using var workspace = MSBuildWorkspace.Create(properties);
@@ -64,6 +66,15 @@ public sealed partial class ProcessRunner
 
     internal static string EscapeProperty(string value) => System.Text.RegularExpressions.Regex.Replace(value, @"[%$@();,'?*]",
         match => "%" + ((int)match.Value[0]).ToString("X2", System.Globalization.CultureInfo.InvariantCulture));
+
+    /// <summary>The legacy CLR may fail before emitting any output when its executable configuration exceeds MAX_PATH.</summary>
+    internal static string? LegacyHostPathWarning(string directory, bool windows)
+    {
+        var config = Path.Combine(directory, "BuildHost-net472", "Microsoft.CodeAnalysis.Workspaces.MSBuild.BuildHost.exe.config");
+        return windows && config.Length >= 260
+            ? $"Legacy MSBuild host configuration path exceeds the Windows .NET Framework limit ({config.Length} characters): {config}. Install Milligram under a shorter --tool-path before evaluating old-style projects; otherwise the host can time out before connecting."
+            : null;
+    }
 
     /// <summary>Register before any MSBuild assemblies load, using the SDK selected for the examined project.</summary>
     private static void RegisterMsBuild(string directory, Action<string> report)

@@ -42,6 +42,22 @@ project's compiler inputs. Reference-resolution failures can still yield usable 
 the command reports the resulting incomplete bindings. This does not establish legacy build,
 coverage or mutation support, and it does not replace the pinned evidence in `LEGACY.md`.
 
+## Windows installation path limit
+
+The first Windows package CI run at `9130757` passed all SDK cases, then the legacy host failed to
+connect within Roslyn's 60-second deadline. Its `.exe.config` path was 264 characters. The same
+package reproduced the failure locally with a 264-character configuration path; a 259-character
+path evaluated the same old-style project successfully in 2.2 seconds. The host emitted no process
+output in the failing case. This is a deep tool-installation-path limitation, independent of whether
+Visual Studio is installed locally.
+
+The smoke test now uses a shorter temporary installation directory while retaining spaces. The
+product diagnoses Windows host configuration paths of 260 characters or more and recommends a
+shorter `--tool-path`. It does not yet relocate the host or make long legacy-host paths work. The
+source/project fixture itself retains long paths and spaces. Its assertions are unchanged.
+[#63](https://github.com/jhnoor/milligram/issues/63) tracks support or prompt failure for long
+Windows installations; the exact CLR failure detail was not captured.
+
 ## Work still required
 
 Before using this path by default, #37 needs project discovery and policy selection, watcher
