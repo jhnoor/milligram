@@ -36,7 +36,7 @@ public sealed record Initialization(Policy Policy, IReadOnlyList<DependencyEdge>
 public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scanner, IProjectLocator locator)
 {
     /// <summary>Levels come from the dependencies (see <see cref="Layering"/>); boxes are ordered outer first, as drawn.</summary>
-    public Initialization Propose()
+    public Initialization Propose(Action<string>? progress = null)
     {
         var src = Directory.Exists(Path.Combine(paths.Root, "src")) ? "src" : ".";
         var testDirectories = locator.Find(paths.Root)
@@ -47,7 +47,7 @@ public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scan
         var exclude = Policy.DefaultExclude.Concat(testDirectories).Distinct().ToList();
         var title = Path.GetFileName(paths.Root);
 
-        var model = scanner.Scan(new ScanRequest(paths.Root, paths.Absolute(src), exclude, "", [], title, DiscoverForeign: true));
+        var model = scanner.Scan(new ScanRequest(paths.Root, paths.Absolute(src), exclude, "", [], title, DiscoverForeign: true), progress);
         var prefix = CommonPrefix(model.Types.Select(t => t.Namespace).Where(n => n.Length > 0).Distinct().ToList());
         var layers = Layering.TopLevel(model, prefix);
         var order = layers.Levels.Reverse().SelectMany(names => names).ToList();
@@ -65,11 +65,11 @@ public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scan
     }
 
     /// <summary>Writes a commented milligram.json unless one exists (null then); always makes sure run files are git-ignored.</summary>
-    public Initialization? Initialize(bool force)
+    public Initialization? Initialize(bool force, Action<string>? progress = null)
     {
         EnsureGitIgnore();
         if (File.Exists(paths.PolicyFile) && !force) return null;
-        var initialization = Propose();
+        var initialization = Propose(progress);
         JsonFile.WriteText(paths.PolicyFile, PolicyText.Starter(initialization));
         return initialization;
     }

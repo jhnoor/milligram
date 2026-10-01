@@ -87,7 +87,8 @@ cd /path/to/your/csharp/project
 milligram
 ```
 
-The first run writes `milligram.json` from the namespaces it finds. It also infers the
+The first run reports parsing, binding and dependency progress while it scans, then writes
+`milligram.json` from the namespaces it finds. It also infers the
 **levels** from the dependencies: a namespace that depends on nothing is innermost, and each of
 the others sits just outside the namespaces it uses. When namespaces depend on each other in a
 cycle, Milligram breaks the cycle at its lightest link (the fewest references) and leaves that
@@ -117,6 +118,15 @@ The scanner uses one source compilation rather than evaluating MSBuild. It reads
 usings from the latest build, or falls back to explicit, unconditional `ImplicitUsings` settings
 in project XML (`enable` or `true`). Imported and conditional settings and stale generated files
 can therefore differ from the actual build; project-input evaluation remains a known limit.
+
+File-local types keep separate identities and source cards even when their names match. Other
+repeated source type names are kept distinct when Roslyn provides separate symbols, and the scan
+reports them. Their references can still be ambiguous in the source-only compilation; resolving
+each project's inputs remains [#37](https://github.com/jhnoor/milligram/issues/37). Previously
+measured types whose identities collided need fresh coverage and mutation measurements.
+
+The [large source-tree check](SCALING.md) records a scan of 18,110 files and 6.5 million physical
+C# lines, including its runtime, memory use and remaining project-binding limits.
 
 To get metrics, run `milligram crap` (tests with coverage) and `milligram mutate` (Stryker), or use
 the buttons in the viewer.

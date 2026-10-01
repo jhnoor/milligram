@@ -474,6 +474,70 @@ public class WorkspaceTests
 
 public class ProjectInitializerTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InitialScanReportsProgressBeforeWritingThePolicy(bool force)
+    {
+        using var project = new TempProject(("A.cs", "namespace Shop; public class A { }"));
+        var paths = new ProjectPaths(project.Root);
+        var progress = new List<string>();
+        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator());
+
+        Assert.NotNull(initializer.Initialize(force, line =>
+        {
+            Assert.False(File.Exists(paths.PolicyFile));
+            progress.Add(line);
+        }));
+
+        Assert.Equal("Scanning 1 source file(s).", progress[0]);
+        Assert.Contains("Parsed 1/1 files.", progress);
+        Assert.Contains("Bound 1/1 files.", progress);
+        Assert.Contains("Linked 1/1 types.", progress);
+        Assert.StartsWith("Scanned 1 types and 0 dependencies in ", progress[^1]);
+        Assert.True(File.Exists(paths.PolicyFile));
+    }
+
+    [Fact]
+    public void ExistingPolicySkipsInitializationAndScanProgress()
+    {
+        using var project = new TempProject(("milligram.json", "{ \"prefix\": \"Kept\" }"));
+        var initializer = new ProjectInitializer(new ProjectPaths(project.Root), new CSharpScanner(), new FakeProjectLocator());
+        var progress = new List<string>();
+
+        Assert.Null(initializer.Initialize(force: false, progress.Add));
+
+        Assert.Empty(progress);
+        Assert.Equal("{ \"prefix\": \"Kept\" }", File.ReadAllText(Path.Combine(project.Root, "milligram.json")));
+    }
+
+    [Fact]
+    public void ATestProjectAtTheRootDoesNotContributeProductionNamespaces()
+    {
+        using var project = new TempProject(
+            ("Tests.csproj", "<Project><ItemGroup><PackageReference Include=\"xunit\" /></ItemGroup></Project>"),
+            ("Tests.cs", "namespace Shop.Tests; public class Example { }"));
+        var initializer = new ProjectInitializer(new ProjectPaths(project.Root), new CSharpScanner(), new Milligram.Analysis.DotNet.DotNetProjectLocator());
+
+        var policy = initializer.Propose().Policy;
+
+        Assert.Equal("", policy.Prefix);
+        Assert.Empty(policy.Levels);
+        Assert.Contains("**", policy.Exclude);
+    }
+
+    [Fact]
+    public void GlobalTypesDoNotHideTheCommonNamespacePrefix()
+    {
+        using var project = new TempProject(
+            ("Global.cs", "public class Global { }"),
+            ("Domain.cs", "namespace Shop.Domain; public class Order { }"),
+            ("Web.cs", "namespace Shop.Web; public class Page { }"));
+        var initializer = new ProjectInitializer(new ProjectPaths(project.Root), new CSharpScanner(), new FakeProjectLocator());
+
+        Assert.Equal("Shop", initializer.Propose().Policy.Prefix);
+    }
+
     [Fact]
     public void InitialPolicyIncludesUsedLibrariesAndTheNextScanDrawsTheirOvals()
     {
