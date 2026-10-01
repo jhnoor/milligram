@@ -159,7 +159,8 @@ Match the existing code. It is terse and consistent:
   are owned by `ProcessRunner` through Roslyn's disposable workspace. The package smoke runs
   `.github/scripts/project-scan-fixture.ps1` and `project-live-fixture.ps1` against the installed tool
   on all three operating systems. Evaluated imports, linked files, wildcard directories and additional
-  inputs are polled. Large evaluated project graphs and multi-target acceptance remain #37/#36.
+  inputs are polled. `framework-scan-fixture.ps1` checks mixed net48/net10.0 graphs and real framework
+  references. Large real-company graphs still need acceptance; metric ownership across contexts is #64.
 - C# only. `ILanguageScanner` is the seam for other languages.
 - Coverage comes from coverlet (Cobertura) and mutation from Stryker.NET. Both are .NET-specific
   readers behind ports.

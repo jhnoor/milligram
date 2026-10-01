@@ -37,6 +37,7 @@ public class DoctorTests
         Assert.Contains("src/App/App.csproj", format.Detail);
         Assert.Contains("tests/App.Tests/App.Tests.csproj", format.Detail);
         Assert.Contains(format.Fixes, f => f.Contains("Compile items", StringComparison.Ordinal));
+        Assert.Contains(format.Fixes, f => f.Contains("Microsoft.WebApplication.targets", StringComparison.Ordinal) && f.Contains("VSToolsPath", StringComparison.Ordinal));
         Assert.Contains(format.Fixes, f => f.Contains("milligram crap --coverage", StringComparison.Ordinal));
         Assert.Contains(format.Fixes, f => f.Contains("stryker-config.json", StringComparison.Ordinal));
         Assert.Contains(format.Fixes, f => f.Contains("working MSBuild/NuGet tools", StringComparison.Ordinal));

@@ -39,6 +39,10 @@ The viewer, the editor integration, `crap` and `mutate` work the same everywhere
 
 Project scans evaluate `Compile` items, configuration, imports and framework references with
 MSBuild. Install the appropriate SDK, .NET Framework targeting packs and restored packages first.
+Microsoft also provides [reference assemblies through NuGet](https://learn.microsoft.com/en-us/dotnet/framework/migration-guide/reference-assemblies)
+when the developer pack is unavailable. Legacy ASP.NET projects additionally need their web build
+targets: `VSToolsPath` must resolve to the tools directory containing `WebApplications`.
+Missing project imports fail evaluation with a diagnostic.
 Missing assemblies are diagnosed; source membership can still be useful while bindings are
 incomplete. Full legacy build, coverage and mutation acceptance remains unverified.
 The explicit `--source-only` fallback binds against .NET 10, restored assets and direct `HintPath`
@@ -54,11 +58,13 @@ MSBuild automatically; its `--msbuild-path` override is a CLI option that Millig
 currently forward. See [Stryker's setup](https://stryker-mutator.io/docs/stryker-net/getting-started/)
 and [configuration](https://stryker-mutator.io/docs/stryker-net/configuration/).
 
-The [legacy investigation](LEGACY.md) measures recovered library edges and extra scanned files
-on an actual MVC 4 / .NET Framework 4.5 application. Building it, collecting coverage and running
-mutation remain unverified; [#36](https://github.com/jhnoor/milligram/issues/36),
+The [legacy investigation](LEGACY.md) records a prepared MVC 4 / .NET Framework 4.5 application:
+27 evaluated source files, 32 types and 98 dependencies, with the unlisted-source probe excluded.
+Automated fixtures also check mixed net48/net10.0 contexts and conditional references; the scan
+evidence is tracked in [#36](https://github.com/jhnoor/milligram/issues/36). Building the legacy
+application, collecting its coverage and running mutation remain unverified;
 [#38](https://github.com/jhnoor/milligram/issues/38) and [#39](https://github.com/jhnoor/milligram/issues/39)
-track the remaining acceptance work.
+track those acceptance checks.
 
 ## Install
 
@@ -131,7 +137,8 @@ sources without a physical path contribute to binding but do not get source card
 
 This mode uses MSBuild/Roslyn compiler inputs, including conditional `Compile` items, imported
 properties, preprocessor symbols and fresh SDK global usings. Each project keeps its own imports
-and reference assemblies. Repeated type names get project-qualified IDs when needed. Install the
+and reference assemblies. Multi-target projects retain each evaluated framework context and its
+matching project-reference graph; repeated type names get project-qualified IDs when needed. Install the
 project's SDK and reference packs and restore its packages first; missing references produce
 diagnostics and incomplete edges. A project that fails normal MSBuild evaluation leaves the old
 model intact. Run `milligram ir --source-only` to explicitly choose the approximate source-only fallback.
