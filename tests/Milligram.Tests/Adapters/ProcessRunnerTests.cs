@@ -6,6 +6,34 @@ namespace Milligram.Tests.Adapters;
 public class ProcessRunnerTests
 {
     [Fact]
+    public async Task FollowedProcessesDeliverRawOutputAndErrorsSeparately()
+    {
+        using var project = new TempProject();
+        var (command, args) = Script(project);
+        var lines = new ConcurrentQueue<string>();
+        var output = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var error = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var followed = ProcessRunner.Follow(command, args,
+            line => { lines.Enqueue(line); if (line.Length == 0) output.TrySetResult(); }, line => error.TrySetResult(line));
+        Assert.NotNull(followed);
+        Assert.Equal("error", await error.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+        await output.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(followed.Stop(out var diagnostic), diagnostic);
+        Assert.EndsWith("(code 17).", diagnostic, StringComparison.Ordinal);
+        Assert.Equal(["out", "\u001b[31mcolored\u001b[0m   ", ""], lines);
+    }
+
+    [Fact]
+    public void FollowedShutdownExplainsAnInputCloseFailure()
+    {
+        using var process = new System.Diagnostics.Process();
+        using var followed = new ProcessRunner.Followed(process);
+        Assert.False(followed.Stop(out var diagnostic));
+        Assert.StartsWith("Closing input failed after ", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("InvalidOperationException:", diagnostic, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task StreamingCleansLinesAndKeepsTheNonzeroExitCode()
     {
         using var project = new TempProject();
@@ -61,6 +89,7 @@ public class ProcessRunnerTests
         var result = ProcessRunner.Capture(missing);
         Assert.Equal(127, result.ExitCode);
         Assert.NotEmpty(result.Output);
+        Assert.Null(ProcessRunner.Follow(missing, [], lines.Add));
     }
 
     [Fact]

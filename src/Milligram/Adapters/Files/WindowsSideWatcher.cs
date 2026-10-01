@@ -67,18 +67,27 @@ public sealed class WindowsSideWatcher : IDisposable
         $watcher.IncludeSubdirectories = $true
         $watcher.InternalBufferSize = 65536
         $watcher.NotifyFilter = [IO.NotifyFilters]'FileName, DirectoryName, LastWrite, Size'
-        foreach ($name in 'Changed', 'Created', 'Deleted', 'Renamed', 'Error') { $null = Register-ObjectEvent -InputObject $watcher -EventName $name -SourceIdentifier $name }
+        $events = 'Changed', 'Created', 'Deleted', 'Renamed', 'Error'
+        foreach ($name in $events) { $null = Register-ObjectEvent -InputObject $watcher -EventName $name -SourceIdentifier $name }
         $watcher.EnableRaisingEvents = $true
         $out.WriteLine('{{Ready}}')
         $eof = [Console]::OpenStandardInput().ReadAsync((New-Object byte[] 1), 0, 1)
-        while (-not $eof.IsCompleted) {
-          $e = Wait-Event -Timeout 1
-          if ($null -eq $e) { continue }
-          Remove-Event -EventIdentifier $e.EventIdentifier
-          if ($e.SourceIdentifier -eq 'Error') { $out.WriteLine('{{Overflow}}'); continue }
-          $a = $e.SourceEventArgs
-          $paths = if ($a -is [IO.RenamedEventArgs]) { $a.OldFullPath, $a.FullPath } else { $a.FullPath }
-          foreach ($p in $paths) { if ($p -notmatch '{{Unscanned}}') { $out.WriteLine($p) } }
+        try {
+          while (-not $eof.IsCompleted) {
+            $pending = @(Get-Event)
+            if ($pending.Count -eq 0) { $null = $eof.Wait(100); continue }
+            foreach ($e in $pending) {
+              if ($eof.IsCompleted) { break }
+              Remove-Event -EventIdentifier $e.EventIdentifier
+              if ($e.SourceIdentifier -eq 'Error') { $out.WriteLine('{{Overflow}}'); continue }
+              $a = $e.SourceEventArgs
+              $paths = if ($a -is [IO.RenamedEventArgs]) { $a.OldFullPath, $a.FullPath } else { $a.FullPath }
+              foreach ($p in $paths) { if ($p -notmatch '{{Unscanned}}') { $out.WriteLine($p) } }
+            }
+          }
+        } finally {
+          $watcher.Dispose()
+          foreach ($name in $events) { Unregister-Event -SourceIdentifier $name }
         }
         """;
 

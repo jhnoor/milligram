@@ -196,6 +196,37 @@ than running Roslyn's build or a fresh scan. Append `--serve` for manual inspect
 are written under ignored `artifacts/browser/` during automated checks. The generated check
 also runs across the browser CI matrix.
 
+## Windows watcher shutdown under load
+
+The first Windows CI run for [#59](https://github.com/jhnoor/milligram/pull/59) exceeded the
+watcher's graceful-stop check; the unchanged repeat passed. The original log did not distinguish
+a two-second exit timeout from an input-close error. [#60](https://github.com/jhnoor/milligram/issues/60)
+tracks that unproven cause.
+
+An October 1 probe on the Windows machine above compared `78d74a7` with the event-queue loop that
+waits on input closure while idle. The old `Wait-Event -Timeout 1` held shutdown until a file event
+or the next one-second timeout. The new loop checks queued events and waits up to 100 ms on the
+input task; closing input wakes that wait immediately. It also disposes the watcher and removes
+its event subscriptions before the script finishes. The production two-second grace period and
+owned-process-tree fallback are unchanged.
+
+Each case ran 16 watcher lifetimes through `ProcessRunner.Follow` and measured `Stop()` wall time.
+The load case ran four watchers concurrently, with 100 file creations per watcher and four CPU
+worker threads in a probe restricted to two logical processors. PowerShell was 5.1.19041.6456.
+Both scripts had identical probe-only EOF/version markers; no other build or benchmark ran during
+the measurements.
+
+| Case | Before median / maximum | After median / maximum |
+| --- | --- | --- |
+| Idle | 652 / 808 ms | 24 / 28 ms |
+| Concurrent file changes and CPU load | 1,046 / 1,365 ms | 251 / 524 ms |
+
+All 64 runs exited gracefully. These observations establish removal of an avoidable wait; they
+do not reproduce or establish the exact cause of the original CI failure, or guarantee timing on
+other machines. The native fixture now repeats idle and busy lifetimes, verifies source/restore
+notifications, and reports shutdown stage, elapsed time, bounded stderr and PowerShell/CLR versions
+on failure. The Windows side is covered here; WSL interop still needs platform validation.
+
 ## Remaining limits
 
 - [Project input evaluation (#37)](https://github.com/jhnoor/milligram/issues/37): all source is
