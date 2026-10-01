@@ -51,6 +51,19 @@ public sealed class CommandLine
 
     public IReadOnlyList<string> Values(string option) => options.TryGetValue(option, out var values) ? values : [];
 
+    /// <summary>Project evaluation is explicit until startup and watcher invalidation support the same inputs.</summary>
+    public IReadOnlyList<string> ScanProjects()
+    {
+        if (!Has("msbuild") && !Has("configuration")) return [];
+        if (Command != "ir") throw new MilligramException("--msbuild and --configuration are supported only by `milligram ir`.");
+        if (!Has("msbuild")) throw new MilligramException("--configuration requires --msbuild FILE.csproj.");
+        if (Values("msbuild").Any(string.IsNullOrWhiteSpace) || Values("msbuild").Any(value => value.StartsWith("--", StringComparison.Ordinal)))
+            throw new MilligramException("--msbuild requires a C# project file; repeat it to scan several entry projects.");
+        if (Has("configuration") && (string.IsNullOrWhiteSpace(Value("configuration")) || Value("configuration")!.StartsWith("--", StringComparison.Ordinal)))
+            throw new MilligramException("--configuration requires a configuration name, such as Debug or Release.");
+        return Values("msbuild");
+    }
+
     public int Port(int fallback)
     {
         var text = Value("port");

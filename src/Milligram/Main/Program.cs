@@ -20,12 +20,12 @@ public static class Program
         if (line.Has("help") || line.Command == "help") { Console.WriteLine(Help); return 0; }
         try
         {
-            var composition = new Composition(FindRoot(line.Value("project")), SelfCommand(), Version);
+            var composition = new Composition(FindRoot(line.Value("project")), SelfCommand(), Version, line.ScanProjects(), line.Value("configuration"));
             return line.Command switch
             {
                 "serve" => await ServeAsync(composition, line),
                 "init" => Init(composition, line),
-                "ir" => Ir(composition),
+                "ir" => await IrAsync(composition),
                 "crap" => await CrapAsync(composition, line),
                 "mutate" => await MutateAsync(composition, line),
                 "doctor" => await DoctorAsync(composition),
@@ -108,10 +108,16 @@ public static class Program
         return 0;
     }
 
-    private static int Ir(Composition c)
+    private static async Task<int> IrAsync(Composition c)
     {
         c.Workspace.Load();
-        c.Workspace.Generate(Console.WriteLine);
+        if (c.Workspace.PolicyError is { } error) throw new MilligramException(error);
+        await c.Jobs.Enqueue("Scan", (log, _) =>
+        {
+            c.Workspace.Generate(message => { log(message); Console.WriteLine(message); });
+            return Task.FromResult("Scan complete.");
+        });
+        if (c.Jobs.Status.State == JobState.Failed) throw new MilligramException(c.Jobs.Status.Message ?? "Scan failed.");
         Console.WriteLine($"Wrote {c.Paths.Relative(c.Paths.ModelFile)}");
         foreach (var line in ScanSummary.Of(c.Workspace).Describe()) Console.WriteLine(line);
         return 0;
@@ -246,6 +252,9 @@ public static class Program
               --keep-agent        Leave the companion session running on exit.
           init [--force]          Write milligram.json from the namespaces in the source.
           ir                      Scan the source and write .milligram/model.json.
+              --msbuild FILE      Evaluate a C# project and its project references (repeatable, experimental).
+                                  Paths are relative to --project. Replaces src selection; keeps excludes.
+              --configuration N   Project configuration; otherwise use the project's default.
           crap [--coverage F]     Run tests with coverage (or read Cobertura file F) and score CRAP.
           mutate [--all] [files]  Mutation-test changed members (Stryker.NET); --all for whole files.
           doctor                  Check what the metrics and the agent need; print the fix for anything missing.

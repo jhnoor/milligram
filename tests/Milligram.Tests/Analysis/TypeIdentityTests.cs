@@ -68,6 +68,7 @@ public class TypeIdentityTests
         var callbacks = model.Types.Where(t => t.Name == "Callback").OrderBy(t => t.Spans[0].Start).ToList();
 
         Assert.Equal(2, callbacks.Count);
+        Assert.Equal(["Shop.Callback@A.cs", "Shop.Callback@A.cs#2"], callbacks.Select(type => type.Id));
         Assert.NotEqual(callbacks[0].Id, callbacks[1].Id);
         Assert.Contains(model.Edges, e => e.From == callbacks[0].Id && e.To == "Shop.First");
         Assert.Contains(model.Edges, e => e.From == callbacks[1].Id && e.To == "Shop.Second");

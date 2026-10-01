@@ -109,10 +109,38 @@ keeps choices such as `System.Text.Json`, and leaves out routine collections, LI
 compiler services and nullability annotations. These are namespace names, not package ids.
 Restore your projects first so package references bind; edit `foreign` to choose what matters.
 
-The scanner uses one source compilation rather than evaluating MSBuild. It reads generated global
+The default scanner uses one source compilation rather than evaluating MSBuild. It reads generated global
 usings from the latest build, or falls back to explicit, unconditional `ImplicitUsings` settings
 in project XML (`enable` or `true`). Imported and conditional settings and stale generated files
 can therefore differ from the actual build; project-input evaluation remains a known limit.
+
+For an **experimental, explicit project scan**, run:
+
+```bash
+milligram ir --msbuild src/App/App.csproj --configuration Release
+```
+
+Repeat `--msbuild` for additional entry projects. Paths are relative to the examined root
+(`--project DIR`); the selected projects and their project references replace `src` selection.
+Policy `exclude` patterns still apply to the diagram. Linked files inside the root keep their
+physical source locations, including files outside `src`. Files outside the root and generated
+sources without a physical path contribute to binding but do not get source cards.
+
+This mode uses MSBuild/Roslyn compiler inputs, including conditional `Compile` items, imported
+properties, preprocessor symbols and fresh SDK global usings. Each project keeps its own imports
+and reference assemblies. Repeated type names get project-qualified IDs when needed. Install the
+project's SDK and reference packs and restore its packages first; missing references produce
+diagnostics and incomplete edges. A project that fails normal MSBuild evaluation leaves the old
+model intact. Run plain `milligram ir` to explicitly choose the approximate source-only fallback.
+The configuration defaults to the project's choice when omitted.
+
+Project evaluation runs design-time targets and source generators, which can execute project tasks
+and write `obj` files. This is a manual `ir` option: startup, initialization, the live watcher and
+`doctor` still use the default source-only path. A later ordinary scan replaces the evaluated
+snapshot. Do not run this experiment alongside a live viewer of the same project. Automatic
+project selection, watcher invalidation and large project-graph measurements remain
+[#37](https://github.com/jhnoor/milligram/issues/37); this option does not complete that issue.
+The [project-scan checks](PROJECT_SCANNING.md) describe the automated fixtures and remaining work.
 
 File-local types keep separate identities and source cards even when their names match. Other
 repeated source type names are kept distinct when Roslyn provides separate symbols, and the scan
@@ -274,7 +302,7 @@ viewer, tell the agent to run `milligram mail`.
 |---------|------|
 | `milligram` | Viewer and agent. Options: `--port N` (1–65535, default 5170; tries up to 29 following ports), `--no-agent`, `--no-browser`, `--keep-agent`, `--project DIR`. |
 | `milligram init [--force]` | Write `milligram.json` from the source, inferring levels from the dependencies. |
-| `milligram ir` | Rescan the source. |
+| `milligram ir [--msbuild FILE.csproj] [--configuration NAME]` | Rescan the source. Experimental `--msbuild` evaluates the selected project and its references; repeat it for more entry projects. |
 | `milligram crap [--coverage file.xml]` | Run the tests with coverage (or read a Cobertura file) and score CRAP. |
 | `milligram mutate [--all] [files…]` | Mutation-test changed members, including initializers (every file if you list none). |
 | `milligram doctor` | Check the SDK, restore, test projects, coverage collector, Stryker, and the agent; print the fix for anything missing. Exits 1 if something is. |
