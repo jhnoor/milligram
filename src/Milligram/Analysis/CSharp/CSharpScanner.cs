@@ -57,7 +57,13 @@ public sealed class CSharpScanner : ILanguageScanner
         var types = new TypeCollector(compilation, request.Root).Collect(trees, binding.Tick, report);
         var linking = new ScanStage(report, "Linked", types.Count, "types");
         var dependencies = new DependencyCollector(types, request.Foreign, request.DiscoverForeign);
-        foreach (var type in types.Values) { dependencies.Collect(type); linking.Tick(); }
+        foreach (var type in types.Values)
+        {
+            dependencies.Collect(type);
+            // Semantic models cache bound bodies; remaining types retain the models they still need.
+            type.Parts.Clear();
+            linking.Tick();
+        }
 
         var edges = dependencies.Edges;
         report($"Scanned {types.Count} types and {edges.Count} dependencies in {Elapsed(clock.Elapsed)}.");

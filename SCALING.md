@@ -71,15 +71,41 @@ isolated Release publish of Milligram and the equivalent
 `dotnet /path/to/Milligram.dll` commands. No Roslyn build, restore, coverage or mutation command
 was run. Initialization writes `milligram.json` and adds Milligram's local files to `.gitignore`.
 
+## Semantic-model lifetime
+
+A follow-up on the same machine compared two fresh `ir` processes using the same checkout,
+inferred policy and existing cached model. The baseline was #47 at `738b412`. The candidate
+released each type's syntax/semantic-model references after collecting its dependencies;
+remaining types in a shared file retain their own references until they are processed.
+No forced garbage collection was added, and no builds or tests ran during these measurements.
+
+| Build | Total wall time | Reported scan time | Peak working set | Peak private memory |
+|-------|-----------------|--------------------|------------------|---------------------|
+| Baseline | 403.2 s | 397.3 s | 11.44 GiB | 11.67 GiB |
+| Release completed semantic models | 384.4 s | 378.5 s | 8.86 GiB | 9.09 GiB |
+
+Peak working set fell by **22.5%** in this pair. These are single desktop measurements; the
+elapsed-time difference does not establish a repeatable speed improvement. The model still
+contains 28,153 types and 225,090 dependency pairs. Comparing all 8,862,487 lines of each saved
+model, omitting only the root `generatedAt` line and normalizing line endings, produced the
+same SHA-256: `342655c806a96c2b251a6dbcb2203c97fe1417325d5204dc05b1b4092449d382`.
+This comparison includes every type, member, source span, hash, foreign group and dependency.
+
+The final write still raises peak memory: the candidate's sampled working-set peak was about
+6.8 GiB near the end of scanning and 8.86 GiB after completion. Typed JSON currently passes
+through a complete UTF-16 string before the atomic file write. [#52](https://github.com/jhnoor/milligram/issues/52)
+tracks streaming that output without weakening atomic replacement.
+
 ## Remaining limits
 
 - [Project input evaluation (#37)](https://github.com/jhnoor/milligram/issues/37): all source is
   placed in one compilation. Conditional files, framework references and duplicate class
   declarations can still bind differently from the real projects. Distinct IDs prevent the
   crash; they do not resolve ambiguous references or symbols Roslyn has already merged.
-- [Semantic-model retention (#48)](https://github.com/jhnoor/milligram/issues/48): the scanner
-  retains semantic models for the whole dependency pass. The measured peak warrants a
-  separate memory investigation with output-equivalence checks.
+- [Memory use (#48)](https://github.com/jhnoor/milligram/issues/48): completed semantic models
+  are now released, with the measured reduction above. Parsing, compilation, the cached model
+  and JSON output still consume substantial memory; this does not make the measured checkout
+  suitable for a low-memory machine.
 - [First-run rescan (#49)](https://github.com/jhnoor/milligram/issues/49): `serve` scans again
   after inferring a new policy. A one-command first run therefore pays for two scans. Reuse
   needs to preserve the chosen foreign groups and catch source changes during initialization.
