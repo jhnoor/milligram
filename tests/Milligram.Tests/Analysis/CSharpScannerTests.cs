@@ -99,6 +99,33 @@ public class CSharpScannerTests
     }
 
     [Fact]
+    public void LinkingPartialTypesPreservesOtherTypesSharingTheirFiles()
+    {
+        using var project = new TempProject(("A.cs", """
+            namespace Shop;
+            public partial class First
+            {
+                public Second Create() => new();
+                public class Nested { public Third CreateThird() => new(); }
+            }
+            public class Second { public First Back() => new(); }
+            """), ("B.cs", """
+            namespace Shop;
+            public partial class First { public Third Another() => new(); }
+            public class Third { public Second Back() => new(); }
+            """));
+        var model = Scan(project);
+        var first = model.Types.Single(t => t.Id == "Shop.First");
+
+        Assert.Equal(["Shop.First", "Shop.Second", "Shop.Third"], model.Types.Select(t => t.Id));
+        Assert.Equal(["A.cs", "B.cs"], first.Spans.Select(s => s.File));
+        Assert.Equal(["Another", "Create", "Nested.CreateThird"], first.Members.Select(m => m.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(["Shop.First>Shop.Second", "Shop.First>Shop.Third", "Shop.Second>Shop.First", "Shop.Third>Shop.Second"],
+            model.Edges.Select(e => e.From + ">" + e.To));
+        Assert.All(model.Edges, e => Assert.Equal(EdgeKind.Dependency, e.Kind));
+    }
+
+    [Fact]
     public void MembersHaveIdsSignaturesVisibilityAndComplexity()
     {
         using var project = new TempProject(("Domain.cs", Domain), ("Services.cs", Services));
