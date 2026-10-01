@@ -89,7 +89,22 @@ public class InitializationInputsTests
         using var project = new TempProject(("src/Order.cs", "class Order { }"),
             ("obj/Debug/AssemblyInfo.cs", "before"));
         var paths = new ProjectPaths(project.Root);
+        var nativeEvents = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        using var observed = new FileSystemWatcher(project.Root)
+        {
+            IncludeSubdirectories = true,
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
+        };
+        FileSystemEventHandler record = (_, e) => nativeEvents.Enqueue($"{e.ChangeType}: {paths.Relative(e.FullPath)}");
+        observed.Changed += record;
+        observed.Created += record;
+        observed.Deleted += record;
+        observed.Renamed += (_, e) => nativeEvents.Enqueue($"Renamed: {paths.Relative(e.OldFullPath)} -> {paths.Relative(e.FullPath)}");
+        observed.Error += (_, e) => nativeEvents.Enqueue($"Error: {e.GetException().Message}");
+        observed.EnableRaisingEvents = true;
+        var before = InitializationInputs.Fingerprint(paths);
         using var inputs = new InitializationInputs(paths);
+        Assert.True(inputs.IsCurrent(), "Before activity: " + string.Join("; ", nativeEvents));
 
         project.Write("milligram.json", "{}");
         project.Write(".gitignore", ".milligram/");
@@ -101,7 +116,8 @@ public class InitializationInputsTests
         foreach (var directory in new[] { ".git", "node_modules", ".vs", ".idea" })
             project.Write(directory + "/ignored.cs", "class Ignored { }");
 
-        Assert.True(inputs.IsCurrent());
+        Assert.Equal(before, InitializationInputs.Fingerprint(paths));
+        Assert.True(inputs.IsCurrent(), "After ignored activity: " + string.Join("; ", nativeEvents));
         inputs.Dispose();
         Assert.False(inputs.IsCurrent());
     }
