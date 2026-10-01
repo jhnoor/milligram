@@ -30,7 +30,10 @@ public sealed class Composition
         Companion = new ConfiguredCompanion(() => Workspace.Policy.Agent.Host,
             new TmuxCompanion(Paths, () => Workspace.Policy, selfCommand),
             new AgentHostCompanion(Paths, () => Workspace.Policy, selfCommand, version,
-                ProcessRunner.OnPath, ProcessRunner.StartDetached, ProcessRunner.TerminalIssue));
+                ProcessRunner.OnPath, ProcessRunner.StartDetached, ProcessRunner.TerminalIssue)
+            {
+                ProbeLog = Environment.GetEnvironmentVariable("MILLIGRAM_TRACE_AGENT_PROBES") == "1" ? Console.Error.WriteLine : null,
+            });
         Crap = new CrapService(Workspace, locator, processes, new CoberturaReader());
         Mutation = new MutationService(Workspace, locator, processes, new StrykerReportReader());
         Actions = new ViewerActions(Workspace, new PolicyEditor(Workspace), Crap, Mutation, Jobs, Companion, Events);

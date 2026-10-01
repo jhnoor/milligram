@@ -135,6 +135,16 @@ internal static class DetachedHostFixture
             var status = AgentCommand("status");
             Require(status.ExitCode == 0 && status.Output.Contains("running: milligram agent attach", StringComparison.Ordinal),
                 "The opt-in agent status command lost its host: " + status.Output);
+            var previousTrace = Environment.GetEnvironmentVariable("MILLIGRAM_TRACE_AGENT_PROBES");
+            try
+            {
+                Environment.SetEnvironmentVariable("MILLIGRAM_TRACE_AGENT_PROBES", "1");
+                var probes = await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => Task.Run(() => AgentCommand("status"), token)));
+                foreach (var probe in probes) Console.WriteLine(probe.Output.Trim());
+                Require(probes.All(probe => probe.ExitCode == 0 && probe.Output.Contains("running: milligram agent attach", StringComparison.Ordinal)),
+                    "A fresh status process lost the running host under concurrent startup load.");
+            }
+            finally { Environment.SetEnvironmentVariable("MILLIGRAM_TRACE_AGENT_PROBES", previousTrace); }
             var stopped = AgentCommand("stop");
             Require(stopped.ExitCode == 0, "The opt-in agent stop command failed: " + stopped.Output);
             await hostProcess.WaitForExitAsync(token);

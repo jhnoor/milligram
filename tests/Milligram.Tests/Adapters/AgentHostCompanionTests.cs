@@ -9,6 +9,31 @@ namespace Milligram.Tests.Adapters;
 
 public class AgentHostCompanionTests
 {
+    [Fact]
+    public async Task ProbeDiagnosticsDistinguishAnAbsentHostFromACompletedGreetingWithoutRecordingData()
+    {
+        var logs = new List<string>();
+        await using var fixture = new Fixture(probeLog: logs.Add);
+        Assert.False(await Task.Run(fixture.Companion.IsRunning));
+        var absent = Assert.Single(logs);
+        Assert.Contains("deadline=", absent);
+        Assert.DoesNotContain("connected=", absent);
+
+        await fixture.Companion.StartAsync(fixture.Token);
+        logs.Clear();
+        Assert.True(await Task.Run(fixture.Companion.IsRunning));
+        var present = Assert.Single(logs);
+        Assert.Contains("connected=", present);
+        Assert.Contains("serialized=", present);
+        Assert.Contains("sent=", present);
+        Assert.Contains("received=", present);
+        Assert.Contains("validated=", present);
+        Assert.Contains("running=", present);
+        Assert.DoesNotContain(fixture.Paths.Root, present);
+        Assert.DoesNotContain(fixture.Files.Endpoint, present);
+        Assert.DoesNotContain("test-version", present);
+    }
+
     [Theory]
     [InlineData("auto")]
     [InlineData("none")]
@@ -612,7 +637,7 @@ public class AgentHostCompanionTests
         public IReadOnlyList<string>? Arguments { get; private set; }
         public CancellationToken Token => deadline.Token;
 
-        public Fixture(TimeSpan? timeout = null, TimeSpan? probeTimeout = null)
+        public Fixture(TimeSpan? timeout = null, TimeSpan? probeTimeout = null, Action<string>? probeLog = null)
         {
             Paths = new ProjectPaths(project.Root);
             Files = new AgentHostFiles(Paths);
@@ -620,6 +645,7 @@ public class AgentHostCompanionTests
                 command => Available && (command != "terminal-stub" || TerminalInstalled), Launch)
             {
                 ProbeTimeout = probeTimeout ?? TimeSpan.FromMilliseconds(300),
+                ProbeLog = probeLog,
                 StartupTimeout = timeout ?? TimeSpan.FromSeconds(3),
                 CommandTimeout = timeout ?? TimeSpan.FromSeconds(3),
                 RetryDelay = TimeSpan.FromMilliseconds(10),

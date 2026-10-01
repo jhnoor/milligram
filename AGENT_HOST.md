@@ -172,6 +172,10 @@ real command: start, reuse, status, notification and stop.
 returning from startup. If a previous host is still releasing its lease, it waits before
 launching. An early startup failure includes a bounded log tail. Cancellation or a startup
 deadline can stop only the child handle returned by this launch, never a PID from discovery.
+Set `MILLIGRAM_TRACE_AGENT_PROBES=1` when diagnosing a false status result. Each probe writes
+bounded stage timings and an outcome to stderr after it finishes. These diagnostics contain no
+project paths, endpoint names, greeting values or terminal content. The fresh-process acceptance
+fixture runs twelve status commands concurrently; the macOS Intel failure remains tracked in #67.
 The launcher generates a random instance ID before creating its child and passes it through
 the internal `--instance` argument. Startup returns an immutable cleanup callback only when its
 own live child, discovery and connected peer identify that instance. A concurrent caller reuses

@@ -15,6 +15,7 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
     internal TimeSpan StartupTimeout { get; init; } = TimeSpan.FromSeconds(20);
     internal TimeSpan CommandTimeout { get; init; } = TimeSpan.FromSeconds(20);
     internal TimeSpan RetryDelay { get; init; } = TimeSpan.FromMilliseconds(100);
+    internal Action<string>? ProbeLog { get; init; }
     internal Func<string, IReadOnlyList<string>, string, bool> LaunchTerminal { get; init; } =
         (command, args, root) => ProcessRunner.Launch(command, args, root);
 
@@ -108,22 +109,27 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
 
     private async Task<HostHello?> ProbeAsync(CancellationToken cancellation)
     {
+        var trace = ProbeLog is null ? null : new AgentProbeTrace();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         deadline.CancelAfter(ProbeTimeout);
+        trace?.Mark("started");
         try
         {
             while (true)
             {
                 try
                 {
-                    await using var client = await AgentPipeClient.ConnectAsync(files.Endpoint, greeting, deadline.Token);
+                    await using var client = await AgentPipeClient.ConnectAsync(files.Endpoint, greeting, deadline.Token, trace);
+                    trace?.Mark("running");
                     return client.Greeting;
                 }
-                catch (IOException) { await Task.Delay(RetryDelay, deadline.Token); }
+                catch (IOException) { trace?.Mark("retry-io"); await Task.Delay(RetryDelay, deadline.Token); }
             }
         }
-        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { return null; }
-        catch (InvalidDataException) { return null; }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { trace?.Mark("deadline"); return null; }
+        catch (InvalidDataException) { trace?.Mark("invalid-greeting"); return null; }
+        catch (Exception error) { trace?.Mark(error.GetType().Name); throw; }
+        finally { if (trace is not null) ProbeLog!(trace.ToString()); }
     }
 
     private async Task RingAsync()
