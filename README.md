@@ -68,6 +68,13 @@ track those acceptance checks.
 
 ## Install
 
+For an internal pilot, download a tested preview package from a green CI run and run it with
+the .NET 10 SDK. [Preview installation and rollback](PREVIEW.md) require no local build and
+leave an existing global Milligram installation alone. GitHub sign-in is required to download
+the artifact; previews expire after 30 days.
+
+To build from source:
+
 ```bash
 git clone https://github.com/jhnoor/milligram && cd milligram
 dotnet pack src/Milligram -c Release

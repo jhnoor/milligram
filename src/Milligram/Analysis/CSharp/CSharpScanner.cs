@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Milligram.Application;
 using Milligram.Domain.Model;
@@ -116,13 +117,14 @@ public sealed class CSharpScanner : ILanguageScanner
         var fallback = new HashSet<string>(StringComparer.Ordinal);
         foreach (var project in projects)
         {
+            var settings = ProjectXml(project);
             var obj = Path.Combine(project, "obj");
             var file = Directory.Exists(obj)
                 ? Directory.EnumerateFiles(obj, "*.GlobalUsings.g.cs", new EnumerationOptions
                 { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = false }).MaxBy(File.GetLastWriteTimeUtc)
                 : null;
-            if (file is not null) generated.Add(Parse(file));
-            else foreach (var ns in DefaultUsings(project)) fallback.Add(ns);
+            if (file is not null) generated.Add(CurrentGeneratedUsings(Parse(file), settings));
+            else foreach (var ns in DefaultUsings(settings)) fallback.Add(ns);
         }
         if (projects.Count == 0) fallback.UnionWith(SdkUsings);
         if (fallback.Count > 0)
@@ -130,27 +132,48 @@ public sealed class CSharpScanner : ILanguageScanner
         return generated;
     }
 
-    private static IEnumerable<string> DefaultUsings(string project)
+    /// <summary>The SDK leaves generated files on disk when its implicit imports are disabled.</summary>
+    private static SyntaxTree CurrentGeneratedUsings(SyntaxTree tree, XElement? settings)
+    {
+        var setting = ImplicitUsingSetting(settings);
+        if (!string.Equals(setting, "disable", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(setting, "false", StringComparison.OrdinalIgnoreCase)) return tree;
+        var explicitImports = settings!.Descendants().Where(e => e.Name.LocalName == "Using")
+            .SelectMany(e => (e.Attribute("Include")?.Value ?? "").Split(';')).Select(value => value.Trim())
+            .ToHashSet(StringComparer.Ordinal);
+        var implicitImports = SdkUsings.Concat(WebSdkUsings).Where(ns => !explicitImports.Contains(ns)).ToHashSet(StringComparer.Ordinal);
+        var root = (CompilationUnitSyntax)tree.GetRoot();
+        var removed = root.Usings.Where(usingDirective => usingDirective.Alias is null && usingDirective.StaticKeyword.RawKind == 0 &&
+            usingDirective.GlobalKeyword.RawKind != 0 && implicitImports.Contains(usingDirective.Name?.ToString().Replace("global::", "", StringComparison.Ordinal) ?? ""));
+        return tree.WithRootAndOptions(root.RemoveNodes(removed, SyntaxRemoveOptions.KeepNoTrivia)!, tree.Options);
+    }
+
+    private static string? ImplicitUsingSetting(XElement? root) => root?.Elements().Where(e => e.Name.LocalName == "PropertyGroup")
+        .Elements().Where(e => e.Name.LocalName.Equals("ImplicitUsings", StringComparison.OrdinalIgnoreCase) &&
+            !e.AncestorsAndSelf().Any(a => !string.IsNullOrWhiteSpace(a.Attribute("Condition")?.Value)))
+        .LastOrDefault()?.Value;
+
+    private static IEnumerable<string> DefaultUsings(XElement? root)
+    {
+        var enabled = ImplicitUsingSetting(root);
+        if (!string.Equals(enabled, "enable", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(enabled, "true", StringComparison.OrdinalIgnoreCase)) return [];
+        var sdks = (root!.Attribute("Sdk")?.Value ?? "").Split(';')
+            .Concat(root.Elements().Where(e => e.Name.LocalName == "Sdk").Select(e => e.Attribute("Name")?.Value ?? ""));
+        return sdks.Any(sdk => sdk.Split('/')[0].Trim().Equals("Microsoft.NET.Sdk.Web", StringComparison.OrdinalIgnoreCase))
+            ? [.. SdkUsings, .. WebSdkUsings] : SdkUsings;
+    }
+
+    private static XElement? ProjectXml(string project)
     {
         var csproj = Directory.EnumerateFiles(project, "*.csproj").Order(StringComparer.Ordinal).First();
         try
         {
-            var root = XDocument.Load(csproj).Root;
-            if (root is null) return [];
-            var enabled = root.Elements().Where(e => e.Name.LocalName == "PropertyGroup")
-                .Elements().Where(e => e.Name.LocalName.Equals("ImplicitUsings", StringComparison.OrdinalIgnoreCase) &&
-                    !e.AncestorsAndSelf().Any(a => !string.IsNullOrWhiteSpace(a.Attribute("Condition")?.Value)))
-                .LastOrDefault()?.Value;
-            if (!string.Equals(enabled, "enable", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(enabled, "true", StringComparison.OrdinalIgnoreCase)) return [];
-            var sdks = (root.Attribute("Sdk")?.Value ?? "").Split(';')
-                .Concat(root.Elements().Where(e => e.Name.LocalName == "Sdk").Select(e => e.Attribute("Name")?.Value ?? ""));
-            return sdks.Any(sdk => sdk.Split('/')[0].Trim().Equals("Microsoft.NET.Sdk.Web", StringComparison.OrdinalIgnoreCase))
-                ? [.. SdkUsings, .. WebSdkUsings] : SdkUsings;
+            return XDocument.Load(csproj).Root;
         }
         catch (Exception e) when (e is System.Xml.XmlException or IOException or UnauthorizedAccessException)
         {
-            return [];
+            return null;
         }
     }
 }
