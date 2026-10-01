@@ -49,6 +49,8 @@ public static class Program
     private static async Task<int> ServeAsync(Composition c, CommandLine line)
     {
         var preferredPort = line.Port(DefaultPort);
+        if (!File.Exists(c.Paths.PolicyFile)) Console.WriteLine("Checking source and project inputs before initialization.");
+        using var inputs = File.Exists(c.Paths.PolicyFile) ? null : c.WatchInitialization();
         var initialization = c.Initializer.Initialize(force: false, Console.WriteLine);
         if (initialization is not null)
         {
@@ -62,13 +64,14 @@ public static class Program
             foreach (var check in await c.Doctor.RunAsync(CancellationToken.None))
                 foreach (var described in check.Describe()) Console.WriteLine("  " + described);
         }
-        if (c.Workspace.PolicyError is { } error) Console.Error.WriteLine(error);
-
         var (app, url) = await c.WebServer().StartAsync(preferredPort, CancellationToken.None);
         JsonFile.Write(c.Paths.ServerFile, new { url, pid = Environment.ProcessId, started = DateTimeOffset.UtcNow });
         var limit = c.WatchLimits.For(c.Paths.Root);
         using var watcher = new ProjectWatcher(c.Paths, c.Workspace, c.Actions, c.Events, windowsDrive: limit is not null);
-        var scan = c.Actions.Regenerate("Scan");
+        c.Workspace.ReloadPolicy();
+        c.Workspace.ReloadMetrics();
+        if (c.Workspace.PolicyError is { } error) Console.Error.WriteLine(error);
+        var scan = c.Actions.Start(initialization, () => inputs?.IsCurrent() == true);
 
         Console.WriteLine($"Milligram {Version} — {c.Paths.Root}");
         Console.WriteLine($"  Viewer: {url}");
@@ -83,6 +86,8 @@ public static class Program
         Console.WriteLine("  Ctrl+C stops the viewer.");
 
         await scan;
+        inputs?.Dispose();
+        initialization = null;
         foreach (var step in ScanSummary.Of(c.Workspace).Describe()) Console.WriteLine("  " + step);
 
         await app.WaitForShutdownAsync();

@@ -1,3 +1,4 @@
+using Milligram.Adapters.Files;
 using System.Text.Json.Nodes;
 using Milligram.Adapters.Cli;
 using Milligram.Analysis.CSharp;
@@ -57,6 +58,53 @@ public class PolicyJsonTests
 
 public class JsonFileTests
 {
+    [Fact]
+    public void AnIoFailureWhileStreamingIsReportedAndKeepsTheOldFile()
+    {
+        using var project = new TempProject(("state.json", "old"));
+        var path = Path.Combine(project.Root, "state.json");
+
+        IEnumerable<string> Values()
+        {
+            yield return "partial";
+            throw new IOException("Source read failed.");
+        }
+
+        Assert.Equal("Source read failed.", Assert.Throws<IOException>(() => JsonFile.Write(path, Values())).Message);
+        Assert.Equal("old", File.ReadAllText(path));
+        Assert.Equal([path], Directory.GetFiles(project.Root));
+    }
+
+    [Fact]
+    public void AFailedCreateIsNotMistakenForAnotherWritersFile()
+    {
+        using var project = new TempProject();
+        var path = Path.Combine(project.Root, "state.json");
+        Directory.CreateDirectory(path);
+
+        var error = Record.Exception(() => JsonFile.TryCreateText(path, "new", new NewFilePublisher()));
+
+        Assert.True(error is IOException or UnauthorizedAccessException);
+        Assert.Empty(Directory.GetFiles(project.Root));
+        Assert.True(Directory.Exists(path));
+    }
+
+    [Fact]
+    public void ConcurrentCreatorsPublishExactlyOneCompleteFile()
+    {
+        using var project = new TempProject();
+        var path = Path.Combine(project.Root, "state 漢字.json");
+        var created = new System.Collections.Concurrent.ConcurrentBag<int>();
+
+        Parallel.For(0, 8, i =>
+        {
+            if (JsonFile.TryCreateText(path, $"writer-{i}", new NewFilePublisher())) created.Add(i);
+        });
+
+        Assert.Equal($"writer-{Assert.Single(created)}", File.ReadAllText(path));
+        Assert.Equal([path], Directory.GetFiles(project.Root));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -569,6 +617,22 @@ public class WorkspaceTests
 
 public class ProjectInitializerTests
 {
+    [Fact]
+    public void APolicyPublicationFailureNamesTheFileAndPreservesTheReason()
+    {
+        using var project = new TempProject(("A.cs", "class A { }"));
+        var paths = new ProjectPaths(project.Root);
+        var publisher = new FakeNewFilePublisher((_, _) => throw new IOException("Read-only filesystem."));
+        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator(), publisher);
+
+        var error = Assert.Throws<MilligramException>(() => initializer.Initialize(false));
+
+        Assert.Contains(paths.PolicyFile, error.Message);
+        Assert.Contains("Read-only filesystem.", error.Message);
+        Assert.False(File.Exists(paths.PolicyFile));
+        Assert.Empty(Directory.GetFiles(project.Root, "*.tmp"));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -577,7 +641,7 @@ public class ProjectInitializerTests
         using var project = new TempProject(("A.cs", "namespace Shop; public class A { }"));
         var paths = new ProjectPaths(project.Root);
         var progress = new List<string>();
-        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator());
+        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator(), new NewFilePublisher());
 
         Assert.NotNull(initializer.Initialize(force, line =>
         {
@@ -597,7 +661,7 @@ public class ProjectInitializerTests
     public void ExistingPolicySkipsInitializationAndScanProgress()
     {
         using var project = new TempProject(("milligram.json", "{ \"prefix\": \"Kept\" }"));
-        var initializer = new ProjectInitializer(new ProjectPaths(project.Root), new CSharpScanner(), new FakeProjectLocator());
+        var initializer = new ProjectInitializer(new ProjectPaths(project.Root), new CSharpScanner(), new FakeProjectLocator(), new NewFilePublisher());
         var progress = new List<string>();
 
         Assert.Null(initializer.Initialize(force: false, progress.Add));
@@ -612,7 +676,7 @@ public class ProjectInitializerTests
         using var project = new TempProject(
             ("Tests.csproj", "<Project><ItemGroup><PackageReference Include=\"xunit\" /></ItemGroup></Project>"),
             ("Tests.cs", "namespace Shop.Tests; public class Example { }"));
-        var initializer = new ProjectInitializer(new ProjectPaths(project.Root), new CSharpScanner(), new Milligram.Analysis.DotNet.DotNetProjectLocator());
+        var initializer = new ProjectInitializer(new ProjectPaths(project.Root), new CSharpScanner(), new Milligram.Analysis.DotNet.DotNetProjectLocator(), new NewFilePublisher());
 
         var policy = initializer.Propose().Policy;
 
@@ -628,7 +692,7 @@ public class ProjectInitializerTests
             ("Global.cs", "public class Global { }"),
             ("Domain.cs", "namespace Shop.Domain; public class Order { }"),
             ("Web.cs", "namespace Shop.Web; public class Page { }"));
-        var initializer = new ProjectInitializer(new ProjectPaths(project.Root), new CSharpScanner(), new FakeProjectLocator());
+        var initializer = new ProjectInitializer(new ProjectPaths(project.Root), new CSharpScanner(), new FakeProjectLocator(), new NewFilePublisher());
 
         Assert.Equal("Shop", initializer.Propose().Policy.Prefix);
     }
@@ -646,7 +710,7 @@ public class ProjectInitializerTests
             }
             """));
         var paths = new ProjectPaths(project.Root);
-        var initialization = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator()).Initialize(force: false)!;
+        var initialization = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator(), new NewFilePublisher()).Initialize(force: false)!;
         string[] expected = ["Microsoft.AspNetCore", "Microsoft.CodeAnalysis", "System.Text.Json"];
         Assert.Equal(expected, initialization.Policy.Foreign);
         Assert.Equal(expected, JsonFile.Read<Policy>(paths.PolicyFile)!.Foreign);
@@ -654,7 +718,24 @@ public class ProjectInitializerTests
 
         var workspace = new Workspace(paths, new CSharpScanner());
         workspace.Load();
-        Assert.Equal(expected, workspace.Generate().Foreign.Select(n => n.Label));
+        var rescanned = workspace.Generate();
+        Assert.Equal(expected, rescanned.Foreign.Select(n => n.Label));
+        var initial = Assert.IsType<CodeModel>(initialization.Model);
+        Assert.Equal(System.Text.Json.JsonSerializer.Serialize(rescanned with { GeneratedAt = initial.GeneratedAt }, MilligramJson.Options),
+            System.Text.Json.JsonSerializer.Serialize(initial, MilligramJson.Options));
+    }
+
+    [Fact]
+    public void APolicyCreatedDuringTheScanIsNotOverwritten()
+    {
+        using var project = new TempProject(("A.cs", "namespace Shop; public class A { }"));
+        var paths = new ProjectPaths(project.Root);
+        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator(), new NewFilePublisher());
+
+        var initialization = initializer.Initialize(force: false, _ => project.Write("milligram.json", "{ \"title\": \"User choice\" }"));
+
+        Assert.Null(initialization);
+        Assert.Equal("User choice", JsonFile.Read<Policy>(paths.PolicyFile)!.Title);
     }
 
     [Fact]
@@ -681,7 +762,7 @@ public class ProjectInitializerTests
             ("tests/Shop.Tests/Shop.Tests.csproj", "<Project><ItemGroup><PackageReference Include=\"xunit\" /></ItemGroup></Project>"),
             ("tests/Shop.Tests/T.cs", "namespace Shop.Tests; public class T { }"));
         var paths = new ProjectPaths(project.Root);
-        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new Milligram.Analysis.DotNet.DotNetProjectLocator());
+        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new Milligram.Analysis.DotNet.DotNetProjectLocator(), new NewFilePublisher());
 
         Assert.NotNull(initializer.Initialize(force: false));
         Assert.Null(initializer.Initialize(force: false));
@@ -702,7 +783,7 @@ public class ProjectInitializerTests
             ("src/Shop/Domain/Order.cs", "namespace Shop.Domain; public class Order { }"),
             ("src/Shop/Web/Page.cs", "namespace Shop.Web; public class Page { public Shop.Domain.Order Order = new(); }"));
         var paths = new ProjectPaths(project.Root);
-        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator());
+        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator(), new NewFilePublisher());
 
         var proposed = initializer.Initialize(force: false)!.Policy;
 
@@ -719,7 +800,7 @@ public class ProjectInitializerTests
         using var project = new TempProject(
             ("Domain.cs", "namespace Shop.Domain { public class Order { public Shop.Web.Page? Back; } }"),
             ("Web.cs", "namespace Shop.Web { public class Page { public Shop.Domain.Order A = new(), B = new(); public Shop.Domain.Order C() => A; } }"));
-        var initializer = new ProjectInitializer(new ProjectPaths(project.Root), new CSharpScanner(), new FakeProjectLocator());
+        var initializer = new ProjectInitializer(new ProjectPaths(project.Root), new CSharpScanner(), new FakeProjectLocator(), new NewFilePublisher());
 
         var initialization = initializer.Initialize(force: false)!;
 

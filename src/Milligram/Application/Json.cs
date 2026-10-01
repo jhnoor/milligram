@@ -63,19 +63,24 @@ public static class JsonFile
     public static void WriteText(string path, string text) =>
         WriteAtomic(path, temp => File.WriteAllText(temp, text));
 
-    private static void WriteAtomic(string path, Action<string> write)
+    /// <summary>Publishes a complete new file only if another writer has not already created the destination.</summary>
+    public static bool TryCreateText(string path, string text, INewFilePublisher publisher) =>
+        WriteAtomic(path, temp => File.WriteAllText(temp, text), publisher);
+
+    private static bool WriteAtomic(string path, Action<string> write, INewFilePublisher? publisher = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
         try
         {
             write(temp);
+            if (publisher is not null) return publisher.TryPublish(temp, path);
             Replace(temp, path);
+            return true;
         }
-        catch
+        finally
         {
             TryDelete(temp);
-            throw;
         }
     }
 

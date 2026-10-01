@@ -74,6 +74,16 @@ public sealed class ViewerActions(
             return Task.FromResult($"{model.Types.Count} types, {model.Edges.Count} dependencies.");
         });
 
+    /// <summary>The live watcher starts before this job, so edits after the freshness check still enqueue a scan.</summary>
+    public Task Start(Initialization? initialization, Func<bool> inputsUnchanged) =>
+        jobs.Enqueue("Scan", (log, _) =>
+        {
+            if (initialization is not null) log("Checking initialization inputs before preparing the first diagram.");
+            var model = workspace.GenerateOrReuse(initialization, initialization is not null && inputsUnchanged(), log);
+            events.Publish("model");
+            return Task.FromResult($"{model.Types.Count} types, {model.Edges.Count} dependencies.");
+        });
+
     private ActionResult Regenerate()
     {
         Regenerate("Scan");

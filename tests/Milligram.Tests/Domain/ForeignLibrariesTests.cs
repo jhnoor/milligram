@@ -5,6 +5,36 @@ namespace Milligram.Tests.Domain;
 
 public class ForeignLibrariesTests
 {
+    [Fact]
+    public void SelectedLibrariesMergeCountsAndStrengthWhileKeepingInternalEdges()
+    {
+        var model = Build.Model([Build.Type("App.A"), Build.Type("App.B")],
+            [Build.Edge("App.B", "x:Vendor.Api.Nested", EdgeKind.Implements, 2),
+             Build.Edge("App.B", "x:Vendor.Api", EdgeKind.Dependency, 3),
+             Build.Edge("App.A", "x:Vendor.Api.Special", EdgeKind.Inheritance, 4),
+             Build.Edge("App.A", "x:Vendor.ApiExtra", count: 5),
+             Build.Edge("App.B", "x:System.Collections", count: 6),
+             Build.Edge("App.A", "App.B", count: 7)],
+            [new("x:Vendor.Api.Nested", "Vendor.Api.Nested"), new("x:Vendor.Api", "Vendor.Api"),
+             new("x:Vendor.Api.Special", "Vendor.Api.Special"), new("x:Vendor.ApiExtra", "Vendor.ApiExtra"),
+             new("x:System.Collections", "System.Collections")]);
+
+        var selected = ForeignLibraries.Select(model, ["", "Vendor.Api", "Vendor.Api.Special", "Unused"]);
+
+        Assert.Same(model.Types, selected.Types);
+        Assert.Equal(model.Title, selected.Title);
+        Assert.Equal(model.Prefix, selected.Prefix);
+        Assert.Equal(model.GeneratedAt, selected.GeneratedAt);
+        Assert.Equal([new("x:Vendor.Api", "Vendor.Api"), new ForeignNode("x:Vendor.Api.Special", "Vendor.Api.Special")], selected.Foreign);
+        Assert.Equal([Build.Edge("App.A", "App.B", count: 7),
+            Build.Edge("App.A", "x:Vendor.Api.Special", EdgeKind.Inheritance, 4),
+            Build.Edge("App.B", "x:Vendor.Api", EdgeKind.Implements, 5)], selected.Edges);
+        Assert.Equal(selected.Foreign, ForeignLibraries.Select(model with { Foreign = model.Foreign.Reverse().ToList() }, ["Vendor.Api.Special", "Vendor.Api"]).Foreign);
+        Assert.Equal(selected.Edges, ForeignLibraries.Select(model with { Edges = model.Edges.Reverse().ToList() }, ["Vendor.Api.Special", "Vendor.Api"]).Edges);
+        Assert.Equal([Build.Edge("App.A", "App.B", count: 7)], ForeignLibraries.Select(model, []).Edges);
+        Assert.Empty(ForeignLibraries.Select(model, []).Foreign);
+    }
+
     [Theory]
     [InlineData("Microsoft.CodeAnalysis.CSharp.Syntax", "Microsoft.CodeAnalysis")]
     [InlineData("Microsoft.AspNetCore.Builder", "Microsoft.AspNetCore")]
