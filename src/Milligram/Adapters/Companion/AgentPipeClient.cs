@@ -14,15 +14,16 @@ public sealed class AgentPipeClient : IAsyncDisposable
     public HostHello? Greeting { get; private init; }
 
     public static Task<AgentPipeClient> ConnectAsync(string endpoint, HostHello greeting, CancellationToken cancellation) =>
-        ConnectAsync(endpoint, greeting, cancellation, null);
+        ConnectAsync(endpoint, greeting, cancellation, cancellation, null);
 
-    internal static async Task<AgentPipeClient> ConnectAsync(string endpoint, HostHello greeting, CancellationToken cancellation, AgentProbeTrace? trace)
+    internal static async Task<AgentPipeClient> ConnectAsync(string endpoint, HostHello greeting,
+        CancellationToken connectionCancellation, CancellationToken cancellation, AgentProbeTrace? trace)
     {
         var pipe = new NamedPipeClientStream(".", endpoint, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         try
         {
             trace?.Mark("pipe-created");
-            await pipe.ConnectAsync(cancellation);
+            await pipe.ConnectAsync(connectionCancellation);
             trace?.Mark("connected");
             var hello = HostProtocol.Json(HostFrameKind.Hello, greeting);
             trace?.Mark("serialized");

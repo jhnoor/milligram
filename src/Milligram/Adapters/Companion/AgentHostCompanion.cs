@@ -12,6 +12,7 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
     private readonly AgentHostFiles files = new(paths);
     private readonly HostHello greeting = new(HostProtocol.Version, version);
     internal TimeSpan ProbeTimeout { get; init; } = TimeSpan.FromMilliseconds(300);
+    internal TimeSpan ProbeGreetingTimeout { get; init; } = TimeSpan.FromSeconds(3);
     internal TimeSpan StartupTimeout { get; init; } = TimeSpan.FromSeconds(20);
     internal TimeSpan CommandTimeout { get; init; } = TimeSpan.FromSeconds(20);
     internal TimeSpan RetryDelay { get; init; } = TimeSpan.FromMilliseconds(100);
@@ -111,7 +112,10 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
     {
         var trace = ProbeLog is null ? null : new AgentProbeTrace();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        using var greetingDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         deadline.CancelAfter(ProbeTimeout);
+        // A connected peer gets time to answer; retries never extend the original connection window.
+        greetingDeadline.CancelAfter(ProbeTimeout + ProbeGreetingTimeout);
         trace?.Mark("started");
         try
         {
@@ -119,14 +123,18 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
             {
                 try
                 {
-                    await using var client = await AgentPipeClient.ConnectAsync(files.Endpoint, greeting, deadline.Token, trace);
+                    await using var client = await AgentPipeClient.ConnectAsync(files.Endpoint, greeting, deadline.Token, greetingDeadline.Token, trace);
                     trace?.Mark("running");
                     return client.Greeting;
                 }
                 catch (IOException) { trace?.Mark("retry-io"); await Task.Delay(RetryDelay, deadline.Token); }
             }
         }
-        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { trace?.Mark("deadline"); return null; }
+        catch (OperationCanceledException error) when (!cancellation.IsCancellationRequested)
+        {
+            trace?.Mark(error.CancellationToken == deadline.Token ? "connection-deadline" : "greeting-deadline");
+            return null;
+        }
         catch (InvalidDataException) { trace?.Mark("invalid-greeting"); return null; }
         catch (Exception error) { trace?.Mark(error.GetType().Name); throw; }
         finally { if (trace is not null) ProbeLog!(trace.ToString()); }

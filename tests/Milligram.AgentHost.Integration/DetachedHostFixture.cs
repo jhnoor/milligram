@@ -132,17 +132,19 @@ internal static class DetachedHostFixture
             Require(JsonFile.Read<string[]>(invocation)!.SequenceEqual(
                 [Program.Dotnet(), typeof(ProcessRunner).Assembly.Location, "agent", "attach", "--project", fixture]),
                 "The custom terminal did not receive this build and project as separate arguments.");
-            var status = AgentCommand("status");
-            Require(status.ExitCode == 0 && status.Output.Contains("running: milligram agent attach", StringComparison.Ordinal),
-                "The opt-in agent status command lost its host: " + status.Output);
             var previousTrace = Environment.GetEnvironmentVariable("MILLIGRAM_TRACE_AGENT_PROBES");
             try
             {
                 Environment.SetEnvironmentVariable("MILLIGRAM_TRACE_AGENT_PROBES", "1");
+                var status = AgentCommand("status");
+                Require(status.ExitCode == 0 && status.Output.Contains("running: milligram agent attach", StringComparison.Ordinal),
+                    "The opt-in agent status command lost its host: " + status.Output);
+                Require(status.Output.Contains("Agent probe (elapsed ms):", StringComparison.Ordinal), "The requested probe diagnostics were missing.");
                 var probes = await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => Task.Run(() => AgentCommand("status"), token)));
                 foreach (var probe in probes) Console.WriteLine(probe.Output.Trim());
                 Require(probes.All(probe => probe.ExitCode == 0 && probe.Output.Contains("running: milligram agent attach", StringComparison.Ordinal)),
                     "A fresh status process lost the running host under concurrent startup load.");
+                Require(probes.All(probe => probe.Output.Contains("Agent probe (elapsed ms):", StringComparison.Ordinal)), "A fresh status process omitted probe diagnostics.");
             }
             finally { Environment.SetEnvironmentVariable("MILLIGRAM_TRACE_AGENT_PROBES", previousTrace); }
             var stopped = AgentCommand("stop");

@@ -169,13 +169,19 @@ real command: start, reuse, status, notification and stop.
 ## Companion control
 
 `AgentHostCompanion` probes the pipe for liveness and waits for published discovery before
-returning from startup. If a previous host is still releasing its lease, it waits before
+returning from startup. The connection/retry window is 300 ms. Once connected, greeting exchange
+uses a separate absolute deadline of 3.3 seconds from the probe's start. Caller cancellation ends
+both stages. This keeps absent-host checks short while allowing a live peer to answer after
+cold runtime setup and connection scheduling consumed most of the connection window. Transient
+disconnects can retry only within that original window; reconnecting never resets the deadline.
+If a previous host is still releasing its lease, it waits before
 launching. An early startup failure includes a bounded log tail. Cancellation or a startup
 deadline can stop only the child handle returned by this launch, never a PID from discovery.
 Set `MILLIGRAM_TRACE_AGENT_PROBES=1` when diagnosing a false status result. Each probe writes
 bounded stage timings and an outcome to stderr after it finishes. These diagnostics contain no
 project paths, endpoint names, greeting values or terminal content. The fresh-process acceptance
-fixture runs twelve status commands concurrently; the macOS Intel failure remains tracked in #67.
+fixture runs twelve status commands concurrently; the evidence is tracked in
+[#67](https://github.com/jhnoor/milligram/issues/67).
 The launcher generates a random instance ID before creating its child and passes it through
 the internal `--instance` argument. Startup returns an immutable cleanup callback only when its
 own live child, discovery and connected peer identify that instance. A concurrent caller reuses
