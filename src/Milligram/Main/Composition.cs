@@ -59,4 +59,6 @@ public sealed class Composition
     public AgentAttachment Attachment { get; }
 
     public WebServer WebServer() => new(Workspace, Actions, Jobs, Companion, Events, () => Companion.Host == AgentHostKind.Milligram, connectTerminal);
+
+    public InitializationInputs WatchInitialization() => new(Paths);
 }

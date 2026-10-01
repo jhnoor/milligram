@@ -116,6 +116,43 @@ normalization described above, with the same SHA-256. Unit tests additionally co
 UTF-8 bytes, including the final newline, and exercise partial serialization failures and
 Windows replacement locks.
 
+## First-run scan reuse
+
+Fresh `serve` previously scanned once to infer its policy, then again to prepare the diagram.
+The follow-up for [#49](https://github.com/jhnoor/milligram/issues/49) retains the discovery
+model, applies the inferred prefix and selected foreign-library groups, and publishes it after
+checking source and project inputs. Changed or unverifiable inputs trigger a fresh scan; later
+starts with an existing policy and explicit regeneration still scan current source.
+
+Two fresh `serve --no-agent --no-browser` processes used the same pinned checkout, with its
+previous policy and model moved aside before each run. No builds or tests ran concurrently.
+The baseline was #54 at `f7e9f81` (its production code is identical to `86a1ab2`). Time below is
+from process creation to completion of the initial `Scan` job, when the model is available
+through the API. It excludes browser layout time.
+
+| Build | Scans | Initial model ready | Peak working set | Peak private memory |
+|-------|-------|---------------------|------------------|---------------------|
+| Streaming JSON baseline | 2 | 763.2 s | 7.55 GiB | 7.59 GiB |
+| Reuse unchanged initialization | 1 | 388.4 s | 6.77 GiB | 6.77 GiB |
+
+Startup time fell **49.1%** in this pair. These remain single desktop measurements, with
+filesystem-cache and background-activity effects. The candidate's startup job explicitly
+reported reuse and finished in 3.2 seconds after policy inference and startup diagnostics.
+The baseline readiness monitor initially used the wrong discovery path and then encountered
+localhost probe timeouts; its successful job was independently verified over IPv4. Both
+times use process-start and job-completion timestamps. The baseline stayed idle until the
+monitor error was diagnosed; its recorded memory peak did not increase during that interval.
+
+The generated policies were byte-for-byte identical. All 8,862,487 model lines matched using
+the same timestamp exclusion and line-ending normalization above, with the same SHA-256.
+This includes the inferred library groups, strongest dependency kinds and summed reference
+counts. A separate fresh CLI/browser fixture verified type cards, source links, and live
+source updates after reuse. Tests cover changed source/project inputs, edits reverted during
+initialization, concurrent policy creation, and existing-policy startup.
+
+To reproduce first-run startup, invoke `milligram serve --no-agent --no-browser` in a fresh
+checkout without `milligram.json`. Running `init` first measures existing-policy startup instead.
+
 ## Remaining limits
 
 - [Project input evaluation (#37)](https://github.com/jhnoor/milligram/issues/37): all source is
@@ -126,6 +163,6 @@ Windows replacement locks.
   are now released, with the measured reduction above. Parsing, compilation and the cached model
   still consume substantial memory; this does not make the measured checkout
   suitable for a low-memory machine.
-- [First-run rescan (#49)](https://github.com/jhnoor/milligram/issues/49): `serve` scans again
-  after inferring a new policy. A one-command first run therefore pays for two scans. Reuse
-  needs to preserve the chosen foreign groups and catch source changes during initialization.
+- [Initial overview (#51)](https://github.com/jhnoor/milligram/issues/51): avoiding a second
+  scan does not reduce the 11,464-node unfiltered root view. Namespace focus remains necessary
+  for this source tree; a useful initial overview is separate work.

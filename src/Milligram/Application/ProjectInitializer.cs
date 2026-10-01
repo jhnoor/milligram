@@ -7,6 +7,8 @@ namespace Milligram.Application;
 /// <summary>A first policy and the dependencies its inferred levels leave pointing outward.</summary>
 public sealed record Initialization(Policy Policy, IReadOnlyList<DependencyEdge> Outward)
 {
+    public CodeModel? Model { get; init; }
+
     private const int ListedOutward = 10;
 
     /// <summary>What init decided, for the console: the levels, and which arrows start out red.</summary>
@@ -61,7 +63,10 @@ public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scan
             Levels = layers.Levels,
             Foreign = ForeignLibraries.Suggest(model),
         };
-        return new Initialization(policy, layers.Outward);
+        return new Initialization(policy, layers.Outward)
+        {
+            Model = ForeignLibraries.Select(model, policy.Foreign) with { Prefix = prefix },
+        };
     }
 
     /// <summary>Writes a commented milligram.json unless one exists (null then); always makes sure run files are git-ignored.</summary>
@@ -70,7 +75,9 @@ public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scan
         EnsureGitIgnore();
         if (File.Exists(paths.PolicyFile) && !force) return null;
         var initialization = Propose(progress);
-        JsonFile.WriteText(paths.PolicyFile, PolicyText.Starter(initialization));
+        var text = PolicyText.Starter(initialization);
+        if (force) JsonFile.WriteText(paths.PolicyFile, text);
+        else if (!JsonFile.TryCreateText(paths.PolicyFile, text)) return null;
         return initialization;
     }
 

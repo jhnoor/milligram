@@ -86,7 +86,9 @@ The first run reports parsing, binding and dependency progress while it scans, t
 the others sits just outside the namespaces it uses. When namespaces depend on each other in a
 cycle, Milligram breaks the cycle at its lightest link (the fewest references) and leaves that
 link pointing outward, so the first diagram already shows the tangles in red. The console lists
-the levels it chose. Edit `levels` to match the architecture you intend. Every run scans the code,
+the levels it chose. Edit `levels` to match the architecture you intend. The first run reuses that
+analysis for its diagram after checking source and project inputs; edits during initialization
+or inputs that cannot be verified trigger a fresh scan. Later starts scan the current code. Milligram
 serves the viewer at `http://localhost:5170/` (loopback only), opens your browser, and starts the
 agent in a terminal. Edit code, a `.csproj` or `milligram.json` and the diagram updates by itself.
 Restored `obj/project.assets.json` files and generated global usings also trigger a new scan;

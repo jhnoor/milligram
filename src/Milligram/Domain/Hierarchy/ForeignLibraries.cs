@@ -23,6 +23,26 @@ public static class ForeignLibraries
             .ToList();
     }
 
+    /// <summary>Regroups discovered namespaces into the selected library ovals without repeating source analysis.</summary>
+    public static CodeModel Select(CodeModel model, IReadOnlyList<string> prefixes)
+    {
+        var selected = model.Foreign.ToDictionary(node => node.Id,
+            node => prefixes.Where(prefix => prefix.Length > 0 && NamePath.Covers(prefix, node.Label)).MaxBy(prefix => prefix.Length),
+            StringComparer.Ordinal);
+        var edges = model.Edges
+            .Select(edge => selected.TryGetValue(edge.To, out var prefix)
+                ? prefix is null ? null : edge with { To = CodeModel.ForeignIdPrefix + prefix }
+                : edge)
+            .OfType<DependencyEdge>()
+            .GroupBy(edge => (edge.From, edge.To))
+            .Select(group => new DependencyEdge(group.Key.From, group.Key.To, group.Max(edge => edge.Kind), group.Sum(edge => edge.Count)))
+            .OrderBy(edge => edge.From, StringComparer.Ordinal).ThenBy(edge => edge.To, StringComparer.Ordinal).ToList();
+        var foreign = selected.Values.OfType<string>().Distinct(StringComparer.Ordinal)
+            .Select(prefix => new ForeignNode(CodeModel.ForeignIdPrefix + prefix, prefix))
+            .OrderBy(node => node.Id, StringComparer.Ordinal).ToList();
+        return model with { Foreign = foreign, Edges = edges };
+    }
+
     /// <summary>Two namespace segments identify most libraries; System needs three to keep choices such as Text.Json separate.</summary>
     private static string? Root(string ns)
     {

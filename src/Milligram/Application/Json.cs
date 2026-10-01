@@ -63,14 +63,25 @@ public static class JsonFile
     public static void WriteText(string path, string text) =>
         WriteAtomic(path, temp => File.WriteAllText(temp, text));
 
-    private static void WriteAtomic(string path, Action<string> write)
+    /// <summary>Publishes a complete new file only if another writer has not already created the destination.</summary>
+    public static bool TryCreateText(string path, string text) =>
+        WriteAtomic(path, temp => File.WriteAllText(temp, text), overwrite: false);
+
+    private static bool WriteAtomic(string path, Action<string> write, bool overwrite = true)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
         try
         {
             write(temp);
-            Replace(temp, path);
+            if (overwrite) Replace(temp, path);
+            else File.Move(temp, path);
+            return true;
+        }
+        catch (Exception e) when (!overwrite && File.Exists(path) && e is IOException or UnauthorizedAccessException)
+        {
+            TryDelete(temp);
+            return false;
         }
         catch
         {

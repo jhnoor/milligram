@@ -81,11 +81,21 @@ public sealed class Workspace
     }
 
     /// <summary>Scans the source with the current policy and writes .milligram/model.json.</summary>
-    public CodeModel Generate(Action<string>? progress = null)
+    public CodeModel Generate(Action<string>? progress = null) => GenerateOrReuse(null, inputsUnchanged: false, progress);
+
+    /// <summary>Only startup may reuse its discovery scan, after checking inputs and the policy actually loaded from disk.</summary>
+    public CodeModel GenerateOrReuse(Initialization? initialization, bool inputsUnchanged, Action<string>? progress = null)
     {
         lock (scanGate)
         {
             var current = Policy;
+            if (inputsUnchanged && PolicyError is null && initialization?.Model is { } initial && SameScanPolicy(initialization.Policy, current))
+            {
+                progress?.Invoke("Reusing the initialization scan; source and project inputs are unchanged.");
+                JsonFile.Write(Paths.ModelFile, initial);
+                Update(() => model = initial);
+                return initial;
+            }
             var request = new ScanRequest(
                 Paths.Root,
                 Paths.Absolute(current.Src),
@@ -99,6 +109,11 @@ public sealed class Workspace
             return scanned;
         }
     }
+
+    private bool SameScanPolicy(Policy left, Policy right) =>
+        Paths.Absolute(left.Src) == Paths.Absolute(right.Src) && left.Prefix == right.Prefix &&
+        (left.Title ?? DefaultTitle) == (right.Title ?? DefaultTitle) &&
+        left.Exclude.SequenceEqual(right.Exclude, StringComparer.Ordinal) && left.Foreign.SequenceEqual(right.Foreign, StringComparer.Ordinal);
 
     /// <summary>
     /// Applies a viewer edit. Only the keys it changes are rewritten, so comments and layout in milligram.json
