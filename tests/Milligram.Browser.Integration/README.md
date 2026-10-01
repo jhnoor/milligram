@@ -26,3 +26,14 @@ auto-open, literal untrusted text, and refusal to reconnect when a port serves a
 Wrapped source-link cases use the actual xterm buffer, including wide glyphs and paths with spaces.
 Real Copilot interaction, IME, operating-system clipboard shortcuts and Safari remain manual
 acceptance checks.
+
+`chrome --diagram` selects a generated 620-type diagram fixture instead of the terminal checks.
+It verifies a model arriving over SSE after an empty first screen, automatic fit in a smaller
+viewport, bounded pages, exact reference/violation totals, namespace and name navigation,
+cards/source, and camera restoration through paging, filtering, browser history and proposals.
+It prints first-layout and interaction times. CI runs this fixture on every browser above.
+
+`chrome --diagram --cached-project /absolute/project/path` reads an existing `.milligram/model.json`
+without rescanning. The acceptance checks expect the pinned Roslyn input in `SCALING.md`,
+including its repeated Razor delegate identities. `--diagram --serve` generates the wide
+fixture and leaves its viewer open; add `--cached-project` to inspect a saved model instead.

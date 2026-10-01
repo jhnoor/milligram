@@ -37,7 +37,8 @@ public class WebServerTests : IAsyncLifetime
         port.Start();
         var preferred = Math.Min(((IPEndPoint)port.LocalEndpoint).Port, 65000);
         port.Stop();
-        server = new WebServer(workspace, actions, jobs, companion, events);
+        server = new WebServer(workspace, actions, jobs, companion, events,
+            connectTerminal: _ => throw new InvalidOperationException("Terminal connections must remain disabled without explicit enablement."));
         var started = await server.StartAsync(preferred, CancellationToken.None);
         app = started.App;
         client = new HttpClient { BaseAddress = new Uri(started.Url.Replace("localhost", "127.0.0.1", StringComparison.Ordinal)), Timeout = TimeSpan.FromSeconds(5) };
@@ -89,6 +90,22 @@ public class WebServerTests : IAsyncLifetime
         workspace.EditPolicy(p => p with { Agent = p.Agent with { Terminal = preference } });
         using var meta = JsonDocument.Parse(await client.GetStringAsync("api/meta"));
         Assert.Equal(opens, meta.RootElement.GetProperty("agent").GetProperty("terminal").GetProperty("autoOpen").GetBoolean());
+    }
+
+    [Fact]
+    public async Task DiagramQueriesPageAndFilterWithoutChangingThePolicy()
+    {
+        var policy = File.ReadAllText(workspace.Paths.PolicyFile);
+        JsonFile.Write(workspace.Paths.ModelFile, Build.Model(Enumerable.Range(0, 100).Select(i => Build.Type($"Shop.Type{i:D3}"))));
+        workspace.ReloadModel();
+        using var page = JsonDocument.Parse(await client.GetStringAsync("api/view?context=real&focus=ns:&page=4"));
+        Assert.Equal(4, page.RootElement.GetProperty("page").GetProperty("index").GetInt32());
+        Assert.Equal("Shop.Type080", page.RootElement.GetProperty("nodes")[0].GetProperty("typeId").GetString());
+        using var filtered = JsonDocument.Parse(await client.GetStringAsync("api/view?page=2147483647&query=type099"));
+        Assert.Equal(1, filtered.RootElement.GetProperty("page").GetProperty("matches").GetInt32());
+        Assert.Equal(0, filtered.RootElement.GetProperty("page").GetProperty("index").GetInt32());
+        Assert.Equal("Shop.Type099", filtered.RootElement.GetProperty("nodes")[0].GetProperty("typeId").GetString());
+        Assert.Equal(policy, File.ReadAllText(workspace.Paths.PolicyFile));
     }
 
     [Theory]

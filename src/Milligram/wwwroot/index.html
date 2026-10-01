@@ -50,6 +50,7 @@
         <h2>View</h2>
         <div class="row"><span class="label">Arrows</span>
           <div class="seg" id="arrows">
+            <button data-v="auto" title="Compact grid with dependency markers for large views; bundled arrows for small views">Auto</button>
             <button data-v="detailed" title="One arrow per box pair, down to nested boxes">Detailed</button>
             <button data-v="bundled" title="One arrow per component pair">Bundled</button>
             <button data-v="hidden" title="No lines: triangles show incoming (top) and outgoing (bottom)">Hidden</button>
@@ -63,6 +64,20 @@
           </div>
         </div>
         <div class="row muted small">Zoom <span id="zoom-level">100%</span> · F fits · Ctrl+wheel zooms · drag pans</div>
+      </section>
+
+      <section aria-label="Browse this level">
+        <h2>Browse this level</h2>
+        <form id="level-search">
+          <label for="level-query" class="small muted">Find a namespace or type on this level</label>
+          <div class="row"><input id="level-query" type="search" autocomplete="off" placeholder="Name contains…"><button type="submit">Find</button></div>
+          <button id="clear-query" type="button">Show all</button>
+        </form>
+        <div id="overview" hidden>
+          <p class="small muted">Compact overview. Open a namespace for its contents. Other entries remain included in references and risk colours. Auto uses incoming/outgoing markers; choose Detailed to draw arrows.</p>
+          <div id="page-count" class="small" aria-live="polite"></div>
+          <div class="buttons"><button id="page-prev">Previous</button><button id="page-next">Next</button></div>
+        </div>
       </section>
 
       <section>

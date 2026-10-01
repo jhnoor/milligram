@@ -176,10 +176,10 @@ public sealed class Workspace
         }
     }
 
-    public DiagramView View(string? contextId, string? focusId)
+    public DiagramView View(string? contextId, string? focusId, int page = 0, string? query = null)
     {
         var tree = Tree(contextId);
-        lock (gate) return ViewBuilder.Build(model, policy, metrics, tree, focusId);
+        lock (gate) return ViewBuilder.Build(model, policy, metrics, tree, focusId, page, query);
     }
 
     public TypeCard? Card(string? contextId, string typeId)

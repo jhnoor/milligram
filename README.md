@@ -139,16 +139,27 @@ the buttons in the viewer.
 |---------|----|
 | Double-click a component | Open it. **Esc**, **←**, or the breadcrumbs go back up. |
 | Double-click a type | Open its card: every member with CRAP, complexity, coverage, and mutants, plus what it uses and what uses it. Click a member to read its source. |
+| Use **Browse this level** | Filter namespace and type names on the current level, or page through a large view. Open a namespace to browse the next level. **Show all** clears the filter. |
 | Hover an arrow | List the type-level dependencies it bundles. Red ones break the rule. |
 | Right-click a box | Refresh CRAP or mutation for it, omit it, or ask the agent about it. |
 | Type in **Agent** and press Ctrl+Enter | Send a message to the agent, together with the diagram and your selection. |
 | Pick a diagram under **Diagrams** | Switch between the real diagram and proposals. |
 
-- **Arrows:** Detailed (between nested boxes), Bundled (between components), or Hidden (triangles show incoming/outgoing).
+- **Arrows:** Auto (the default: a compact grid for large views, bundled arrows for small ones), Detailed (between nested boxes), Bundled (between components), or Hidden. Triangles in the grid and Hidden mode show incoming/outgoing references; hover for the dependencies.
 - **Boxes:** Members, Names, or Closed.
 - **Navigation:** drag or scroll to pan, Ctrl+wheel to zoom, **F** to fit, **R** to reload.
-- **Levels:** each box shows its level (`L0` is innermost, drawn at the bottom).
+- **Levels:** each box shows its level (`L0` is innermost, drawn at the bottom in layouts with arrows). The compact grid keeps the level labels.
 - **Colour:** red → green is the average of the CRAP and mutation grades. The **C** and **M** dots show each grade, and grey means unknown.
+
+Views that would expand beyond 80 interior boxes open as a compact overview, with up to 20
+namespaces or types per page. This also handles types directly under the root. Dotted summary
+boxes represent entries on other pages or outside the current focus; they are navigation aids,
+not additional namespaces. Their colours retain the worst grades of their contents. References
+between entries remain in the arrows or markers, and collapsed internal reference counts and
+level violations appear on the box. Open a namespace or type card to inspect the details.
+The exterior is bounded to 12 boxes, including its summary. Paging and filtering do not edit
+`milligram.json`, omit code, or change levels. Cameras are remembered separately for each
+diagram, focus, detail setting, overview layout and filtered page.
 
 ## Configure: `milligram.json`
 

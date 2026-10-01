@@ -10,10 +10,14 @@ internal static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        var diagram = args.Contains("--diagram", StringComparer.Ordinal);
+        var projectIndex = Array.IndexOf(args, "--cached-project");
+        var cachedProject = projectIndex >= 0 ? args[projectIndex + 1] : null;
         await using var viewer = new ViewerFixture();
-        await viewer.Start();
+        await viewer.Start(diagram, cachedProject);
         if (args.Contains("--serve", StringComparer.Ordinal))
         {
+            if (diagram && cachedProject is null) viewer.GenerateDiagram();
             Console.WriteLine(viewer.Url);
             using var stop = new CancellationTokenSource();
             Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
@@ -38,17 +42,18 @@ internal static class Program
         Directory.CreateDirectory("artifacts/browser");
         try
         {
-            await Smoke(page, context, viewer);
+            if (diagram) await DiagramSmoke.Run(page, viewer, cachedProject is not null);
+            else await Smoke(page, context, viewer);
             Require(errors.IsEmpty, "Browser script errors: " + string.Join("\n", errors));
-            await page.ScreenshotAsync(new() { Path = $"artifacts/browser/{name}.png", FullPage = true });
-            Console.WriteLine($"PASS {name}: output, input, keyboard isolation, bracketed paste, mail, resize, replay, controls, popout and source links");
+            await page.ScreenshotAsync(new() { Path = $"artifacts/browser/{name}{(diagram ? "-diagram" : "")}.png", FullPage = true });
+            Console.WriteLine(diagram ? $"PASS {name}: diagram overview, navigation, source and camera" : $"PASS {name}: output, input, keyboard isolation, bracketed paste, mail, resize, replay, controls, popout and source links");
             return 0;
         }
         catch (Exception error)
         {
             await page.ScreenshotAsync(new() { Path = $"artifacts/browser/{name}-failure.png", FullPage = true });
             Console.Error.WriteLine(error);
-            Console.Error.WriteLine("Received input: " + System.Text.Json.JsonSerializer.Serialize(viewer.Companion.Terminal.Received));
+            if (!diagram) Console.Error.WriteLine("Received input: " + System.Text.Json.JsonSerializer.Serialize(viewer.Companion.Terminal.Received));
             Console.Error.WriteLine(string.Join("\n", errors));
             return 1;
         }

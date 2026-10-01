@@ -48,7 +48,10 @@ const state = {
   layout: null,
   context: 'real',
   focus: null,
-  arrows: localStorage.getItem('mg.arrows') || 'bundled',
+  page: 0,
+  query: '',
+  drawnCameraKey: null,
+  arrows: localStorage.getItem('mg.arrows') || 'auto',
   detail: localStorage.getItem('mg.detail') || 'members',
   selected: null,
   card: null,
@@ -152,20 +155,26 @@ function readHash() {
   const params = new URLSearchParams(location.hash.slice(1));
   state.context = params.get('c') || 'real';
   state.focus = params.get('f') || null;
+  state.page = Math.max(0, Math.min(2147483647, Number.parseInt(params.get('p'), 10) || 0));
+  state.query = params.get('q') || '';
 }
 
 function writeHash() {
   const params = new URLSearchParams({ c: state.context });
   if (state.focus) params.set('f', state.focus);
+  if (state.page) params.set('p', state.page);
+  if (state.query) params.set('q', state.query);
   const hash = `#${params}`;
   if (location.hash !== hash) history.pushState(null, '', hash);
 }
 
 /** `mail` tells the agent which diagram is now under discussion (user choices only, never agent requests). */
-function navigate(context, focus, { mail = false } = {}) {
+function navigate(context, focus, { mail = false, page = 0, query = '' } = {}) {
   saveCamera();
   state.context = context;
   state.focus = focus;
+  state.page = page;
+  state.query = query;
   state.selected = null;
   writeHash();
   if (mail) action('context');
@@ -181,14 +190,18 @@ function up() {
 
 async function refresh({ keepCamera = false } = {}) {
   const token = ++state.token;
+  $('#canvas').setAttribute('aria-busy', 'true');
   let meta, view;
   try {
     [meta, view] = await Promise.all([
       api.get('/api/meta'),
-      api.get('/api/view', { context: state.context, focus: state.focus }),
+      api.get('/api/view', { context: state.context, focus: state.focus, page: state.page, query: state.query }),
     ]);
   } catch (error) {
-    if (token === state.token) $('#status').textContent = 'Viewer disconnected.';
+    if (token === state.token) {
+      $('#status').textContent = 'Viewer disconnected.';
+      $('#canvas').setAttribute('aria-busy', 'false');
+    }
     return;
   }
   if (token !== state.token) return;
@@ -196,6 +209,8 @@ async function refresh({ keepCamera = false } = {}) {
   state.view = view;
   state.context = view.context.id;
   state.focus = view.focus.id;
+  state.page = view.page?.index ?? 0;
+  state.query = view.page?.query ?? '';
   if (state.selected && !view.nodes.some((n) => n.id === state.selected)) state.selected = null;
   renderChrome();
   const layout = await layoutView(view);
@@ -221,8 +236,9 @@ async function refreshMeta() {
 // ---------------------------------------------------------------- layout
 
 function leafSpec(node) {
+  const label = clip(node.label, 64);
   if (node.kind === 'foreign') {
-    return { shape: 'ellipse', w: Math.max(textWidth(node.label, FONTS.title) + 44, 96), h: 38, lines: [{ text: node.label, cls: 'title', font: FONTS.title, center: true, y: 23 }] };
+    return { shape: 'ellipse', w: Math.max(textWidth(label, FONTS.title) + 44, 96), h: 38, lines: [{ text: label, cls: 'title', font: FONTS.title, center: true, y: 23 }] };
   }
   const lines = [];
   let y = BADGE_ROW + 4;
@@ -234,7 +250,7 @@ function leafSpec(node) {
   if (isType) {
     if (node.stereotype && node.stereotype !== 'class') add(`«${node.stereotype}»`, 'stereo', FONTS.stereo, { height: 12 });
     const italic = ['interface', 'enum', 'abstract', 'delegate'].includes(node.stereotype);
-    add(node.label, `title${italic ? ' italic' : ''}`, FONTS.title);
+    add(label, `title${italic ? ' italic' : ''}`, FONTS.title);
     if (node.kind === 'type' && !node.parent && state.detail === 'members' && node.members.length) {
       y += 6;
       for (const member of node.members.slice(0, MAX_MEMBERS)) {
@@ -244,15 +260,18 @@ function leafSpec(node) {
       if (node.members.length > MAX_MEMBERS) add(`… ${node.members.length - MAX_MEMBERS} more`, 'caption', FONTS.caption, { center: false, height: 14 });
     }
   } else {
-    add(node.label, 'title italic', FONTS.title);
+    add(label, 'title italic', FONTS.title);
     const contents = node.contents ?? [];
     if (node.kind === 'component' && contents.length) {
       y += 4;
-      for (const name of contents.slice(0, 8)) add(name, 'caption', FONTS.caption, { center: false, height: 13 });
+      for (const name of contents.slice(0, 8)) add(clip(name, 48), 'caption', FONTS.caption, { center: false, height: 13 });
       if (contents.length > 8) add(`… ${contents.length - 8} more`, 'caption', FONTS.caption, { center: false, height: 13 });
     }
     add(node.kind === 'external' ? 'outside this view' : `${node.typeCount} type${node.typeCount === 1 ? '' : 's'}`, 'caption', FONTS.caption, { height: 14 });
+    if (node.kind === 'summary') add(node.id === 'summary:exterior' ? 'go up a level to browse' : 'browse using the level controls', 'caption', FONTS.caption, { height: 14 });
   }
+  if (node.internalReferences) add(`${node.internalReferences.toLocaleString()} references within`, 'caption', FONTS.caption, { height: 14 });
+  if (node.internalViolations) add(`${node.internalViolations.toLocaleString()} violating refs within`, 'caption violation-count', FONTS.caption, { height: 14 });
   const width = Math.max(96, ...lines.map((l) => textWidth(l.text, l.font) + 2 * PAD + (l.center ? 16 : 0)));
   return { shape: node.kind === 'package' ? 'package' : 'rect', w: Math.ceil(width), h: y + PAD, lines };
 }
@@ -276,13 +295,14 @@ function edgesFor(view, visible, topOf, bundledOnly) {
     if (!bundle) bundles.set(key, (bundle = { id: `e${bundles.size}`, from, to, kinds: new Set(), violating: false, pairs: [], involved: new Set() }));
     bundle.kinds.add(edge.kind);
     bundle.violating ||= edge.violating;
-    bundle.pairs.push(...edge.pairs);
+    for (const pair of edge.pairs) bundle.pairs.push(pair);
     for (const id of [edge.from, edge.to, fromTop, toTop]) bundle.involved.add(id);
   }
   return [...bundles.values()].map((b) => ({ ...b, kind: b.kinds.size === 1 ? [...b.kinds][0] : 'dependency' }));
 }
 
 async function layoutView(view) {
+  const compact = !!view.page && state.arrows === 'auto';
   const closed = state.detail === 'boxes';
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
   const tops = view.nodes.filter((n) => !n.parent || !byId.has(n.parent));
@@ -325,9 +345,10 @@ async function layoutView(view) {
   const layoutEdges = state.arrows === 'hidden' ? edgesFor(view, visible, topOf, true) : edges;
   const graph = {
     id: 'root',
-    layoutOptions: { ...ROOT_OPTIONS, 'elk.hierarchyHandling': hierarchical ? 'INCLUDE_CHILDREN' : 'SEPARATE_CHILDREN' },
+    layoutOptions: { ...ROOT_OPTIONS, 'elk.hierarchyHandling': hierarchical ? 'INCLUDE_CHILDREN' : 'SEPARATE_CHILDREN',
+      ...(compact ? { 'elk.algorithm': 'rectpacking', 'elk.aspectRatio': '1.6', 'elk.partitioning.activate': 'false' } : {}) },
     children: tops.map(top),
-    edges: layoutEdges.map((e) => ({ id: e.id, sources: [e.from], targets: [e.to] })),
+    edges: compact ? [] : layoutEdges.map((e) => ({ id: e.id, sources: [e.from], targets: [e.to] })),
   };
   const result = await elk.layout(graph);
   const boxes = new Map();
@@ -343,7 +364,7 @@ async function layoutView(view) {
   return {
     view, byId, boxes, routes, specs, topOf, visible, edges,
     width: result.width, height: result.height,
-    triangles: state.arrows === 'hidden' ? triangles(view, visible, topOf) : null,
+    triangles: compact || state.arrows === 'hidden' ? triangles(view, visible, topOf) : null,
   };
 }
 
@@ -360,8 +381,8 @@ function triangles(view, visible, topOf) {
     const outs = new Set([edge.from]);
     const ins = new Set([edge.to]);
     if (fromTop !== toTop) { outs.add(fromTop); ins.add(toTop); }
-    for (const id of outs) if (visible.has(id)) get(id).outgoing.push(...edge.pairs);
-    for (const id of ins) if (visible.has(id)) get(id).incoming.push(...edge.pairs);
+    for (const id of outs) if (visible.has(id)) for (const pair of edge.pairs) get(id).outgoing.push(pair);
+    for (const id of ins) if (visible.has(id)) for (const pair of edge.pairs) get(id).incoming.push(pair);
   }
   return map;
 }
@@ -423,8 +444,11 @@ function draw(layout, keepCamera) {
   $('#empty').hidden = layout.view.nodes.length > 0;
   $('#empty').textContent = emptyMessage();
   applySelection();
-  if (!keepCamera && !restoreCamera()) fit();
+  const key = cameraKey();
+  if ((!keepCamera || state.drawnCameraKey !== key) && !restoreCamera()) fit();
+  state.drawnCameraKey = layout.view.nodes.length ? key : null;
   applyCamera();
+  $('#canvas').setAttribute('aria-busy', 'false');
 }
 
 function emptyMessage() {
@@ -549,24 +573,30 @@ function applyCamera() {
   $('#zoom-level').textContent = `${Math.round(state.zoom * 100)}%`;
 }
 
-function cameraKey() { return `mg.camera.${state.context}.${state.focus ?? ''}.${state.detail}`; }
+function cameraKey() {
+  const base = `mg.camera.${state.context}.${state.focus ?? ''}.${state.detail}${state.view?.page && state.arrows === 'auto' ? '.overview' : ''}`;
+  return state.page || state.query ? `${base}.${JSON.stringify([state.page, state.query])}` : base;
+}
 
 function saveCamera() {
-  sessionStorage.setItem(cameraKey(), JSON.stringify({ zoom: state.zoom, pan: state.pan }));
+  if (state.drawnCameraKey) sessionStorage.setItem(state.drawnCameraKey, JSON.stringify({ zoom: state.zoom, pan: state.pan }));
 }
 
 function restoreCamera() {
-  const saved = sessionStorage.getItem(cameraKey());
-  if (!saved) return false;
-  Object.assign(state, JSON.parse(saved));
-  return true;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(cameraKey()));
+    if (!saved || !Number.isFinite(saved.zoom) || saved.zoom <= 0 || !Number.isFinite(saved.pan?.x) || !Number.isFinite(saved.pan?.y)) return false;
+    state.zoom = saved.zoom;
+    state.pan = saved.pan;
+    return true;
+  } catch { return false; }
 }
 
 function fit() {
   const layout = state.layout;
   const stage = $('#stage').getBoundingClientRect();
   if (!layout || !layout.width) return;
-  state.zoom = Math.max(0.2, Math.min(1, (stage.width - 40) / layout.width, (stage.height - 40) / layout.height));
+  state.zoom = Math.max(0.01, Math.min(1, (stage.width - 40) / layout.width, (stage.height - 90) / layout.height));
   state.pan = { x: Math.max(20, (stage.width - layout.width * state.zoom) / 2), y: 20 };
 }
 
@@ -574,7 +604,7 @@ function zoomAt(factor, clientX, clientY) {
   const stage = $('#stage').getBoundingClientRect();
   const x = (clientX ?? stage.left + stage.width / 2) - stage.left;
   const y = (clientY ?? stage.top + stage.height / 2) - stage.top;
-  const zoom = Math.max(0.1, Math.min(4, state.zoom * factor));
+  const zoom = Math.max(0.01, Math.min(4, state.zoom * factor));
   state.pan = { x: x - ((x - state.pan.x) * zoom) / state.zoom, y: y - ((y - state.pan.y) * zoom) / state.zoom };
   state.zoom = zoom;
   applyCamera();
@@ -618,6 +648,19 @@ function renderChrome() {
   renderMetrics();
   renderJob();
   renderStatus();
+  renderBrowse();
+}
+
+function renderBrowse() {
+  const page = state.view.page;
+  $('#overview').hidden = !page;
+  if (document.activeElement !== $('#level-query')) $('#level-query').value = state.query;
+  if (!page) return;
+  const start = page.matches ? page.index * page.size + 1 : 0;
+  const end = Math.min((page.index + 1) * page.size, page.matches);
+  $('#page-count').textContent = `${start}–${end} of ${page.matches.toLocaleString()} entries${page.query ? ` (${page.total.toLocaleString()} total)` : ''}`;
+  $('#page-prev').disabled = page.index === 0;
+  $('#page-next').disabled = end >= page.matches;
 }
 
 function renderContexts() {
@@ -724,6 +767,8 @@ function renderSelection() {
     node.kind !== 'foreign' ? ['Types', node.typeCount] : null,
     node.kind !== 'foreign' ? ['CRAP', grade(node.grades?.crap)] : null,
     node.kind !== 'foreign' ? ['Mutation', grade(node.grades?.mutation)] : null,
+    node.internalReferences ? ['References within', node.internalReferences.toLocaleString()] : null,
+    node.internalViolations ? ['Violating refs within', node.internalViolations.toLocaleString()] : null,
   ].filter(Boolean);
   box.innerHTML = `<div><b>${html(node.label)}</b></div><dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${html(v)}</dd>`).join('')}</dl>
     <div class="buttons">${node.typeId ? '<button data-do="card">Open card</button>' : ''}${node.drill ? '<button data-do="drill">Open</button>' : ''}</div>`;
@@ -733,7 +778,7 @@ function renderSelection() {
 
 function selectionInfo() {
   const node = state.selected ? state.layout?.byId.get(state.selected) : null;
-  if (!node) return null;
+  if (!node || node.kind === 'summary') return null;
   return { id: node.id, kind: node.kind, label: node.label, target: node.target ?? null, typeId: node.typeId ?? null, namespace: node.namespace ?? null };
 }
 
@@ -755,7 +800,7 @@ function renderLegend() {
   el('circle', { cx: 28, cy: 118, r: 4.5, fill: dotColor(3) }, svg);
   el('text', { x: 82, y: 122, fill: '#8b93a7', 'font-size': 11 }, svg, 'C and M dots (hollow = unknown)');
   el('text', { x: 10, y: 142, fill: '#8b93a7', 'font-size': 11, 'font-family': MONO }, svg, 'L0');
-  el('text', { x: 82, y: 142, fill: '#8b93a7', 'font-size': 11 }, svg, 'level (0 = innermost, at bottom)');
+  el('text', { x: 82, y: 142, fill: '#8b93a7', 'font-size': 11 }, svg, 'level (0 = innermost)');
 }
 
 // ---------------------------------------------------------------- type card
@@ -950,6 +995,9 @@ function showMenu(items, x, y) {
 function hideMenu() { $('#menu').hidden = true; }
 
 function nodeMenu(node) {
+  if (node.kind === 'summary') return node.id === 'summary:exterior'
+    ? [{ label: 'Up a level', run: up }]
+    : [{ label: 'Browse this level', run: () => $('#level-query').focus() }];
   const metrics = node.kind !== 'foreign';
   const proposal = state.view.context.isProposal;
   return [
@@ -1106,6 +1154,16 @@ async function send() {
 }
 
 function wireInspector() {
+  $('#level-search').onsubmit = (e) => {
+    e.preventDefault();
+    navigate(state.context, state.focus, { query: $('#level-query').value.trim() });
+  };
+  $('#clear-query').onclick = () => {
+    $('#level-query').value = '';
+    navigate(state.context, state.focus);
+  };
+  $('#page-prev').onclick = () => navigate(state.context, state.focus, { page: state.page - 1, query: state.query });
+  $('#page-next').onclick = () => navigate(state.context, state.focus, { page: state.page + 1, query: state.query });
   $('#up').onclick = up;
   $('#send').onclick = send;
   $('#regen').onclick = () => action('regen');
@@ -1121,6 +1179,7 @@ function wireInspector() {
     $(id).addEventListener('click', (e) => {
       const value = e.target.dataset?.v;
       if (!value || value === state[key]) return;
+      saveCamera();
       state[key] = value;
       localStorage.setItem(`mg.${key}`, value);
       refresh({ keepCamera: key === 'arrows' });
