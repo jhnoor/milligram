@@ -5,7 +5,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $packageSource = (Resolve-Path -LiteralPath $PackageDirectory).Path
-$smokeRoot = Join-Path ([IO.Path]::GetTempPath()) ("Milligram smoke " + [guid]::NewGuid().ToString('N'))
+# The .NET Framework build host must find its .exe.config below MAX_PATH; retain spaces in the fixture path.
+$smokeRoot = Join-Path ([IO.Path]::GetTempPath()) ("mg smoke " + [guid]::NewGuid().ToString('N').Substring(0, 12))
 $toolRoot = Join-Path $smokeRoot 'tool'
 $projectRoot = Join-Path $smokeRoot 'project'
 New-Item -ItemType Directory -Path $projectRoot -Force | Out-Null
@@ -33,6 +34,7 @@ function Invoke-Action([hashtable]$Body) {
 
 Invoke-DotNet tool install Milligram --tool-path $toolRoot --source $packageSource --version $Version
 $tool = Join-Path $toolRoot $(if ($IsWindows) { 'milligram.exe' } else { 'milligram' })
+& (Join-Path $PSScriptRoot 'project-scan-fixture.ps1') -ToolPath $tool
 Push-Location $projectRoot
 try {
     Invoke-DotNet new classlib -n Smoke -o src/Smoke --no-restore

@@ -16,13 +16,16 @@ public sealed class Composition
 {
     private readonly Func<CancellationToken, Task<AgentPipeClient>> connectTerminal;
 
-    public Composition(string root, IReadOnlyList<string> selfCommand, string version)
+    public Composition(string root, IReadOnlyList<string> selfCommand, string version,
+        IReadOnlyList<string>? scanProjects = null, string? scanConfiguration = null)
     {
         Paths = new ProjectPaths(root);
         Events = new EventHub();
-        var scanner = new CSharpScanner();
-        var locator = new DotNetProjectLocator();
         var processes = new ProcessRunner();
+        ILanguageScanner scanner = scanProjects is { Count: > 0 }
+            ? new ProjectScanner(processes.EvaluateProjectsAsync, scanProjects, scanConfiguration)
+            : new CSharpScanner();
+        var locator = new DotNetProjectLocator();
         Workspace = new Workspace(Paths, scanner);
         Jobs = new JobQueue(Events);
         Companion = new ConfiguredCompanion(() => Workspace.Policy.Agent.Host,

@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Milligram.Adapters.Files;
 using Milligram.Analysis.CSharp;
 using Milligram.Application;
+using Workspace = Milligram.Application.Workspace;
 
 namespace Milligram.Tests.Adapters;
 

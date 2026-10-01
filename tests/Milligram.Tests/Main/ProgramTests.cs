@@ -1,11 +1,37 @@
 using System.IO.Pipes;
 using Milligram.Adapters.Companion;
 using Milligram.Application;
+using Milligram.Domain.Model;
 
 namespace Milligram.Tests.Main;
 
 public class ProgramTests
 {
+    [Fact]
+    public async Task PlainIrKeepsTheSourceOnlyFallbackAvailableWithoutAProject()
+    {
+        using var project = new TempProject(("Source.cs", "namespace App; public class Source {}"));
+        Assert.Equal(0, await global::Milligram.Main.Program.Main(["ir", "--project", project.Root]));
+        var model = JsonFile.Read<CodeModel>(new ProjectPaths(project.Root).ModelFile)!;
+        Assert.Equal("App.Source", Assert.Single(model.Types).Id);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedIrReturnsAnErrorAndPreservesTheModel(bool malformedPolicy)
+    {
+        using var project = new TempProject(("Source.cs", "namespace App; public class Source {}"));
+        var paths = new ProjectPaths(project.Root);
+        JsonFile.Write(paths.ModelFile, CodeModel.Empty("Previous", ""));
+        if (malformedPolicy) project.Write("milligram.json", "{ broken");
+        var args = new List<string> { "ir", "--project", project.Root };
+        if (!malformedPolicy) args.AddRange(["--msbuild", "Missing.csproj"]);
+
+        Assert.Equal(1, await global::Milligram.Main.Program.Main(args.ToArray()));
+        Assert.Equal("Previous", JsonFile.Read<CodeModel>(paths.ModelFile)!.Title);
+    }
+
     [WindowsFact]
     public async Task StopWithMalformedPolicySendsStopToTheExistingNativeHost()
     {
