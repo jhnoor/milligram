@@ -56,6 +56,9 @@ jobs:
         run: tests/Milligram.Browser.Integration/bin/Release/net10.0/playwright.ps1 install --with-deps ${{ matrix.install }}
       - name: Exercise the viewer and agent panel
         run: dotnet run --project tests/Milligram.Browser.Integration -c Release --no-build -- ${{ matrix.browser }}
+      - name: Repeat Chrome startup with bounded renderer load
+        if: matrix.browser == 'chrome'
+        run: dotnet run --project tests/Milligram.Browser.Integration -c Release --no-build -- chrome --startup
       - name: Exercise wide diagrams and asynchronous first fit
         run: dotnet run --project tests/Milligram.Browser.Integration -c Release --no-build -- ${{ matrix.browser }} --diagram
       - uses: actions/upload-artifact@v4
