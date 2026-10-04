@@ -48,7 +48,9 @@ On Windows, legacy projects require a short enough tool installation path for th
 build host. If its configuration path reaches 260 characters, Milligram stops before launching it
 and recommends a shorter `--tool-path`; modern SDK scans can still use that installation.
 Missing assemblies are diagnosed; source membership can still be useful while bindings are
-incomplete. Full legacy build, coverage and mutation acceptance remains unverified.
+incomplete. A pinned old-style .NET Framework 4.5 library and test suite have passed Windows build,
+coverage collection and import acceptance (see [the measured setup](LEGACY.md#old-style-coverage-on-windows)).
+Framework mutation acceptance remains unverified.
 The explicit `--source-only` fallback binds against .NET 10, restored assets and direct `HintPath`
 entries, and reads all `.cs` files under `src` without evaluating conditions. Its diagram is an
 approximation; use `exclude` for inactive files. `doctor` explains the selected scan mode.
@@ -65,10 +67,10 @@ and [configuration](https://stryker-mutator.io/docs/stryker-net/configuration/).
 The [legacy investigation](LEGACY.md) records a prepared MVC 4 / .NET Framework 4.5 application:
 27 evaluated source files, 32 types and 98 dependencies, with the unlisted-source probe excluded.
 Automated fixtures also check mixed net48/net10.0 contexts and conditional references; the scan
-evidence is tracked in [#36](https://github.com/jhnoor/milligram/issues/36). Building the legacy
-application, collecting its coverage and running mutation remain unverified;
-[#38](https://github.com/jhnoor/milligram/issues/38) and [#39](https://github.com/jhnoor/milligram/issues/39)
-track those acceptance checks.
+evidence is tracked in [#36](https://github.com/jhnoor/milligram/issues/36). That MVC application has
+no tests and has not been built. A separate pinned Polly project verifies old-style build and
+coverage acceptance in [#38](https://github.com/jhnoor/milligram/issues/38);
+Framework mutation remains [#39](https://github.com/jhnoor/milligram/issues/39).
 
 ## Install
 
