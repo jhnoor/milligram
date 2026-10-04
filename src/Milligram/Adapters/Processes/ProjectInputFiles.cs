@@ -13,9 +13,10 @@ internal static class ProjectInputFiles
 
     // Loading this method must happen after MSBuildLocator registers the examined project's SDK.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void Read(string file, string? configuration, EvaluatedInputs inputs, ISet<string> inspected)
+    public static void Read(string file, string? configuration, EvaluatedInputs inputs, ISet<string> inspected,
+        ICollection<EvaluatedProject>? contexts = null)
     {
-        try { Evaluate(file, configuration, inputs, inspected); }
+        try { Evaluate(file, configuration, inputs, inspected, contexts); }
         catch (Microsoft.Build.Exceptions.InvalidProjectFileException error)
         {
             if (error.ProjectFile is { } path) inputs.AddFiles([path]);
@@ -23,7 +24,8 @@ internal static class ProjectInputFiles
         }
     }
 
-    private static void Evaluate(string file, string? configuration, EvaluatedInputs inputs, ISet<string> inspected)
+    private static void Evaluate(string file, string? configuration, EvaluatedInputs inputs, ISet<string> inspected,
+        ICollection<EvaluatedProject>? contexts)
     {
         var properties = new Dictionary<string, string>();
         if (configuration is not null) properties["Configuration"] = configuration;
@@ -47,6 +49,14 @@ internal static class ProjectInputFiles
         void ReadInputs(Project project)
         {
             Add(project, inputs);
+            var framework = project.GetPropertyValue("TargetFramework");
+            if (framework.Length > 0 || project.GetPropertyValue("TargetFrameworks").Length == 0)
+            {
+                var output = project.GetPropertyValue("TargetPath");
+                contexts?.Add(new EvaluatedProject(project.FullPath, framework.Length == 0 ? null : framework,
+                    project.GetPropertyValue("Configuration") is { Length: > 0 } selected ? selected : null,
+                    output.Length == 0 ? "" : Path.GetFullPath(output, project.DirectoryPath)));
+            }
             foreach (var reference in project.GetItems("ProjectReference").Select(item => item.GetMetadataValue("FullPath")))
                 if (reference.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) && File.Exists(reference)) ReadProject(reference);
         }

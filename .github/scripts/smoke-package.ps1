@@ -36,6 +36,7 @@ Invoke-DotNet tool install Milligram --tool-path $toolRoot --source $packageSour
 $tool = Join-Path $toolRoot $(if ($IsWindows) { 'milligram.exe' } else { 'milligram' })
 & (Join-Path $PSScriptRoot 'project-scan-fixture.ps1') -ToolPath $tool
 & (Join-Path $PSScriptRoot 'framework-scan-fixture.ps1') -ToolPath $tool
+& (Join-Path $PSScriptRoot 'metric-context-fixture.ps1') -ToolPath $tool -Mutation
 if ($IsWindows) { & (Join-Path $PSScriptRoot 'legacy-host-path-fixture.ps1') -PackageDirectory $packageSource -Version $Version }
 & (Join-Path $PSScriptRoot 'project-live-fixture.ps1') -ToolPath $tool
 Push-Location $projectRoot

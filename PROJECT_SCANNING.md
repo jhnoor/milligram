@@ -15,6 +15,16 @@ Service tests verify that coverage and Stryker receive the selected configuratio
 verify that changing configuration, symbols or optimization invalidates old metrics even when the
 member's source is unchanged; symbol ordering alone does not change the fingerprint.
 
+`MetricContextTests` covers assembly-separated Cobertura hits, ambiguous imports, partial test
+runs, linked-file mutation ownership, scoped snapshot merging, transitive compiler references and
+Stryker framework selection. Processes are faked in the fast suite.
+`.github/scripts/metric-context-fixture.ps1` runs real coverage against two libraries linking one
+physical file with different symbols. One library targets netstandard2.1 and net10.0; only net10.0
+is tested, and the other context must stay unknown. With `-Mutation`, it also runs pinned Stryker
+5.0.0 on the linked file in both owners and verifies separate killed-mutant entries. The installed
+package smoke runs this fixture on Linux, Windows and macOS. Imported reports are separately
+checked for ambiguous framework identity.
+
 The package smoke invokes `.github/scripts/project-scan-fixture.ps1` against the **installed tool**.
 It creates SDK and old-style projects in a new temporary directory and runs real MSBuild/Roslyn:
 
@@ -129,10 +139,8 @@ evaluation work from an unsupported installation path.
 Large real evaluated project graphs still need measured acceptance. The framework fixtures and
 pinned legacy sample provide the source/reference evidence for
 [#36](https://github.com/jhnoor/milligram/issues/36); they do not prove legacy build or metric collection.
-Linked files shared by multiple compiler contexts
-also need project-aware metric ownership and report attribution; see
-[#64](https://github.com/jhnoor/milligram/issues/64). Their per-context coverage and mutation scores
-are not yet reliable. Arbitrary tasks may read environment variables,
+Imported coverage without unique assembly/framework ownership stays unknown; automatic collection
+uses evaluated test references. Arbitrary tasks may read environment variables,
 network resources or files not declared as project inputs; use Refresh after such changes. Changes
 to the SDK selected by global.json require restarting the viewer. The source-only
 Roslyn-tree benchmark in `SCALING.md` remains a different workload; its numbers do not describe

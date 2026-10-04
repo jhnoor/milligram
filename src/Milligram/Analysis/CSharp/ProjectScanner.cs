@@ -12,6 +12,30 @@ namespace Milligram.Analysis.CSharp;
 public sealed record ProjectCompilation(string Path, string Name, CSharpCompilation Compilation)
 {
     public IScanInputs? Inputs { get; init; }
+    public string? Framework { get; init; }
+    public string? Configuration { get; init; }
+    public bool ContextResolved { get; init; } = true;
+
+    public CompilerContext Context(ProjectPaths paths, string? configuration = null) =>
+        new(paths.Relative(Path), Framework, Configuration ?? configuration, Compilation.AssemblyName ?? Name)
+        { Resolved = ContextResolved, Fingerprint = MetricContext(paths, configuration) };
+
+    /// <summary>A reference can supply different compiler options even for the same project, configuration and framework.</summary>
+    private string MetricContext(ProjectPaths paths, string? configuration) =>
+        MemberReader.Hash(JsonSerializer.Serialize(new
+        {
+            MetricContextVersion = 2,
+            Project = paths.Relative(Path),
+            Framework,
+            ContextResolved,
+            Configuration = Configuration ?? configuration,
+            Compilation.Options.OptimizationLevel,
+            Compilation.Options.CheckOverflow,
+            Compilation.Options.Platform,
+            Compilation.Options.NullableContextOptions,
+            Symbols = Compilation.SyntaxTrees.SelectMany(tree => tree.Options.PreprocessorSymbolNames).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal),
+            References = Compilation.ReferencedAssemblyNames.Select(assembly => assembly.ToString()).Order(StringComparer.Ordinal),
+        }, MilligramJson.Options));
 }
 
 /// <summary>Draws evaluated project inputs without merging their symbols, imports or framework references.</summary>
@@ -83,7 +107,7 @@ public sealed class ProjectScanner(
         var nodes = new List<TypeNode>();
         foreach (var (project, types) in collected)
         {
-            var context = MetricContext(project, paths, request.Scan.Configuration);
+            var context = project.Context(paths, request.Scan.Configuration);
             var visible = new Dictionary<INamedTypeSymbol, TypeAccumulator>(types, SymbolEqualityComparer.Default);
             foreach (var reference in project.Compilation.References.OfType<CompilationReference>())
             {
@@ -103,7 +127,11 @@ public sealed class ProjectScanner(
                 dependencies.Collect(type);
                 type.Parts.Clear();
                 var node = type.ToNode();
-                nodes.Add(node with { Members = node.Members.Select(member => member with { Hash = MemberReader.Hash(context + member.Hash) }).ToList() });
+                nodes.Add(node with
+                {
+                    Context = context,
+                    Members = node.Members.Select(member => member with { Hash = MemberReader.Hash(context.Fingerprint + member.Hash) }).ToList(),
+                });
                 stage.Tick();
             }
             edges.AddRange(dependencies.Edges);
@@ -116,19 +144,4 @@ public sealed class ProjectScanner(
             foreign.Values.OrderBy(node => node.Id, StringComparer.Ordinal).ToList(),
             edges.OrderBy(edge => edge.From, StringComparer.Ordinal).ThenBy(edge => edge.To, StringComparer.Ordinal).ToList());
     }
-
-    /// <summary>Identical source can execute differently under another compiler context; old metrics must become stale.</summary>
-    private static string MetricContext(ProjectCompilation project, ProjectPaths paths, string? configuration) =>
-        MemberReader.Hash(JsonSerializer.Serialize(new
-        {
-            Project = paths.Relative(project.Path),
-            project.Name,
-            Configuration = configuration,
-            project.Compilation.Options.OptimizationLevel,
-            project.Compilation.Options.CheckOverflow,
-            project.Compilation.Options.Platform,
-            project.Compilation.Options.NullableContextOptions,
-            Symbols = project.Compilation.SyntaxTrees.SelectMany(tree => tree.Options.PreprocessorSymbolNames).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal),
-            References = project.Compilation.ReferencedAssemblyNames.Select(assembly => assembly.ToString()).Order(StringComparer.Ordinal),
-        }, MilligramJson.Options));
 }

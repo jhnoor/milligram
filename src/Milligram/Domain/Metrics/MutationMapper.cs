@@ -14,23 +14,31 @@ public static class MutationMapper
         IEnumerable<Mutant> mutants,
         IReadOnlyCollection<string> testedMemberIds,
         IReadOnlyCollection<string> testedFiles,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        IReadOnlyList<TypeNode>? measuredTypes = null)
     {
+        var scope = measuredTypes ?? model.Types;
+        var ambiguous = scope.SelectMany(type => type.Files.Select(file => (file, type.Context)))
+            .GroupBy(item => item.file, StringComparer.Ordinal).Where(group => group.Select(item => item.Context).Distinct().Count() > 1)
+            .Select(group => group.Key).ToHashSet(StringComparer.Ordinal);
+        var scopedIds = scope.SelectMany(type => type.Members.Where(member => !ambiguous.Contains(member.Span.File)).Select(member => member.Id))
+            .Concat(scope.Where(type => !type.Files.Any(ambiguous.Contains)).Select(InitializerId)).ToHashSet(StringComparer.Ordinal);
         var declarations = model.Types.SelectMany(t => t.Members).ToDictionary(m => m.Id);
         var liveIds = declarations.Keys.Concat(model.Types.Select(InitializerId)).ToHashSet();
         var members = old.Members.Where(kv => liveIds.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
         var gaps = old.Gaps.Where(kv => liveIds.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value.ToList());
-        var fresh = testedMemberIds.ToHashSet();
+        var fresh = testedMemberIds.Where(scopedIds.Contains).ToHashSet();
         foreach (var id in fresh)
         {
             members[id] = MutationEntry.None(declarations.GetValueOrDefault(id)?.Hash);
             gaps.Remove(id);
         }
 
-        var locator = new MemberLocator(model);
+        var locator = new MemberLocator(model with { Types = scope });
         foreach (var mutant in mutants)
         {
             if (mutant.Status is not (MutantStatus.Killed or MutantStatus.Timeout or MutantStatus.Survived or MutantStatus.NoCoverage)) continue;
+            if (ambiguous.Contains(mutant.File)) continue;
             var id = locator.Find(mutant);
             if (id is null) continue;
             if (fresh.Add(id))

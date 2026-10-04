@@ -63,5 +63,13 @@ public sealed record Mutant(string File, int Line, int Column, MutantStatus Stat
 /// <summary>Per-file line hit counts from a coverage report, keyed by project-relative path.</summary>
 public sealed record LineHits(IReadOnlyDictionary<string, IReadOnlyDictionary<int, int>> Files)
 {
+    /// <summary>Cobertura package names retain assembly ownership when projects share physical source files.</summary>
+    public IReadOnlyDictionary<string, LineHits> Modules { get; init; } = new Dictionary<string, LineHits>();
+
     public IReadOnlyDictionary<int, int>? For(string file) => Files.GetValueOrDefault(file);
+
+    public static LineHits Combine(IEnumerable<LineHits> reports) => new(reports.SelectMany(report => report.Files)
+        .GroupBy(file => file.Key, StringComparer.Ordinal).ToDictionary(group => group.Key,
+            group => (IReadOnlyDictionary<int, int>)group.SelectMany(file => file.Value).GroupBy(line => line.Key)
+                .ToDictionary(line => line.Key, line => line.Max(hit => hit.Value)), StringComparer.Ordinal));
 }

@@ -34,8 +34,8 @@ public sealed class Composition
             {
                 ProbeLog = Environment.GetEnvironmentVariable("MILLIGRAM_TRACE_AGENT_PROBES") == "1" ? Console.Error.WriteLine : null,
             });
-        Crap = new CrapService(Workspace, locator, processes, new CoberturaReader());
-        Mutation = new MutationService(Workspace, locator, processes, new StrykerReportReader());
+        Crap = new CrapService(Workspace, locator, processes, new CoberturaReader(), processes);
+        Mutation = new MutationService(Workspace, locator, processes, new StrykerReportReader(), processes);
         Actions = new ViewerActions(Workspace, new PolicyEditor(Workspace), Crap, Mutation, Jobs, Companion, Events);
         Initializer = new ProjectInitializer(Paths, scanner, locator, new NewFilePublisher(), scanSettings);
         WatchLimits = new DrvFs();
