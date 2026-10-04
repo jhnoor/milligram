@@ -26,6 +26,23 @@ public sealed class ProjectPaths(string root)
 
     public string Absolute(string relative) => Path.GetFullPath(Path.Combine(Root, relative));
 
+    /// <summary>Reports may use the physical spelling of an aliased root, such as macOS /private/var instead of /var.</summary>
+    public string? ReportRelative(string path)
+    {
+        var full = Path.GetFullPath(path, Root);
+        if (Within(full, Root)) return Contains(full) ? Relative(full) : null;
+        try
+        {
+            var links = 0;
+            var physicalRoot = ResolveLinks(Root, null, null, ref links);
+            var physical = physicalRoot is null ? null : ResolveAncestorAlias(full, physicalRoot, ref links);
+            if (physical is null) return null;
+            var relative = Path.GetRelativePath(physicalRoot!, physical);
+            return Contains(Absolute(relative)) ? relative.Replace('\\', '/') : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+    }
+
     /// <summary>Neither parent traversal nor a nested filesystem link may leave the chosen project root.</summary>
     public bool Contains(string path)
     {

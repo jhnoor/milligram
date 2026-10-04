@@ -52,8 +52,8 @@ foreach ($side in @('Left', 'Right')) {
   </ItemGroup>
 </Project>
 "@
-    $expected = if ($side -eq 'Left') { 'true' } else { 'false' }
-    Write-Metric "$side.Tests/Check.cs" "public class Check { [Xunit.Fact] public void Value() => Xunit.Assert.Equal($expected, new Fixture.Shared().Value()); }"
+    $assertion = if ($side -eq 'Left') { 'True' } else { 'False' }
+    Write-Metric "$side.Tests/Check.cs" "public class Check { [Xunit.Fact] public void Value() => Xunit.Assert.$assertion(new Fixture.Shared().Value()); }"
     & dotnet restore (Join-Path $metricRoot "$side.Tests/Tests.csproj") --nologo
     if ($LASTEXITCODE -ne 0) { throw "Restore failed: $metricRoot" }
 }
