@@ -113,9 +113,7 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
         var trace = ProbeLog is null ? null : new AgentProbeTrace();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         using var greetingDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        deadline.CancelAfter(ProbeTimeout);
-        // A connected peer gets time to answer; retries never extend the original connection window.
-        greetingDeadline.CancelAfter(ProbeTimeout + ProbeGreetingTimeout);
+        var armed = false;
         trace?.Mark("started");
         try
         {
@@ -123,11 +121,11 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
             {
                 try
                 {
-                    await using var client = await AgentPipeClient.ConnectAsync(files.Endpoint, greeting, deadline.Token, greetingDeadline.Token, trace);
+                    await using var client = await AgentPipeClient.ConnectAsync(files.Endpoint, greeting, deadline.Token, greetingDeadline.Token, trace, ArmDeadlines);
                     trace?.Mark("running");
                     return client.Greeting;
                 }
-                catch (IOException) { trace?.Mark("retry-io"); await Task.Delay(RetryDelay, deadline.Token); }
+                catch (IOException) { ArmDeadlines(); trace?.Mark("retry-io"); await Task.Delay(RetryDelay, deadline.Token); }
             }
         }
         catch (OperationCanceledException error) when (!cancellation.IsCancellationRequested)
@@ -138,6 +136,16 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
         catch (InvalidDataException) { trace?.Mark("invalid-greeting"); return null; }
         catch (Exception error) { trace?.Mark(error.GetType().Name); throw; }
         finally { if (trace is not null) ProbeLog!(trace.ToString()); }
+
+        // Start after client/connection-task setup; retries and connected greetings share these absolute deadlines.
+        void ArmDeadlines()
+        {
+            if (armed) return;
+            armed = true;
+            deadline.CancelAfter(ProbeTimeout);
+            greetingDeadline.CancelAfter(ProbeTimeout + ProbeGreetingTimeout);
+            trace?.Mark("connection-window");
+        }
     }
 
     private async Task RingAsync()
