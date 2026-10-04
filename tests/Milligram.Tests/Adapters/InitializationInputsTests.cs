@@ -23,8 +23,8 @@ public class InitializationInputsTests
         var file = paths.Absolute(relative);
         var written = File.GetLastWriteTimeUtc(file);
         var before = InitializationInputs.Fingerprint(paths);
-        using var inputs = new InitializationInputs(paths);
-        Assert.True(inputs.IsCurrent());
+        using var inputs = new InitializationInputs(paths, watch: false);
+        Assert.True(inputs.IsCurrent(), inputs.InvalidationReason);
 
         project.Write(relative, "after!");
         File.SetLastWriteTimeUtc(file, written);
@@ -43,7 +43,7 @@ public class InitializationInputsTests
         using var project = new TempProject(("src/Old/Order.cs", "class Order { }"));
         var paths = new ProjectPaths(project.Root);
         var before = InitializationInputs.Fingerprint(paths);
-        using var inputs = new InitializationInputs(paths);
+        using var inputs = new InitializationInputs(paths, watch: false);
 
         if (change == "add") project.Write("src/New.cs", "class New { }");
         else if (change == "delete") File.Delete(paths.Absolute("src/Old/Order.cs"));
@@ -89,37 +89,54 @@ public class InitializationInputsTests
         using var project = new TempProject(("src/Order.cs", "class Order { }"),
             ("obj/Debug/AssemblyInfo.cs", "before"));
         var paths = new ProjectPaths(project.Root);
-        var nativeEvents = new System.Collections.Concurrent.ConcurrentQueue<string>();
-        using var observed = new FileSystemWatcher(project.Root)
-        {
-            IncludeSubdirectories = true,
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
-        };
-        FileSystemEventHandler record = (_, e) => nativeEvents.Enqueue($"{e.ChangeType}: {paths.Relative(e.FullPath)}");
-        observed.Changed += record;
-        observed.Created += record;
-        observed.Deleted += record;
-        observed.Renamed += (_, e) => nativeEvents.Enqueue($"Renamed: {paths.Relative(e.OldFullPath)} -> {paths.Relative(e.FullPath)}");
-        observed.Error += (_, e) => nativeEvents.Enqueue($"Error: {e.GetException().Message}");
-        observed.EnableRaisingEvents = true;
         var before = InitializationInputs.Fingerprint(paths);
-        using var inputs = new InitializationInputs(paths);
-        Assert.True(inputs.IsCurrent(), "Before activity: " + string.Join("; ", nativeEvents));
+        using var inputs = new InitializationInputs(paths, watch: false);
+        Assert.True(inputs.IsCurrent(), inputs.InvalidationReason);
 
-        project.Write("milligram.json", "{}");
-        project.Write(".gitignore", ".milligram/");
-        project.Write(".milligram/model.json", "{}");
-        project.Write(".milligram/ignored.cs", "class Ignored { }");
-        project.Write("bin/Debug/ignored.cs", "class Ignored { }");
-        project.Write("obj/Debug/AssemblyInfo.cs", "changed");
-        project.Write("notes.md", "notes");
+        Write("milligram.json", "{}");
+        Write(".gitignore", ".milligram/");
+        Write(".milligram/model.json", "{}");
+        Write(".milligram/ignored.cs", "class Ignored { }");
+        Write("bin/Debug/ignored.cs", "class Ignored { }");
+        Write("obj/Debug/AssemblyInfo.cs", "changed");
+        Write("notes.md", "notes");
         foreach (var directory in new[] { ".git", "node_modules", ".vs", ".idea" })
-            project.Write(directory + "/ignored.cs", "class Ignored { }");
+        {
+            Write(directory + "/ignored.cs", "class Ignored { }");
+            inputs.Changed(paths.Absolute(directory), WatcherChangeTypes.Created, directory: true);
+        }
 
         Assert.Equal(before, InitializationInputs.Fingerprint(paths));
-        Assert.True(inputs.IsCurrent(), "After ignored activity: " + string.Join("; ", nativeEvents));
+        Assert.True(inputs.IsCurrent(), inputs.InvalidationReason);
         inputs.Dispose();
         Assert.False(inputs.IsCurrent());
+
+        void Write(string relative, string text)
+        {
+            project.Write(relative, text);
+            inputs.Changed(paths.Absolute(relative), WatcherChangeTypes.Created);
+            inputs.Changed(paths.Absolute(relative), WatcherChangeTypes.Changed);
+        }
+    }
+
+    [Theory]
+    [InlineData(WatcherChangeTypes.Changed)]
+    [InlineData(WatcherChangeTypes.Created)]
+    [InlineData(WatcherChangeTypes.Deleted)]
+    [InlineData(WatcherChangeTypes.Renamed)]
+    public void ASourceNotificationRequiresAFreshScanEvenWhenTheContentStillMatches(WatcherChangeTypes change)
+    {
+        using var project = new TempProject(("App.csproj", "before"));
+        var paths = new ProjectPaths(project.Root);
+        var before = InitializationInputs.Fingerprint(paths);
+        using var inputs = new InitializationInputs(paths, watch: false);
+        Assert.True(inputs.IsCurrent(), inputs.InvalidationReason);
+
+        inputs.Changed(paths.Absolute("App.csproj"), change);
+
+        Assert.Equal(before, InitializationInputs.Fingerprint(paths));
+        Assert.False(inputs.IsCurrent());
+        Assert.Contains("App.csproj", inputs.InvalidationReason);
     }
 
     [Fact]
@@ -155,8 +172,8 @@ public class InitializationInputsTests
         using var source = new TempProject(("Order.cs", "class Order { }"));
         File.CreateSymbolicLink(Path.Combine(project.Root, "Order.cs"), Path.Combine(source.Root, "Order.cs"));
         var paths = new ProjectPaths(project.Root);
-        using var inputs = new InitializationInputs(paths);
-        Assert.True(inputs.IsCurrent());
+        using var inputs = new InitializationInputs(paths, watch: false);
+        Assert.True(inputs.IsCurrent(), inputs.InvalidationReason);
 
         source.Write("Order.cs", "class Other { }");
 
