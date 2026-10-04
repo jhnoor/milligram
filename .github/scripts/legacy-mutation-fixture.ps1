@@ -115,7 +115,7 @@ try {
     [void](Invoke-MutationFixture 'create-solution' 'dotnet' @('new', 'sln', '--format', 'sln', '--name', 'Polly.Milligram', '--output', (Join-Path $SampleRoot 'src')))
     [void](Invoke-MutationFixture 'select-projects' 'dotnet' @('sln', $solution, 'add',
         (Join-Path $SampleRoot 'src/Polly.Net45/Polly.Net45.csproj'), (Join-Path $SampleRoot 'src/Polly.Net45.Specs/Polly.Net45.Specs.csproj')))
-    $configuration = @{ 'stryker-config' = @{ solution = $solution; concurrency = 2; 'skip-version-check' = $true; 'break-on-initial-test-failure' = $true; 'log-to-file' = $true } }
+    $configuration = @{ 'stryker-config' = @{ solution = $solution; concurrency = 2; 'break-on-initial-test-failure' = $true; verbosity = 'debug' } }
     $configuration | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $SampleRoot 'src/Polly.Net45/stryker-config.json')
     Copy-Item -LiteralPath $solution -Destination (Join-Path $evidence 'Polly.Milligram.sln')
     $source = Join-Path $SampleRoot 'src/Polly.Shared/Context.cs'
