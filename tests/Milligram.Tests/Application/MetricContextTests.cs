@@ -93,6 +93,15 @@ public class MetricContextTests
     }
 
     [Fact]
+    public void AutomaticCoverageWithoutModuleNamesCannotDistinguishReferencedAssemblies()
+    {
+        var other = Net with { Project = "Other/Other.csproj", Assembly = "Other" };
+        var model = Build.Model([Type("Net", Net), Type("Other", other)]);
+
+        Assert.Empty(CoverageAttribution.Compute(model, [new(Hits(1), [Net, other])], DateTimeOffset.UtcNow, _ => { }).Members);
+    }
+
+    [Fact]
     public void ScopedMutationPreservesOtherContextsAndUnscopedAmbiguityCannotMarkThemFresh()
     {
         var net = Type("Net", Net);
@@ -180,13 +189,7 @@ public class MetricContextTests
     public async Task LinkedSourcesAreMutatedInEachOwningProjectWithOnlyThatContextsMembers()
     {
         using var fixture = new LinkedFixture();
-        var processes = new FakeProcessRunner((_, args, _) =>
-        {
-            var report = Path.Combine(FakeProcessRunner.After(args, "--output"), "reports", "mutation-report.json");
-            Directory.CreateDirectory(Path.GetDirectoryName(report)!);
-            File.WriteAllText(report, "{}");
-            return 0;
-        });
+        var processes = MutationProcess();
         var service = new MutationService(fixture.Workspace, fixture.Locator, processes,
             new FakeMutationReader(new Mutant("Shared/Value.cs", 4, 20, MutantStatus.Killed, "Boolean")), fixture.Reader);
 
@@ -204,6 +207,56 @@ public class MetricContextTests
             Assert.Single(FakeProcessRunner.AllAfter(call.Args, "--test-project"));
         });
         Assert.Equal(0, (await service.RunAsync(["Shared/Value.cs"], false, _ => { }, CancellationToken.None)).Projects);
+    }
+
+    [Fact]
+    public async Task EvaluatedMutationOnlyRunsTheSelectedFilesOwningProject()
+    {
+        using var fixture = new LinkedFixture(sharedSources: false);
+        var processes = MutationProcess();
+        var service = new MutationService(fixture.Workspace, fixture.Locator, processes, new FakeMutationReader(), fixture.Reader);
+
+        var result = await service.RunAsync(["Left/Value.cs"], true, _ => { }, CancellationToken.None);
+
+        Assert.Equal(1, result.Projects);
+        Assert.Equal(1, result.Members);
+        Assert.Empty(result.Skipped);
+        var call = Assert.Single(processes.Calls);
+        Assert.Equal("Left.csproj", FakeProcessRunner.After(call.Args, "--project"));
+        Assert.Equal(["**/Value.cs"], FakeProcessRunner.AllAfter(call.Args, "--mutate"));
+        Assert.All(fixture.Workspace.Metrics.Mutation.Members.Keys, id => Assert.DoesNotContain("Right", id));
+    }
+
+    [Fact]
+    public async Task UnscannedFilesCannotFallBackToTheirNearestEvaluatedProject()
+    {
+        using var fixture = new LinkedFixture(sharedSources: false);
+        File.WriteAllText(fixture.Workspace.Paths.Absolute("Left/Excluded.cs"), "public class Excluded {}");
+        var processes = new FakeProcessRunner();
+        var service = new MutationService(fixture.Workspace, fixture.Locator, processes, new FakeMutationReader(), fixture.Reader);
+
+        var result = await service.RunAsync(["Left/Excluded.cs"], true, _ => { }, CancellationToken.None);
+
+        Assert.Equal(0, result.Projects);
+        Assert.Equal(["Left/Excluded.cs"], result.Skipped);
+        Assert.Empty(processes.Calls);
+        Assert.Empty(fixture.Workspace.Metrics.Mutation.Members);
+    }
+
+    [Fact]
+    public async Task EvaluatedMutationHonorsTheConfiguredTestProjects()
+    {
+        using var fixture = new LinkedFixture(policy: """{"tests":{"projects":["Left.Tests/Tests.csproj"]}}""");
+        var processes = MutationProcess();
+        var service = new MutationService(fixture.Workspace, fixture.Locator, processes, new FakeMutationReader(), fixture.Reader);
+
+        var result = await service.RunAsync(["Shared/Value.cs"], true, _ => { }, CancellationToken.None);
+
+        Assert.Equal(1, result.Projects);
+        Assert.Equal(["Shared/Value.cs"], result.Skipped);
+        var call = Assert.Single(processes.Calls);
+        Assert.Equal("Left.csproj", FakeProcessRunner.After(call.Args, "--project"));
+        Assert.Equal([fixture.Workspace.Paths.Absolute("Left.Tests/Tests.csproj")], FakeProcessRunner.AllAfter(call.Args, "--test-project"));
     }
 
     [Fact]
@@ -232,26 +285,37 @@ public class MetricContextTests
         Assert.Single(processes.Calls.Select(call => call.Args[1]).Distinct());
     }
 
+    private static FakeProcessRunner MutationProcess() => new((_, args, _) =>
+    {
+        var report = Path.Combine(FakeProcessRunner.After(args, "--output"), "reports", "mutation-report.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(report)!);
+        File.WriteAllText(report, "{}");
+        return 0;
+    });
+
     private sealed class Reader(IReadOnlyList<MetricTestProject> tests) : IMetricProjectReader
     {
         public Task<IReadOnlyList<MetricTestProject>> ReadAsync(string root, IReadOnlyList<string> paths, string? configuration,
-            Action<string> log, CancellationToken cancellation) => Task.FromResult(tests);
+            Action<string> log, CancellationToken cancellation) => Task.FromResult<IReadOnlyList<MetricTestProject>>(
+                tests.Where(test => paths.Select(Path.GetFullPath).Contains(new ProjectPaths(root).Absolute(test.Context.Project))).ToList());
     }
 
     private sealed class LinkedFixture : IDisposable
     {
-        private readonly TempProject root = new(("milligram.json", "{}"));
+        private readonly TempProject root = new();
         public Workspace Workspace { get; }
         public FakeProjectLocator Locator { get; }
         public IMetricProjectReader Reader { get; }
 
-        public LinkedFixture(bool sharedTestProject = false)
+        public LinkedFixture(bool sharedTestProject = false, bool sharedSources = true, string policy = "{}")
         {
+            root.Write("milligram.json", policy);
             const string source = "public class Shared\n{\n    public bool Value() =>\n#if LEFT\n        true;\n#else\n        false;\n#endif\n}";
             var path = root.Write("Shared/Value.cs", source);
             var projects = new[] { "Left", "Right" }.Select(name =>
             {
-                var tree = CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(preprocessorSymbols: [name.ToUpperInvariant()]), path);
+                var sourcePath = sharedSources ? path : root.Write($"{name}/Value.cs", source);
+                var tree = CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(preprocessorSymbols: [name.ToUpperInvariant()]), sourcePath);
                 return new ProjectCompilation(root.Write($"{name}/{name}.csproj", "<Project/>"), name,
                     CSharpCompilation.Create(name, [tree], References.For([]), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)))
                 { Framework = sharedTestProject && name == "Right" ? "netstandard2.1" : "net10.0", Configuration = "Release" };

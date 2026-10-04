@@ -7,7 +7,9 @@ Both are addressed in [#47](https://github.com/jhnoor/milligram/pull/47).
 
 This is a source-scanning check on one Windows machine. It does not establish full project
 binding, production-only line counts, coverage or mutation support for Roslyn, or performance
-on every platform.
+on every platform. These measurements predate the default evaluated project scanner; use
+`--source-only` to select the measured scan mode. [Project-input checks](PROJECT_SCANNING.md)
+record the separate evaluated-scanner evidence.
 
 ## Input and environment
 
@@ -62,8 +64,8 @@ Use a separate checkout with room for the source and at least the measured memor
 ```bash
 git clone --config core.longpaths=true --filter=blob:none https://github.com/dotnet/roslyn roslyn-scale
 git -C roslyn-scale checkout 9546dd2f86dc2bef10c8ac8a95ae20d02cca58ef
-milligram init --project /absolute/path/to/roslyn-scale
-milligram serve --project /absolute/path/to/roslyn-scale --no-agent --no-browser
+milligram init --project /absolute/path/to/roslyn-scale --source-only
+milligram serve --project /absolute/path/to/roslyn-scale --source-only --no-agent --no-browser
 ```
 
 The clone command enables long paths for this checkout on Windows. The measurement used an
@@ -229,10 +231,11 @@ on failure. The Windows side is covered here; WSL interop still needs platform v
 
 ## Remaining limits
 
-- [Project input evaluation (#37)](https://github.com/jhnoor/milligram/issues/37): all source is
-  placed in one compilation. Conditional files, framework references and duplicate class
-  declarations can still bind differently from the real projects. Distinct IDs prevent the
-  crash; they do not resolve ambiguous references or symbols Roslyn has already merged.
+- The source-only mode measured here combines sources in one compilation, so conditional files,
+  framework references and duplicate declarations can bind differently from the real projects.
+  The default evaluated scanner now keeps separate compiler contexts; its synthetic graph and
+  installed-package fixtures are documented in [PROJECT_SCANNING.md](PROJECT_SCANNING.md).
+  Performance and usefulness on a large real company solution still need pilot acceptance.
 - [Memory use (#48)](https://github.com/jhnoor/milligram/issues/48): completed semantic models
   are now released, with the measured reduction above. Parsing, compilation and the cached model
   still consume substantial memory; this does not make the measured checkout

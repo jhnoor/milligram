@@ -28,6 +28,7 @@ public class CoberturaReaderTests
 
         Assert.Equal(["A.cs"], hits.Files.Keys);
         Assert.Equal(1, hits.Modules["App"].For("A.cs")![1]);
+        Assert.Equal(["A.cs"], new CoberturaReader().Read([report], physical).Files.Keys);
     }
 
     [Fact]
