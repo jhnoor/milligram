@@ -49,13 +49,15 @@ function Collect-Legacy([string]$Name, [string[]]$Filter = @(), [int]$Failures =
     $code = Invoke-Legacy $Name $collector (@('collect', '-f', 'cobertura', '-o', $report, '-s', $settings, '--',
         $runner, $testAssembly, '-noshadow', '-parallel', 'none', '-xml', $testReport) + $Filter) @(0, 1)
     [xml]$tests = Get-Content -LiteralPath $testReport -Raw
-    $assembly = $tests.assemblies.assembly
-    if ([int]$assembly.total -lt 1 -or [int]$assembly.failed -ne $Failures -or [int]$assembly.errors -ne 0) { throw "Unexpected test outcomes: $Name" }
+    $assemblies = @($tests.SelectNodes('/assemblies/assembly'))
+    if ($assemblies.Count -ne 1) { throw "Unexpected test assembly count: $Name" }
+    $assembly = $assemblies[0]
+    if ([int]$assembly.GetAttribute('total') -lt 1 -or [int]$assembly.GetAttribute('failed') -ne $Failures -or [int]$assembly.GetAttribute('errors') -ne 0) { throw "Unexpected test outcomes: $Name" }
     if (($Failures -eq 0 -and $code -ne 0) -or ($Failures -gt 0 -and $code -eq 0)) { throw 'The collector lost the test runner exit status.' }
     [xml]$coverage = Get-Content -LiteralPath $report -Raw
     $classes = @($coverage.coverage.packages.package.classes.class)
     if ($classes.Count -eq 0) { throw "$Name did not instrument any source." }
-    $result[$Name] = @{ total = [int]$assembly.total; passed = [int]$assembly.passed; failed = [int]$assembly.failed; exitCode = $code; classes = $classes.Count }
+    $result[$Name] = @{ total = [int]$assembly.GetAttribute('total'); passed = [int]$assembly.GetAttribute('passed'); failed = [int]$assembly.GetAttribute('failed'); exitCode = $code; classes = $classes.Count }
     return $report
 }
 
@@ -77,7 +79,7 @@ function Assert-ImportedCoverage([string]$Report, [string]$Name) {
 
 try {
     [void](Invoke-Legacy 'clone' 'git' @('clone', '--quiet', '--no-checkout', 'https://github.com/App-vNext/Polly.git', $sampleRoot))
-    [void](Invoke-Legacy 'checkout' 'git' @('-C', $sampleRoot, 'checkout', '--quiet', '-b', 'milligram-fixture', $pin))
+    [void](Invoke-Legacy 'checkout' 'git' @('-C', $sampleRoot, 'checkout', '--quiet', '-b', 'master', $pin))
     if ((& git -C $sampleRoot rev-parse HEAD) -ne $pin) { throw 'The reference project is not at its pinned revision.' }
     $sourceProject = Join-Path $sampleRoot 'src/Polly.Net45/Polly.Net45.csproj'
     $testProject = Join-Path $sampleRoot 'src/Polly.Net45.Specs/Polly.Net45.Specs.csproj'
