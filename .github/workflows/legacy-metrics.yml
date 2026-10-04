@@ -6,20 +6,34 @@ on:
     branches: [main]
     paths:
       - .github/scripts/legacy-metrics-fixture.ps1
+      - .github/scripts/legacy-mutation-fixture.ps1
       - .github/workflows/legacy-metrics.yml
       - src/Milligram/Analysis/Coverage/**
       - src/Milligram/Application/CrapService.cs
       - src/Milligram/Application/CoverageAttribution.cs
+      - src/Milligram/Application/MutationService.cs
+      - src/Milligram/Application/MutationTests.cs
+      - src/Milligram/Analysis/Mutation/**
+      - src/Milligram/Domain/Metrics/**
+      - src/Milligram/Domain/Views/TypeCardBuilder.cs
+      - src/Milligram/Adapters/Processes/MetricProjects.cs
       - src/Milligram/Adapters/Processes/BuildEnvironment.cs
       - src/Milligram/Adapters/Processes/ProcessRunner.cs
       - src/Milligram/Adapters/Processes/ProjectEvaluation.cs
   pull_request:
     paths:
       - .github/scripts/legacy-metrics-fixture.ps1
+      - .github/scripts/legacy-mutation-fixture.ps1
       - .github/workflows/legacy-metrics.yml
       - src/Milligram/Analysis/Coverage/**
       - src/Milligram/Application/CrapService.cs
       - src/Milligram/Application/CoverageAttribution.cs
+      - src/Milligram/Application/MutationService.cs
+      - src/Milligram/Application/MutationTests.cs
+      - src/Milligram/Analysis/Mutation/**
+      - src/Milligram/Domain/Metrics/**
+      - src/Milligram/Domain/Views/TypeCardBuilder.cs
+      - src/Milligram/Adapters/Processes/MetricProjects.cs
       - src/Milligram/Adapters/Processes/BuildEnvironment.cs
       - src/Milligram/Adapters/Processes/ProcessRunner.cs
       - src/Milligram/Adapters/Processes/ProjectEvaluation.cs
@@ -38,15 +52,20 @@ env:
 
 jobs:
   coverage:
-    name: Real old-style Framework coverage
+    name: Real old-style Framework metrics
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            8.0.x
+            10.0.x
       - uses: microsoft/setup-msbuild@v2
+      - uses: NuGet/setup-nuget@v2
+        with:
+          nuget-version: '6.14.0'
       - name: Publish the examined tool
         run: dotnet publish src/Milligram -c Release -warnaserror -o .milligram/legacy-tool
       - name: Collect and import real legacy coverage
@@ -59,3 +78,16 @@ jobs:
           name: legacy-metrics
           path: artifacts/legacy-metrics/
           if-no-files-found: error
+      - name: Exercise real Framework mutation
+        shell: pwsh
+        run: |
+          $coverage = Get-Content artifacts/legacy-metrics/result.json -Raw | ConvertFrom-Json
+          if ($coverage.status -ne 'passed') { throw 'Legacy coverage preparation did not pass.' }
+          ./.github/scripts/legacy-mutation-fixture.ps1 -ToolAssembly (Join-Path $PWD '.milligram/legacy-tool/Milligram.dll') -SampleRoot $coverage.sample
+      - name: Save Framework mutation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-mutation
+          path: artifacts/legacy-mutation/
+          if-no-files-found: warn

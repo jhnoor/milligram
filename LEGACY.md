@@ -1,9 +1,8 @@
 # Legacy .NET Framework investigation
 
 The initial Windows investigation used .NET SDK 10.0.401 and Milligram commit `0e25ca5`,
-September 30, 2026. Later sections record evaluated scanning and a real old-style coverage setup.
-This records scoped evidence for [#27](https://github.com/jhnoor/milligram/issues/27);
-Framework mutation acceptance remains open.
+September 30, 2026. Later sections record evaluated scanning and real old-style coverage and mutation.
+This records scoped evidence for [#27](https://github.com/jhnoor/milligram/issues/27).
 
 ## Reference application
 
@@ -60,8 +59,9 @@ not evidence that the application has no architectural violations.
 
 ## Coverage and mutation limits
 
-This application has no tests, and this machine has no `msbuild`, `nuget` or `vstest.console`
-on PATH. No successful legacy build, coverage collection or mutation run is claimed.
+At the initial investigation, this application had no tests and this machine had no `msbuild`,
+`nuget` or `vstest.console` on PATH. That investigation established no successful legacy build,
+coverage collection or mutation run; the later Polly measurements use a configured Windows runner.
 The tool's Cobertura import is covered by the package smoke test using a synthetic report;
 that does not prove a collector can instrument this application.
 
@@ -173,7 +173,7 @@ dotnet publish src/Milligram -c Release -o .milligram/dogfood
 Unlike the original source-only investigation, this scan executes design-time build targets.
 It does not execute the application, run package install scripts, build a deployable web application,
 collect coverage or run mutation. The sample still has no tests. The separate Polly measurement
-below covers [#38](https://github.com/jhnoor/milligram/issues/38); Framework mutation remains
+below covers [#38](https://github.com/jhnoor/milligram/issues/38), and the mutation measurement covers
 [#39](https://github.com/jhnoor/milligram/issues/39). Shared-file and multi-target metric attribution
 was completed separately in [#64](https://github.com/jhnoor/milligram/issues/64).
 
@@ -244,5 +244,59 @@ old-style setup. Automatic `milligram crap` collection still requires SDK-style 
 reports that prerequisite before running them. An imported Cobertura file does not convey test
 outcomes: retain the original runner log and check its exit code separately, including when it
 produces coverage after a failure. No new collector integration is needed for this import path.
-This result does not establish other legacy runners, the MVC application's build, Framework mutation
-(#39), or acceptance of a company repository.
+This coverage result does not establish other legacy runners, the MVC application's build or
+acceptance of a company repository. Framework mutation was measured separately below.
+
+## Old-style mutation on Windows
+
+The [complete mutation fixture](https://github.com/jhnoor/milligram/actions/runs/37241803559)
+passed at Milligram `856d55d` using the same pinned Polly source, original Framework 4.5 projects
+and Windows build environment above. The original 1,204 tests passed during preparation.
+The tests ran on Framework 4.8; the projects were not retargeted.
+
+Additional setup was confined to the scratch checkout:
+
+- A local tool manifest pins **Stryker.NET 4.14.2**, which needs the .NET 8 runtime alongside
+  Milligram's .NET 10 SDK. Milligram's own tool manifest remains on Stryker 5.
+- NuGet **6.14.0.116** and full Visual Studio MSBuild are on PATH. MSBuild discovery worked
+  automatically after #76 stopped the scanner's SDK environment from leaking into child tools.
+  No `--msbuild-path` override is required by this measured setup.
+- A separate solution selects the original `Polly.Net45` library and `Polly.Net45.Specs` project.
+  The source project's `stryker-config.json` sets `solution`, `concurrency: 2`,
+  `break-on-initial-test-failure: true` and debug verbosity.
+- `Directory.Build.targets` sets `IsTestProject` for the old `packages.config` test project and
+  imports the official **xunit.runner.visualstudio 2.4.5** adapter props into that project only.
+  The adapter runs under Framework 4.8; its package SHA-256 is
+  `1AFED4D553CA7CD6FB20E5ABC141942807AEACAB44DC0B5099E80314D9181C79`.
+
+Stryker 5.0.0 reached an injected-helper compilation failure in this setup: its six-argument
+`MemoryMappedFile.CreateFromFile` call does not match the Framework reference API (CS7036).
+The same call was found in the 4.15.0 and 4.16.0 sources. The tested 4.14.2 pin predates it.
+This is a measured compatibility pin, not a claim about untested Stryker versions.
+
+Full mutation of the original `Context.cs` and `CircuitStateController.cs` produced **42 killed,
+5 surviving and 2 uncovered mutants**, with no timeouts. One compile-error mutant was excluded.
+The snapshot has 26 entries, including initializer entries. Live cards for both types showed
+current hashes, the same scores and surviving sites, and exact linked-source text and valid spans.
+An unchanged rerun skipped Stryker and preserved the snapshot byte for byte.
+
+Temporarily rewriting `!_executionGuid.HasValue` as `_executionGuid.HasValue == false` caused
+differential mutation to test **three mutants, all killed**, only inside `ExecutionGuid`.
+The raw Stryker report verified that scope, and every untouched snapshot entry stayed identical.
+Both live cards remained correct. Separate intentional build failure, failing original test and
+missing-Stryker runs each exited 1, retained actionable diagnostics and preserved the prior snapshot.
+All temporary source edits were restored; a final Git diff confirmed unchanged tracked source and projects.
+
+Reproduce after the coverage preparation above, with .NET 8, .NET 10, full MSBuild and NuGet available:
+
+```powershell
+$coverage = Get-Content artifacts/legacy-metrics/result.json -Raw | ConvertFrom-Json
+./.github/scripts/legacy-mutation-fixture.ps1 `
+  -ToolAssembly (Join-Path $PWD '.milligram/legacy-tool/Milligram.dll') `
+  -SampleRoot $coverage.sample
+```
+
+Use a freshly prepared checkout for each run. The **Legacy metrics** workflow runs both fixtures
+and uploads the mutation result, full/differential snapshots, live cards, logs and raw Stryker reports
+as `legacy-mutation`. This proves the pinned original project pair and runtime combination;
+other Framework targets, adapters and company repositories still need their own acceptance runs.

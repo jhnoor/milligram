@@ -50,7 +50,8 @@ and recommends a shorter `--tool-path`; modern SDK scans can still use that inst
 Missing assemblies are diagnosed; source membership can still be useful while bindings are
 incomplete. A pinned old-style .NET Framework 4.5 library and test suite have passed Windows build,
 coverage collection and import acceptance (see [the measured setup](LEGACY.md#old-style-coverage-on-windows)).
-Framework mutation acceptance remains unverified.
+Full and differential mutation also pass with a project-local Stryker 4.14.2 pin and .NET 8 runtime;
+see [the tested Framework setup](LEGACY.md#old-style-mutation-on-windows) before installing Stryker.
 The explicit `--source-only` fallback binds against .NET 10, restored assets and direct `HintPath`
 entries, and reads all `.cs` files under `src` without evaluating conditions. Its diagram is an
 approximation; use `exclude` for inactive files. `doctor` explains the selected scan mode.
@@ -59,9 +60,10 @@ Automatic coverage requires SDK-style test projects with `coverlet.collector`. S
 targeting .NET Framework still need a compatible Windows test environment. For old-style test
 projects, collect a Cobertura report with your existing tools and import it using
 `milligram crap --coverage report.xml`. Framework Stryker runs need a solution path in the
-source project's `stryker-config.json`, plus working MSBuild and NuGet tools. Stryker discovers
-MSBuild automatically; its `--msbuild-path` override is a CLI option that Milligram does not
-currently forward. See [Stryker's setup](https://stryker-mutator.io/docs/stryker-net/getting-started/)
+source project's `stryker-config.json`, plus working MSBuild, NuGet and a compatible test adapter.
+The verified old-style test project also sets `IsTestProject`. Stryker discovers
+MSBuild automatically in the verified setup; no override was needed. Its `--msbuild-path` override
+is a CLI option that Milligram does not currently forward. See [Stryker's setup](https://stryker-mutator.io/docs/stryker-net/getting-started/)
 and [configuration](https://stryker-mutator.io/docs/stryker-net/configuration/).
 
 The [legacy investigation](LEGACY.md) records a prepared MVC 4 / .NET Framework 4.5 application:
@@ -69,8 +71,9 @@ The [legacy investigation](LEGACY.md) records a prepared MVC 4 / .NET Framework 
 Automated fixtures also check mixed net48/net10.0 contexts and conditional references; the scan
 evidence is tracked in [#36](https://github.com/jhnoor/milligram/issues/36). That MVC application has
 no tests and has not been built. A separate pinned Polly project verifies old-style build and
-coverage acceptance in [#38](https://github.com/jhnoor/milligram/issues/38);
-Framework mutation remains [#39](https://github.com/jhnoor/milligram/issues/39).
+coverage acceptance in [#38](https://github.com/jhnoor/milligram/issues/38) and mutation acceptance
+in [#39](https://github.com/jhnoor/milligram/issues/39). These measurements do not establish every
+legacy runner or acceptance of a company repository.
 
 ## Install
 
