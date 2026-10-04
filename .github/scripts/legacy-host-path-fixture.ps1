@@ -53,9 +53,9 @@ function Scan-PathProject([string]$Tool, [string]$Project, [switch]$ExpectPathFa
 }
 
 $modern = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup><Compile Include="Modern.cs"/></ItemGroup></Project>'
-Write-PathInput 'Modern.csproj' $modern
-Write-PathInput 'Modern.cs' 'namespace Modern; public class Selected {}'
-Write-PathInput 'Legacy.csproj' @'
+Write-PathInput 'Modern/Modern.csproj' $modern
+Write-PathInput 'Modern/Modern.cs' 'namespace Modern; public class Selected {}'
+Write-PathInput 'Legacy/Legacy.csproj' @'
 <Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildExtensionsPath)/$(MSBuildToolsVersion)/Microsoft.Common.props"/>
   <PropertyGroup><TargetFrameworkVersion>v4.8</TargetFrameworkVersion><OutputType>Library</OutputType><AssemblyName>Legacy</AssemblyName><OutputPath>bin/Debug/</OutputPath></PropertyGroup>
@@ -64,17 +64,17 @@ Write-PathInput 'Legacy.csproj' @'
   <Import Project="Legacy.references.targets"/>
 </Project>
 '@
-Write-PathInput 'Legacy.cs' 'namespace Legacy { public class Selected {} }'
-Write-PathInput 'Unlisted.cs' 'class Unlisted {}'
+Write-PathInput 'Legacy/Legacy.cs' 'namespace Legacy { public class Selected {} }'
+Write-PathInput 'Legacy/Unlisted.cs' 'class Unlisted {}'
 Write-PathInput 'milligram.json' '{}'
-Invoke-PathDotNet restore (Join-Path $projectRoot 'Modern.csproj') --nologo -v quiet
+Invoke-PathDotNet restore (Join-Path $projectRoot 'Modern/Modern.csproj') --nologo -v quiet
 Write-PathInput 'references/References.csproj' '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net48</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all"/></ItemGroup></Project>'
 Invoke-PathDotNet restore (Join-Path $projectRoot 'references/References.csproj') --nologo -v quiet
 $assets = Get-Content -LiteralPath (Join-Path $projectRoot 'references/obj/project.assets.json') -Raw | ConvertFrom-Json -AsHashtable
 $packagePath = $assets.libraries['Microsoft.NETFramework.ReferenceAssemblies.net48/1.0.3'].path
 $referenceTargets = @($assets.packageFolders.Keys | ForEach-Object { Join-Path $_ ($packagePath + '/build/Microsoft.NETFramework.ReferenceAssemblies.net48.targets') } | Where-Object { Test-Path -LiteralPath $_ })[0]
 if (!$referenceTargets) { throw 'The restored .NET Framework reference targets were not found' }
-Write-PathInput 'Legacy.references.targets' ('<Project><Import Project="' + [Security.SecurityElement]::Escape($referenceTargets) + '"/></Project>')
+Write-PathInput 'Legacy/Legacy.references.targets' ('<Project><Import Project="' + [Security.SecurityElement]::Escape($referenceTargets) + '"/></Project>')
 
 foreach ($long in @($false, $true)) {
     $suffix = ".store/milligram/$Version/milligram/$Version/tools/net10.0/any/BuildHost-net472/Microsoft.CodeAnalysis.Workspaces.MSBuild.BuildHost.exe.config"
@@ -88,19 +88,19 @@ foreach ($long in @($false, $true)) {
     if ($long -and $config[0].FullName.Length -ne 264) { throw 'Fixture missed the original failing configuration length' }
     Write-Output "Legacy configuration path: $($config[0].FullName.Length) characters"
     $tool = Join-Path $toolRoot 'milligram.exe'
-    Scan-PathProject $tool 'Modern.csproj'
+    Scan-PathProject $tool 'Modern/Modern.csproj'
     $modelFile = Join-Path $projectRoot '.milligram/model.json'
     $model = Get-Content -LiteralPath $modelFile -Raw | ConvertFrom-Json
     if ($model.types.Count -ne 1 -or $model.types[0].id -ne 'Modern.Selected') { throw 'Modern SDK membership changed' }
     $before = [IO.File]::ReadAllText($modelFile)
-    Scan-PathProject $tool 'Legacy.csproj' -ExpectPathFailure:$long
+    Scan-PathProject $tool 'Legacy/Legacy.csproj' -ExpectPathFailure:$long
     if ($long) {
         if ([IO.File]::ReadAllText($modelFile) -ne $before) { throw 'The failed legacy scan replaced the previous model' }
-        Write-PathInput 'Modern.csproj' ($modern.Replace('</Project>', '<ItemGroup><ProjectReference Include="Legacy.csproj"/></ItemGroup></Project>'))
-        try { Scan-PathProject $tool 'Modern.csproj' -ExpectPathFailure }
-        finally { Write-PathInput 'Modern.csproj' $modern }
+        Write-PathInput 'Modern/Modern.csproj' ($modern.Replace('</Project>', '<ItemGroup><ProjectReference Include="../Legacy/Legacy.csproj"/></ItemGroup></Project>'))
+        try { Scan-PathProject $tool 'Modern/Modern.csproj' -ExpectPathFailure }
+        finally { Write-PathInput 'Modern/Modern.csproj' $modern }
         if ([IO.File]::ReadAllText($modelFile) -ne $before) { throw 'The failed referenced legacy scan replaced the previous model' }
-        Scan-PathProject $tool 'Modern.csproj'
+        Scan-PathProject $tool 'Modern/Modern.csproj'
     } else {
         $model = Get-Content -LiteralPath $modelFile -Raw | ConvertFrom-Json
         if ($model.types.Count -ne 1 -or $model.types[0].id -ne 'Legacy.Selected') { throw 'Short-path legacy membership changed' }
