@@ -1,8 +1,9 @@
 # Legacy .NET Framework investigation
 
-Measured on Windows with .NET SDK 10.0.401 and Milligram commit `0e25ca5`, September 30, 2026.
-This records evidence for [#27](https://github.com/jhnoor/milligram/issues/27); it does not declare
-legacy build, coverage or mutation support complete.
+The initial Windows investigation used .NET SDK 10.0.401 and Milligram commit `0e25ca5`,
+September 30, 2026. Later sections record evaluated scanning and a real old-style coverage setup.
+This records scoped evidence for [#27](https://github.com/jhnoor/milligram/issues/27);
+Framework mutation acceptance remains open.
 
 ## Reference application
 
@@ -171,10 +172,10 @@ dotnet publish src/Milligram -c Release -o .milligram/dogfood
 
 Unlike the original source-only investigation, this scan executes design-time build targets.
 It does not execute the application, run package install scripts, build a deployable web application,
-collect coverage or run mutation. The sample still has no tests. Those acceptance gaps remain
-[#38](https://github.com/jhnoor/milligram/issues/38) and
+collect coverage or run mutation. The sample still has no tests. The separate Polly measurement
+below covers [#38](https://github.com/jhnoor/milligram/issues/38); Framework mutation remains
 [#39](https://github.com/jhnoor/milligram/issues/39). Shared-file and multi-target metric attribution
-is tracked separately in [#64](https://github.com/jhnoor/milligram/issues/64).
+was completed separately in [#64](https://github.com/jhnoor/milligram/issues/64).
 
 ## Follow-up measurement: stale SDK imports
 
@@ -185,3 +186,63 @@ generated usings file. The corrected scanner reported zero HTTP dependencies. Ad
 explicit `Using Include="System.Net.Http"` item restored both compilation and the one edge.
 This verifies the explicit-setting regression in #40; it does not establish full project or
 configuration evaluation under #37.
+
+## Old-style coverage on Windows
+
+On October 4, 2026, [the real coverage fixture](https://github.com/jhnoor/milligram/actions/runs/37235267810)
+passed on Windows using Polly 5.0.6 at
+[`1a3bf7bf33cfeccce2e224f29cb273e7d333528c`](https://github.com/App-vNext/Polly/tree/1a3bf7bf33cfeccce2e224f29cb273e7d333528c).
+Its original old-style `Polly.Net45.csproj` and `Polly.Net45.Specs.csproj` target .NET Framework 4.5
+and import linked source from shared projects. Neither project was retargeted or rewritten.
+
+| Input | Measured version |
+|-------|------------------|
+| Windows runner | Windows build 26100, x64 (`windows-2025`) |
+| Visual Studio / full MSBuild | 18.10.12217.157 / 18.10.1.42706 |
+| .NET SDK | 10.0.401 |
+| Reference assemblies | Microsoft.NETFramework.ReferenceAssemblies.net45 1.0.3 |
+| Test framework / runner | Original xUnit 2.1.0 / xunit.runner.console 2.9.3, net48 |
+| Test runtime | .NET Framework 4.8, CLR 4.0.30319.42000 |
+| Collector | dotnet-coverage 18.11.2, running on .NET 8.0.31 |
+
+The fixture restores the original eight `packages.config` packages by extraction into their hint
+paths, without install scripts. An added `Directory.Build.targets` imports the reference-assembly
+package; its SHA-256 is the same pinned value documented above. A full checkout with a local
+`master` branch at the pinned commit supplies the historical branch name required by
+GitVersionTask 3.1.2. Its original build targets remain enabled. Build completed with no warnings
+or errors. SDK MSBuild alone failed locally because that old task requires
+`Microsoft.Build.Utilities.v4.0`; use full Visual Studio MSBuild for this build.
+
+All **1,204 original tests passed**, with no skips or runner errors, and produced real Cobertura.
+A second run selected `ContextSpecs.Should_assign_ExecutionKey_from_constructor`: one test passed,
+and the collector exited 0. Temporarily changing that test's expected string produced one failure,
+a collector exit of 1, and another real report. The fixture restored the original test bytes and
+rebuilt; a final Git diff confirmed that tracked source and project files were unchanged.
+
+Milligram imported both single-test reports into the separately evaluated Release compiler context.
+The model contained 80 types; the snapshots contained 582 members and report paths for 94 files.
+Both snapshots and the live viewer card showed `Polly.Context.ExecutionKey` at 100% coverage
+(line 74) and `ExecutionGuid` at 0% (lines 79–86), with current source hashes. The viewer's source
+API returned the exact linked file, `src/Polly.Shared/Context.cs`, with valid member spans.
+
+Reproduce on a Windows machine with full Visual Studio MSBuild, .NET 10 SDK, the collector's
+.NET 8 runtime and .NET Framework 4.8 installed:
+
+```powershell
+dotnet publish src/Milligram -c Release -o .milligram/legacy-tool
+./.github/scripts/legacy-metrics-fixture.ps1 `
+  -ToolAssembly (Join-Path $PWD '.milligram/legacy-tool/Milligram.dll') `
+  -MsBuildPath (Get-Command msbuild).Source
+```
+
+The script downloads the pinned source and packages into a fresh temporary checkout. It retains
+that checkout and writes reports, logs, package hashes, runner outcomes, snapshots and the live
+card under `artifacts/legacy-metrics`. The dedicated **Legacy metrics** workflow uploads that evidence.
+
+This verifies external collection and `milligram crap --coverage report.xml` for this specific
+old-style setup. Automatic `milligram crap` collection still requires SDK-style test projects and
+reports that prerequisite before running them. An imported Cobertura file does not convey test
+outcomes: retain the original runner log and check its exit code separately, including when it
+produces coverage after a failure. No new collector integration is needed for this import path.
+This result does not establish other legacy runners, the MVC application's build, Framework mutation
+(#39), or acceptance of a company repository.
