@@ -24,7 +24,7 @@ public class InitializationInputsTests
         var written = File.GetLastWriteTimeUtc(file);
         var before = InitializationInputs.Fingerprint(paths);
         using var inputs = new InitializationInputs(paths);
-        Assert.True(inputs.IsCurrent());
+        Assert.True(inputs.IsCurrent(), inputs.InvalidationReason);
 
         project.Write(relative, "after!");
         File.SetLastWriteTimeUtc(file, written);
@@ -104,7 +104,7 @@ public class InitializationInputsTests
         observed.EnableRaisingEvents = true;
         var before = InitializationInputs.Fingerprint(paths);
         using var inputs = new InitializationInputs(paths);
-        Assert.True(inputs.IsCurrent(), "Before activity: " + string.Join("; ", nativeEvents));
+        Assert.True(inputs.IsCurrent(), "Before activity: " + inputs.InvalidationReason + "; " + string.Join("; ", nativeEvents));
 
         project.Write("milligram.json", "{}");
         project.Write(".gitignore", ".milligram/");
@@ -117,7 +117,7 @@ public class InitializationInputsTests
             project.Write(directory + "/ignored.cs", "class Ignored { }");
 
         Assert.Equal(before, InitializationInputs.Fingerprint(paths));
-        Assert.True(inputs.IsCurrent(), "After ignored activity: " + string.Join("; ", nativeEvents));
+        Assert.True(inputs.IsCurrent(), "After ignored activity: " + inputs.InvalidationReason + "; " + string.Join("; ", nativeEvents));
         inputs.Dispose();
         Assert.False(inputs.IsCurrent());
     }
@@ -156,7 +156,7 @@ public class InitializationInputsTests
         File.CreateSymbolicLink(Path.Combine(project.Root, "Order.cs"), Path.Combine(source.Root, "Order.cs"));
         var paths = new ProjectPaths(project.Root);
         using var inputs = new InitializationInputs(paths);
-        Assert.True(inputs.IsCurrent());
+        Assert.True(inputs.IsCurrent(), inputs.InvalidationReason);
 
         source.Write("Order.cs", "class Other { }");
 

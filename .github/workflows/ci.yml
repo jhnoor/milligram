@@ -42,6 +42,18 @@ jobs:
       - name: Test (includes the architecture tests)
         run: dotnet test Milligram.slnx --no-build -c Release
 
+      - name: Repeat startup input checks on macOS
+        if: matrix.os == 'macos-latest' && !cancelled()
+        shell: pwsh
+        run: |
+          $failed = 0
+          for ($iteration = 1; $iteration -le 20; $iteration++) {
+            Write-Host "Startup input checks: $iteration/20"
+            dotnet test Milligram.slnx --no-build -c Release --filter FullyQualifiedName~InitializationInputsTests
+            if ($LASTEXITCODE -ne 0) { $failed++ }
+          }
+          if ($failed -gt 0) { throw "$failed startup input check run(s) failed." }
+
       - name: Pack and smoke test the installed tool and dnx
         shell: pwsh
         run: |

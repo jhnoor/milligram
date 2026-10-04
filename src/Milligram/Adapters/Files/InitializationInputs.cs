@@ -11,8 +11,10 @@ public sealed class InitializationInputs : IDisposable
     private readonly ProjectPaths paths;
     private readonly FileSystemWatcher? watcher;
     private readonly byte[]? fingerprint;
-    private int changed;
+    private string? invalidation;
     private int disposed;
+
+    internal string? InvalidationReason => Volatile.Read(ref invalidation);
 
     public InitializationInputs(ProjectPaths paths)
     {
@@ -24,35 +26,40 @@ public sealed class InitializationInputs : IDisposable
                 IncludeSubdirectories = true,
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
             };
-            watcher.Changed += (_, e) => Changed(e.FullPath);
-            watcher.Created += (_, e) => Changed(e.FullPath, Directory.Exists(e.FullPath));
-            watcher.Deleted += (_, e) => Changed(e.FullPath, directory: true);
-            watcher.Renamed += (_, e) => { Changed(e.OldFullPath, Directory.Exists(e.FullPath)); Changed(e.FullPath, Directory.Exists(e.FullPath)); };
-            watcher.Error += (_, _) => Interlocked.Exchange(ref changed, 1);
+            watcher.Changed += (_, e) => Changed(e.FullPath, e.ChangeType);
+            watcher.Created += (_, e) => Changed(e.FullPath, e.ChangeType, Directory.Exists(e.FullPath));
+            watcher.Deleted += (_, e) => Changed(e.FullPath, e.ChangeType, directory: true);
+            watcher.Renamed += (_, e) => { Changed(e.OldFullPath, e.ChangeType, Directory.Exists(e.FullPath)); Changed(e.FullPath, e.ChangeType, Directory.Exists(e.FullPath)); };
+            watcher.Error += (_, e) => Invalidate($"Watcher error: {e.GetException().Message}");
             watcher.EnableRaisingEvents = true;
             fingerprint = Fingerprint(paths);
+            if (fingerprint is null) Invalidate("Initial fingerprint unavailable.");
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
         {
             watcher?.Dispose();
             watcher = null;
-            changed = 1;
+            Invalidate($"Watcher unavailable: {e.Message}");
         }
     }
 
     /// <summary>Content hashes also detect changes on filesystems where native watcher events are missing.</summary>
     public bool IsCurrent()
     {
-        if (Volatile.Read(ref disposed) != 0 || Volatile.Read(ref changed) != 0 || fingerprint is null) return false;
+        if (Volatile.Read(ref disposed) != 0 || InvalidationReason is not null || fingerprint is null) return false;
         var current = Fingerprint(paths);
-        return current is not null && fingerprint.AsSpan().SequenceEqual(current) && Volatile.Read(ref changed) == 0;
+        if (current is null) Invalidate("Current fingerprint unavailable.");
+        else if (!fingerprint.AsSpan().SequenceEqual(current)) Invalidate("Input fingerprint changed.");
+        return InvalidationReason is null;
     }
 
-    private void Changed(string path, bool directory = false)
+    private void Invalidate(string reason) => Interlocked.CompareExchange(ref invalidation, reason, null);
+
+    private void Changed(string path, WatcherChangeTypes change, bool directory = false)
     {
         var relative = paths.Relative(path);
         if (Ignored(relative) || relative == ".gitignore" || relative == "milligram.json" || relative.EndsWith(".tmp", StringComparison.Ordinal)) return;
-        if (directory || IsInput(relative)) Interlocked.Exchange(ref changed, 1);
+        if (directory || IsInput(relative)) Invalidate($"{change}: {relative} (directory: {directory})");
     }
 
     private static bool Ignored(string relative) => relative.Split('/').Any(Skipped.Contains);
