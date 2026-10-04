@@ -12,7 +12,11 @@ on:
       - src/Milligram/Application/CrapService.cs
       - src/Milligram/Application/CoverageAttribution.cs
       - src/Milligram/Application/MutationService.cs
+      - src/Milligram/Application/MutationTests.cs
       - src/Milligram/Analysis/Mutation/**
+      - src/Milligram/Domain/Metrics/**
+      - src/Milligram/Domain/Views/TypeCardBuilder.cs
+      - src/Milligram/Adapters/Processes/MetricProjects.cs
       - src/Milligram/Adapters/Processes/BuildEnvironment.cs
       - src/Milligram/Adapters/Processes/ProcessRunner.cs
       - src/Milligram/Adapters/Processes/ProjectEvaluation.cs
@@ -25,7 +29,11 @@ on:
       - src/Milligram/Application/CrapService.cs
       - src/Milligram/Application/CoverageAttribution.cs
       - src/Milligram/Application/MutationService.cs
+      - src/Milligram/Application/MutationTests.cs
       - src/Milligram/Analysis/Mutation/**
+      - src/Milligram/Domain/Metrics/**
+      - src/Milligram/Domain/Views/TypeCardBuilder.cs
+      - src/Milligram/Adapters/Processes/MetricProjects.cs
       - src/Milligram/Adapters/Processes/BuildEnvironment.cs
       - src/Milligram/Adapters/Processes/ProcessRunner.cs
       - src/Milligram/Adapters/Processes/ProjectEvaluation.cs
