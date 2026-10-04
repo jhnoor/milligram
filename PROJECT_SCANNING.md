@@ -109,12 +109,20 @@ path evaluated the same old-style project successfully in 2.2 seconds. The host 
 output in the failing case. This is a deep tool-installation-path limitation, independent of whether
 Visual Studio is installed locally.
 
-The smoke test now uses a shorter temporary installation directory while retaining spaces. The
-product diagnoses Windows host configuration paths of 260 characters or more and recommends a
-shorter `--tool-path`. It does not yet relocate the host or make long legacy-host paths work. The
-source/project fixture itself retains long paths and spaces. Its assertions are unchanged.
-[#63](https://github.com/jhnoor/milligram/issues/63) tracks support or prompt failure for long
-Windows installations; the exact CLR failure detail was not captured.
+Milligram now rejects a selected legacy project, including evaluated project references, before
+Roslyn launches that host when its configuration path is 260 characters or more. The error names
+the project and asks for a shorter `--tool-path`; the previous model remains intact. Modern SDK
+projects still scan from the same deep installation. The preflight follows the host-selection
+rules of the pinned [Roslyn 5.9 source](https://github.com/dotnet/roslyn/blob/35d9211b841e7613c1d2f8f5af6d628ace696c4c/src/Workspaces/MSBuild/Core/MSBuild/BuildHostProcessManager.cs),
+including SDK imports and explicit TargetFramework/TargetFrameworks elements, rather than
+assuming that every project targeting .NET Framework needs the legacy host.
+
+The Windows installed-package smoke exercises short and exactly 264-character configuration
+paths with spaces and Unicode. It verifies modern scans in both locations, legacy evaluation
+from the short path, prompt failures for direct/referenced legacy projects at the long path,
+and preservation of the previous model. This implements the prompt-failure remedy in
+[#63](https://github.com/jhnoor/milligram/issues/63); it does not relocate the host or make legacy
+evaluation work from an unsupported installation path.
 
 ## Work still required
 
