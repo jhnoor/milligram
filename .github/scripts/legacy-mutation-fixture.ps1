@@ -30,14 +30,14 @@ function Read-MutationSnapshot {
     return Get-Content -LiteralPath (Join-Path $SampleRoot '.milligram/metrics/mutation.json') -Raw | ConvertFrom-Json -AsHashtable
 }
 
-function Read-Context {
+function Read-ModelType([string]$Id = 'Polly.Context') {
     $model = Get-Content -LiteralPath (Join-Path $SampleRoot '.milligram/model.json') -Raw | ConvertFrom-Json -AsHashtable
-    $types = @($model.types | Where-Object id -eq 'Polly.Context')
+    $types = @($model.types | Where-Object id -CEQ $Id)
     if ($types.Count -ne 1 -or !$types[0].context.resolved) { throw 'The original Framework compiler context is unresolved.' }
     return $types[0]
 }
 
-function Assert-LiveMutation([string]$Name, $Snapshot) {
+function Assert-LiveMutation([string]$Name, $Snapshot, [string]$TypeId = 'Polly.Context') {
     $start = [Diagnostics.ProcessStartInfo]::new((Get-Command dotnet).Source)
     $start.WorkingDirectory = $SampleRoot
     $start.UseShellExecute = $false
@@ -64,8 +64,8 @@ function Assert-LiveMutation([string]$Name, $Snapshot) {
             Start-Sleep -Milliseconds 200
         } while ([DateTime]::UtcNow -lt $deadline)
         if ($meta.job.state -ne 'succeeded') { throw 'The mutation viewer did not finish scanning.' }
-        $card = Invoke-RestMethod ($address + 'api/type?id=Polly.Context')
-        $expected = @((Read-Context).members | Where-Object { $Snapshot.members.ContainsKey($_.id) })
+        $card = Invoke-RestMethod ($address + 'api/type?id=' + [Uri]::EscapeDataString($TypeId))
+        $expected = @((Read-ModelType $TypeId).members | Where-Object { $Snapshot.members.ContainsKey($_.id) })
         $measured = @($card.members | Where-Object { $Snapshot.members.ContainsKey($_.id) })
         if ($expected.Count -lt 1) { throw 'No measured members to check on the live card.' }
         foreach ($member in $expected) {
@@ -144,22 +144,27 @@ try {
     $configuration | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $SampleRoot 'src/Polly.Net45/stryker-config.json')
     Copy-Item -LiteralPath $solution -Destination (Join-Path $evidence 'Polly.Milligram.sln')
     $source = Join-Path $SampleRoot 'src/Polly.Shared/Context.cs'
+    $circuitSource = Join-Path $SampleRoot 'src/Polly.Shared/CircuitBreaker/CircuitStateController.cs'
+    $circuitType = 'Polly.CircuitBreaker.CircuitStateController<TResult>'
     $snapshotFile = Join-Path $SampleRoot '.milligram/metrics/mutation.json'
-    [void](Invoke-MutationFixture 'full' 'dotnet' @($ToolAssembly, 'mutate', $source, '--all', '--project', $SampleRoot))
+    [void](Invoke-MutationFixture 'full' 'dotnet' @($ToolAssembly, 'mutate', $source, $circuitSource, '--all', '--project', $SampleRoot))
     $full = Read-MutationSnapshot
-    $context = Read-Context
-    $entries = @($context.members | ForEach-Object { $full.members[$_.id] } | Where-Object { $null -ne $_ })
+    Copy-Item -LiteralPath $snapshotFile -Destination (Join-Path $evidence 'full.mutation.json')
+    $context = Read-ModelType
+    $entries = @($full.members.Values)
     $killed = ($entries | Measure-Object -Property killed -Sum).Sum
     $survived = ($entries | Measure-Object -Property survived -Sum).Sum
-    if ($killed -lt 1 -or $survived -lt 1) { throw 'Real original tests did not demonstrate both killed and surviving Context mutations.' }
-    foreach ($member in $context.members) {
-        if ($full.members.ContainsKey($member.id) -and $full.members[$member.id].hash -ne $member.hash) { throw 'Mutation was attributed to stale source.' }
+    if ($killed -lt 1 -or $survived -lt 1) { throw 'Real original tests did not demonstrate both killed and surviving mutations.' }
+    foreach ($type in @($context, (Read-ModelType $circuitType))) {
+        foreach ($member in $type.members) {
+            if ($full.members.ContainsKey($member.id) -and $full.members[$member.id].hash -ne $member.hash) { throw 'Mutation was attributed to stale source.' }
+        }
     }
     $result.full = @{ killed = $killed; survived = $survived; members = $entries.Count }
-    Copy-Item -LiteralPath $snapshotFile -Destination (Join-Path $evidence 'full.mutation.json')
     Assert-LiveMutation 'full' $full
+    Assert-LiveMutation 'full-circuit' $full $circuitType
     $unchanged = [IO.File]::ReadAllText($snapshotFile)
-    [void](Invoke-MutationFixture 'unchanged' 'dotnet' @($ToolAssembly, 'mutate', $source, '--project', $SampleRoot))
+    [void](Invoke-MutationFixture 'unchanged' 'dotnet' @($ToolAssembly, 'mutate', $source, $circuitSource, '--project', $SampleRoot))
     if ([IO.File]::ReadAllText($snapshotFile) -cne $unchanged -or !(Get-Content (Join-Path $evidence 'unchanged.log') -Raw).Contains('no changed members to mutate')) { throw 'Unchanged legacy source was unnecessarily mutated again.' }
 
     $sourceFile = $source
@@ -169,17 +174,32 @@ try {
         $needle = 'if (!_executionGuid.HasValue)'
         if (!$text.Contains($needle)) { throw 'The pinned Context implementation changed.' }
         [IO.File]::WriteAllText($sourceFile, $text.Replace($needle, 'if (_executionGuid.HasValue == false)'), [Text.UTF8Encoding]::new($false))
+        $reportRoot = Join-Path $SampleRoot '.milligram/run/stryker'
+        $priorReports = @(Get-ChildItem -LiteralPath $reportRoot -Recurse -Filter mutation-report.json | Select-Object -ExpandProperty FullName)
         [void](Invoke-MutationFixture 'differential' 'dotnet' @($ToolAssembly, 'mutate', $source, '--project', $SampleRoot))
         $changed = Read-MutationSnapshot
-        $current = Read-Context
+        $current = Read-ModelType
         $member = @($current.members | Where-Object name -eq 'ExecutionGuid')[0]
         if ($changed.members[$member.id].hash -eq $full.members[$member.id].hash -or $changed.members[$member.id].hash -ne $member.hash -or $changed.members[$member.id].killed -lt 1) { throw 'Differential mutation did not measure the changed member.' }
-        foreach ($prior in $context.members | Where-Object { $_.id -ne $member.id -and $full.members.ContainsKey($_.id) }) {
-            if (($changed.members[$prior.id] | ConvertTo-Json -Compress) -cne ($full.members[$prior.id] | ConvertTo-Json -Compress)) { throw 'Differential mutation changed an untouched member result.' }
+        foreach ($id in $full.members.Keys | Where-Object { $_ -cne $member.id }) {
+            if (($changed.members[$id] | ConvertTo-Json -Compress) -cne ($full.members[$id] | ConvertTo-Json -Compress)) { throw 'Differential mutation changed an untouched member result.' }
         }
+        $newReports = @(Get-ChildItem -LiteralPath $reportRoot -Recurse -Filter mutation-report.json | Where-Object { $_.FullName -cnotin $priorReports })
+        if ($newReports.Count -ne 1) { throw 'Differential mutation did not produce exactly one fresh project report.' }
+        $raw = Get-Content -LiteralPath $newReports[0].FullName -Raw | ConvertFrom-Json -AsHashtable
+        $tested = 0
+        foreach ($file in $raw.files.Keys) {
+            $path = [IO.Path]::GetFullPath($file, $raw.projectRoot)
+            foreach ($mutant in $raw.files[$file].mutants | Where-Object { $_.status -in @('Killed', 'Survived', 'Timeout', 'NoCoverage') }) {
+                if ($path -ine $sourceFile -or $mutant.location.start.line -lt $member.span.startLine -or $mutant.location.end.line -gt $member.span.endLine) { throw 'Differential mutation tested outside the changed member.' }
+                $tested++
+            }
+        }
+        if ($tested -lt 1) { throw 'Differential mutation did not exercise the changed member.' }
         Copy-Item -LiteralPath $snapshotFile -Destination (Join-Path $evidence 'differential.mutation.json')
-        $result.differential = @{ member = $member.id; killed = $changed.members[$member.id].killed; survived = $changed.members[$member.id].survived }
+        $result.differential = @{ member = $member.id; killed = $changed.members[$member.id].killed; survived = $changed.members[$member.id].survived; reportMutants = $tested }
         Assert-LiveMutation 'differential' $changed
+        Assert-LiveMutation 'differential-circuit' $changed $circuitType
     }
     finally { [IO.File]::WriteAllBytes($sourceFile, $original) }
 
