@@ -34,9 +34,9 @@ public sealed partial class ProcessRunner
     private async Task<IReadOnlyList<ProjectCompilation>> EvaluateProjectsAsync(
         IReadOnlyList<string> files, string? configuration, Action<string> report, EvaluatedInputs inputs)
     {
+        var hostDirectory = Path.GetDirectoryName(typeof(MSBuildWorkspace).Assembly.Location)!;
+        LegacyBuildHost.Check(hostDirectory, OperatingSystem.IsWindows(), files);
         RegisterMsBuild(Path.GetDirectoryName(files[0])!, report);
-        if (LegacyHostPathWarning(Path.GetDirectoryName(typeof(MSBuildWorkspace).Assembly.Location)!, OperatingSystem.IsWindows()) is { } warning)
-            report(warning);
         var properties = new Dictionary<string, string>();
         if (configuration is not null) properties["Configuration"] = configuration;
         using var workspace = MSBuildWorkspace.Create(properties);
@@ -48,6 +48,7 @@ public sealed partial class ProcessRunner
         {
             if (workspace.CurrentSolution.Projects.Any(project => string.Equals(project.FilePath, file, StringComparison.Ordinal))) continue;
             ProjectInputFiles.Read(file, configuration, inputs, inspected);
+            LegacyBuildHost.Check(hostDirectory, OperatingSystem.IsWindows(), inspected);
             await ValidateProjectAsync(file, configuration).ConfigureAwait(false);
             validated.Add(file);
             report($"Evaluating {file}" + (configuration is null ? " (project default configuration)." : $" ({configuration})."));
@@ -95,15 +96,6 @@ public sealed partial class ProcessRunner
 
     internal static string EscapeProperty(string value) => System.Text.RegularExpressions.Regex.Replace(value, @"[%$@();,'?*]",
         match => "%" + ((int)match.Value[0]).ToString("X2", System.Globalization.CultureInfo.InvariantCulture));
-
-    /// <summary>The legacy CLR may fail before emitting any output when its executable configuration exceeds MAX_PATH.</summary>
-    internal static string? LegacyHostPathWarning(string directory, bool windows)
-    {
-        var config = Path.Combine(directory, "BuildHost-net472", "Microsoft.CodeAnalysis.Workspaces.MSBuild.BuildHost.exe.config");
-        return windows && config.Length >= 260
-            ? $"Legacy MSBuild host configuration path exceeds the Windows .NET Framework limit ({config.Length} characters): {config}. Install Milligram under a shorter --tool-path before evaluating old-style projects; otherwise the host can time out before connecting."
-            : null;
-    }
 
     /// <summary>Register before any MSBuild assemblies load, using the SDK selected for the examined project.</summary>
     private static void RegisterMsBuild(string directory, Action<string> report)

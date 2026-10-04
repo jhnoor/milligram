@@ -43,6 +43,9 @@ Microsoft also provides [reference assemblies through NuGet](https://learn.micro
 when the developer pack is unavailable. Legacy ASP.NET projects additionally need their web build
 targets: `VSToolsPath` must resolve to the tools directory containing `WebApplications`.
 Missing project imports fail evaluation with a diagnostic.
+On Windows, legacy projects require a short enough tool installation path for the .NET Framework
+build host. If its configuration path reaches 260 characters, Milligram stops before launching it
+and recommends a shorter `--tool-path`; modern SDK scans can still use that installation.
 Missing assemblies are diagnosed; source membership can still be useful while bindings are
 incomplete. Full legacy build, coverage and mutation acceptance remains unverified.
 The explicit `--source-only` fallback binds against .NET 10, restored assets and direct `HintPath`
