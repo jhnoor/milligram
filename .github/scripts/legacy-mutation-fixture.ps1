@@ -57,12 +57,17 @@ function Assert-LiveMutation([string]$Name, $Snapshot) {
         } while ([DateTime]::UtcNow -lt $deadline)
         if ($meta.job.state -ne 'succeeded') { throw 'The mutation viewer did not finish scanning.' }
         $card = Invoke-RestMethod 'http://127.0.0.1:15381/api/type?id=Polly.Context'
-        foreach ($member in $card.members | Where-Object { $Snapshot.members.ContainsKey($_.id) }) {
+        $expected = @((Read-Context).members | Where-Object { $Snapshot.members.ContainsKey($_.id) })
+        $measured = @($card.members | Where-Object { $Snapshot.members.ContainsKey($_.id) })
+        if ($expected.Count -lt 1 -or $measured.Count -ne $expected.Count) { throw 'The live card omitted measured members.' }
+        foreach ($member in $measured) {
             $entry = $Snapshot.members[$member.id]
             if (!$member.mutation -or $member.mutationStale -or $member.mutation.hash -ne $entry.hash -or $member.mutation.killed -ne $entry.killed -or $member.mutation.survived -ne $entry.survived) { throw "Wrong live mutation score: $($member.name)" }
             $source = Invoke-RestMethod ('http://127.0.0.1:15381/api/source?file=' + [Uri]::EscapeDataString($member.file))
             $text = [IO.File]::ReadAllText((Join-Path $SampleRoot $member.file))
             if ($source.text -cne $text -or $member.line -lt 1 -or $member.endLine -gt $text.Split("`n").Length) { throw 'Wrong live mutation source link.' }
+            $gapCount = if ($Snapshot.gaps.ContainsKey($member.id)) { @($Snapshot.gaps[$member.id]).Count } else { 0 }
+            if (@($member.mutationGaps).Count -ne $gapCount) { throw 'The live card omitted surviving mutation sites.' }
             foreach ($gap in $member.mutationGaps) {
                 if ($gap.file -ne $member.file -or $gap.line -lt $member.line -or $gap.line -gt $member.endLine) { throw 'A surviving mutation points outside its source member.' }
             }
@@ -104,6 +109,13 @@ try {
     [IO.Compression.ZipFile]::ExtractToDirectory($adapterZip, $adapter)
     $targetsFile = Join-Path $SampleRoot 'Directory.Build.targets'
     [xml]$targets = [IO.File]::ReadAllText($targetsFile)
+    # Stryker 5 does not identify the original packages.config-based xUnit project as tests.
+    $testProperties = $targets.CreateElement('PropertyGroup')
+    $testProperties.SetAttribute('Condition', "'`$(MSBuildProjectName)' == 'Polly.Net45.Specs'")
+    $isTestProject = $targets.CreateElement('IsTestProject')
+    $isTestProject.InnerText = 'true'
+    [void]$testProperties.AppendChild($isTestProject)
+    [void]$targets.Project.AppendChild($testProperties)
     $import = $targets.CreateElement('Import')
     $import.SetAttribute('Project', (Join-Path $adapter 'build/net462/xunit.runner.visualstudio.props'))
     $import.SetAttribute('Condition', "'`$(MSBuildProjectName)' == 'Polly.Net45.Specs'")
