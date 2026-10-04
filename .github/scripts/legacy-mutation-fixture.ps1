@@ -76,6 +76,15 @@ function Assert-LiveMutation([string]$Name, $Snapshot) {
     }
 }
 
+function Assert-FailedMutation([string]$Name, [string]$Diagnostic) {
+    $before = [IO.File]::ReadAllText($snapshotFile)
+    [void](Invoke-MutationFixture $Name 'dotnet' @($ToolAssembly, 'mutate', $source, '--all', '--project', $SampleRoot) @(1))
+    $log = Get-Content -LiteralPath (Join-Path $evidence "$Name.log") -Raw
+    if (!$log.Contains($Diagnostic) -or !$log.Contains('without a report') -or !$log.Contains('milligram doctor')) { throw "Missing actionable failure details: $Name" }
+    if ([IO.File]::ReadAllText($snapshotFile) -cne $before) { throw "$Name overwrote the prior mutation snapshot." }
+    $result[$Name] = @{ exitCode = 1; previousSnapshotPreserved = $true }
+}
+
 try {
     $pin = '1a3bf7bf33cfeccce2e224f29cb273e7d333528c'
     if ((& git -C $SampleRoot rev-parse HEAD) -ne $pin) { throw 'Run the pinned legacy coverage fixture first.' }
@@ -109,7 +118,7 @@ try {
     $configuration = @{ 'stryker-config' = @{ solution = $solution; concurrency = 2; 'skip-version-check' = $true; 'break-on-initial-test-failure' = $true; 'log-to-file' = $true } }
     $configuration | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $SampleRoot 'src/Polly.Net45/stryker-config.json')
     Copy-Item -LiteralPath $solution -Destination (Join-Path $evidence 'Polly.Milligram.sln')
-    $source = 'src/Polly.Shared/Context.cs'
+    $source = Join-Path $SampleRoot 'src/Polly.Shared/Context.cs'
     $snapshotFile = Join-Path $SampleRoot '.milligram/metrics/mutation.json'
     [void](Invoke-MutationFixture 'full' 'dotnet' @($ToolAssembly, 'mutate', $source, '--all', '--project', $SampleRoot))
     $full = Read-MutationSnapshot
@@ -128,7 +137,7 @@ try {
     [void](Invoke-MutationFixture 'unchanged' 'dotnet' @($ToolAssembly, 'mutate', $source, '--project', $SampleRoot))
     if ([IO.File]::ReadAllText($snapshotFile) -cne $unchanged -or !(Get-Content (Join-Path $evidence 'unchanged.log') -Raw).Contains('no changed members to mutate')) { throw 'Unchanged legacy source was unnecessarily mutated again.' }
 
-    $sourceFile = Join-Path $SampleRoot $source
+    $sourceFile = $source
     $original = [IO.File]::ReadAllBytes($sourceFile)
     try {
         $text = [Text.Encoding]::UTF8.GetString($original)
@@ -148,6 +157,42 @@ try {
         Assert-LiveMutation 'differential' $changed
     }
     finally { [IO.File]::WriteAllBytes($sourceFile, $original) }
+
+    try {
+        [IO.File]::WriteAllText($sourceFile, "#error MILLIGRAM_INTENTIONAL_BUILD_FAILURE`n" + [Text.Encoding]::UTF8.GetString($original).TrimStart([char]0xFEFF), [Text.UTF8Encoding]::new($false))
+        Assert-FailedMutation 'failing-build' 'MILLIGRAM_INTENTIONAL_BUILD_FAILURE'
+    }
+    finally { [IO.File]::WriteAllBytes($sourceFile, $original) }
+
+    $testFile = Join-Path $SampleRoot 'src/Polly.SharedSpecs/ContextSpecs.cs'
+    $originalTest = [IO.File]::ReadAllBytes($testFile)
+    try {
+        $text = [Text.Encoding]::UTF8.GetString($originalTest)
+        $needle = 'context.ExecutionKey.Should().Be("SomeKey");'
+        $offset = $text.IndexOf($needle, [StringComparison]::Ordinal)
+        if ($offset -lt 0) { throw 'The pinned test assertion changed.' }
+        $text = $text.Substring(0, $offset) + 'context.ExecutionKey.Should().Be("MILLIGRAM_INTENTIONAL_TEST_FAILURE");' + $text.Substring($offset + $needle.Length)
+        [IO.File]::WriteAllText($testFile, $text, [Text.UTF8Encoding]::new($false))
+        Assert-FailedMutation 'failing-tests' 'MILLIGRAM_INTENTIONAL_TEST_FAILURE'
+    }
+    finally { [IO.File]::WriteAllBytes($testFile, $originalTest) }
+
+    $manifestFile = Join-Path $SampleRoot 'dotnet-tools.json'
+    $originalManifest = [IO.File]::ReadAllBytes($manifestFile)
+    $originalPath = $env:PATH
+    try {
+        [IO.File]::WriteAllText($manifestFile, '{ "version": 1, "isRoot": true, "tools": {} }')
+        $globalStryker = Get-Command dotnet-stryker -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($globalStryker) {
+            $directory = [IO.Path]::GetDirectoryName($globalStryker.Source)
+            $env:PATH = ($env:PATH.Split([IO.Path]::PathSeparator) | Where-Object { $_.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) -ine $directory.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) }) -join [IO.Path]::PathSeparator
+        }
+        Assert-FailedMutation 'missing-stryker' 'dotnet-stryker'
+    }
+    finally {
+        $env:PATH = $originalPath
+        [IO.File]::WriteAllBytes($manifestFile, $originalManifest)
+    }
     [void](Invoke-MutationFixture 'source-after' 'git' @('-C', $SampleRoot, 'diff', '--exit-code', '--', 'src'))
     $result.status = 'passed'
 }
