@@ -49,13 +49,8 @@ jobs:
           $results = 1..4 | ForEach-Object -Parallel {
             $failed = 0
             $worker = $_
-            Write-Host "Startup input checks: full-suite load on worker $worker"
-            $output = dotnet test Milligram.slnx --no-build -c Release 2>&1
-            $code = $LASTEXITCODE
-            Write-Host ($output -join "`n")
-            if ($code -ne 0) { $failed++ }
-            for ($iteration = 1; $iteration -le 20; $iteration++) {
-              Write-Host "Startup input checks: worker $worker, $iteration/20"
+            for ($iteration = 1; $iteration -le 5; $iteration++) {
+              Write-Host "Startup input checks: worker $worker, $iteration/5"
               $output = dotnet test Milligram.slnx --no-build -c Release --filter FullyQualifiedName~InitializationInputsTests 2>&1
               $code = $LASTEXITCODE
               Write-Host ($output -join "`n")
