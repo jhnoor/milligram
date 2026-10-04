@@ -16,22 +16,28 @@ public sealed class InitializationInputs : IDisposable
 
     internal string? InvalidationReason => Volatile.Read(ref invalidation);
 
-    public InitializationInputs(ProjectPaths paths)
+    public InitializationInputs(ProjectPaths paths) : this(paths, watch: true) { }
+
+    /// <summary>Tests can isolate content verification and deliver notifications without OS event timing.</summary>
+    internal InitializationInputs(ProjectPaths paths, bool watch)
     {
         this.paths = paths;
         try
         {
-            watcher = new FileSystemWatcher(paths.Root)
+            if (watch)
             {
-                IncludeSubdirectories = true,
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
-            };
-            watcher.Changed += (_, e) => Changed(e.FullPath, e.ChangeType);
-            watcher.Created += (_, e) => Changed(e.FullPath, e.ChangeType, Directory.Exists(e.FullPath));
-            watcher.Deleted += (_, e) => Changed(e.FullPath, e.ChangeType, directory: true);
-            watcher.Renamed += (_, e) => { Changed(e.OldFullPath, e.ChangeType, Directory.Exists(e.FullPath)); Changed(e.FullPath, e.ChangeType, Directory.Exists(e.FullPath)); };
-            watcher.Error += (_, e) => Invalidate($"Watcher error: {e.GetException().Message}");
-            watcher.EnableRaisingEvents = true;
+                watcher = new FileSystemWatcher(paths.Root)
+                {
+                    IncludeSubdirectories = true,
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
+                };
+                watcher.Changed += (_, e) => Changed(e.FullPath, e.ChangeType);
+                watcher.Created += (_, e) => Changed(e.FullPath, e.ChangeType, Directory.Exists(e.FullPath));
+                watcher.Deleted += (_, e) => Changed(e.FullPath, e.ChangeType, directory: true);
+                watcher.Renamed += (_, e) => { Changed(e.OldFullPath, e.ChangeType, Directory.Exists(e.FullPath)); Changed(e.FullPath, e.ChangeType, Directory.Exists(e.FullPath)); };
+                watcher.Error += (_, e) => Invalidate($"Watcher error: {e.GetException().Message}");
+                watcher.EnableRaisingEvents = true;
+            }
             fingerprint = Fingerprint(paths);
             if (fingerprint is null) Invalidate("Initial fingerprint unavailable.");
         }
@@ -55,7 +61,7 @@ public sealed class InitializationInputs : IDisposable
 
     private void Invalidate(string reason) => Interlocked.CompareExchange(ref invalidation, reason, null);
 
-    private void Changed(string path, WatcherChangeTypes change, bool directory = false)
+    internal void Changed(string path, WatcherChangeTypes change, bool directory = false)
     {
         var relative = paths.Relative(path);
         if (Ignored(relative) || relative == ".gitignore" || relative == "milligram.json" || relative.EndsWith(".tmp", StringComparison.Ordinal)) return;
