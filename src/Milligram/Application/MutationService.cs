@@ -106,7 +106,7 @@ public sealed class MutationService(Workspace workspace, IProjectLocator locator
 
     /// <summary>Accepts absolute paths or paths relative to the project root.</summary>
     private string Normalize(string file) =>
-        Path.IsPathRooted(file) ? workspace.Paths.Relative(file) : file.Replace('\\', '/');
+        Path.IsPathRooted(file) ? workspace.Paths.ReportRelative(file) ?? workspace.Paths.Relative(file) : file.Replace('\\', '/');
 
     private sealed record Target(BuildProject? Project, CompilerContext? Context, IReadOnlyList<string> Files, IReadOnlyList<TypeNode> Types);
 

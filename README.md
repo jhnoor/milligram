@@ -26,7 +26,8 @@ match.
 `milligram doctor` checks all of these for your project, plus whether it is restored, and prints the
 fix for anything missing. The first run checks them too.
 
-The viewer, the editor integration, `crap` and `mutate` work the same everywhere. The agent differs:
+The internal pilot prioritizes Windows and Linux. macOS is experimental pending validation on a
+physical Mac; its CI checks remain enabled. The agent setup differs by platform:
 
 | Platform | Agent |
 |----------|-------|
