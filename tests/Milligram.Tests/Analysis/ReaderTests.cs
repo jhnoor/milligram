@@ -8,6 +8,29 @@ namespace Milligram.Tests.Analysis;
 
 public class CoberturaReaderTests
 {
+    [UnixFact]
+    public void ReportsCanUseThePhysicalRootSpellingButCannotFollowAnExternalFileLink()
+    {
+        using var project = new TempProject(("physical/A.cs", "class A {}"), ("outside/B.cs", "class B {}"));
+        var physical = Path.Combine(project.Root, "physical");
+        var alias = Path.Combine(project.Root, "alias");
+        Directory.CreateSymbolicLink(alias, physical);
+        File.CreateSymbolicLink(Path.Combine(physical, "outside.cs"), Path.Combine(project.Root, "outside/B.cs"));
+        var report = project.Write("coverage.xml", $"""
+            <coverage><packages><package name="App"><classes>
+              <class filename="{physical}/A.cs"><lines><line number="1" hits="1"/></lines></class>
+              <class filename="{physical}/outside.cs"><lines><line number="1" hits="1"/></lines></class>
+              <class filename="{project.Root}/outside/B.cs"><lines><line number="1" hits="1"/></lines></class>
+            </classes></package></packages></coverage>
+            """);
+
+        var hits = new CoberturaReader().Read([report], alias);
+
+        Assert.Equal(["A.cs"], hits.Files.Keys);
+        Assert.Equal(1, hits.Modules["App"].For("A.cs")![1]);
+        Assert.Equal(["A.cs"], new CoberturaReader().Read([report], physical).Files.Keys);
+    }
+
     [Fact]
     public void ReadsLineHitsRelativeToTheRoot()
     {
@@ -54,6 +77,23 @@ public class CoberturaReaderTests
 
 public class StrykerReportReaderTests
 {
+    [UnixFact]
+    public void MutationReportsCanUseThePhysicalRootSpelling()
+    {
+        using var project = new TempProject(("physical/A.cs", "class A {}"));
+        var physical = Path.Combine(project.Root, "physical");
+        var alias = Path.Combine(project.Root, "alias");
+        Directory.CreateSymbolicLink(alias, physical);
+        var report = project.Write("mutation.json", $$"""
+            { "projectRoot": "{{physical}}", "files": { "A.cs": { "mutants": [
+              { "status": "Killed", "location": { "start": { "line": 1, "column": 1 } } }
+            ] }, "../outside.cs": { "mutants": [
+              { "status": "Survived", "location": { "start": { "line": 1, "column": 1 } } }
+            ] } } }
+            """);
+        Assert.Equal("A.cs", Assert.Single(new StrykerReportReader().Read(report, alias, alias)).File);
+    }
+
     [Fact]
     public void ReadsMutantsWithStatusAndLocation()
     {

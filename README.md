@@ -26,7 +26,8 @@ match.
 `milligram doctor` checks all of these for your project, plus whether it is restored, and prints the
 fix for anything missing. The first run checks them too.
 
-The viewer, the editor integration, `crap` and `mutate` work the same everywhere. The agent differs:
+The internal pilot prioritizes Windows and Linux. macOS is experimental pending validation on a
+physical Mac; its CI checks remain enabled. The agent setup differs by platform:
 
 | Platform | Agent |
 |----------|-------|
@@ -159,9 +160,13 @@ Coverage and mutation commands also use the selected `scan.configuration`. Evalu
 fingerprints include the configuration, project identity, compiler flags, symbols and referenced
 assembly identities, so changing these makes old metrics stale and includes members in the next
 differential mutation run. Imported coverage reports must come from the same configuration.
-Coverage and mutation attribution for one linked file shared by several projects or target
-frameworks remains incomplete ([#64](https://github.com/jhnoor/milligram/issues/64)); those
-per-context scores are not yet reliable.
+Coverage runs each evaluated test framework separately and attributes assembly reports only to
+the library contexts that test run references. Mutation uses the owning project and framework,
+including linked files outside the project directory. Unmeasured contexts remain unknown. An
+imported Cobertura report cannot distinguish frameworks sharing an assembly name; those contexts
+stay unknown with a diagnostic. Use automatic coverage collection to establish ownership. Stryker
+skips a context when its test-framework selection could reference a different library context;
+use a single-target test project in that case.
 
 On Windows, old-style projects also need a short tool installation path: Roslyn's .NET Framework
 host can time out when its `.exe.config` path reaches 260 characters. The command diagnoses deep

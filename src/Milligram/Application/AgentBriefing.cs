@@ -110,6 +110,10 @@ public static class AgentBriefing
            members that changed, including initializers. `--all` re-mutates whole files. Surviving or uncovered mutants are test
            gaps: say so, and offer to write the missing tests. Do not loop re-running mutation.
 
+        Metrics belong to the evaluated project and framework, even when projects share a source file.
+        Untested contexts stay unknown. Imported coverage cannot distinguish frameworks with the same
+        assembly name; use automatic collection. Mutation skips ambiguous test-framework selection.
+
         The type card's **Test gaps** and `.milligram/metrics/mutation.json` (`gaps`, keyed by member id)
         contain surviving and uncovered replacements with their source locations. Use them to explain
         the missing cases. Locations describe the measured code; remeasure stale members before relying

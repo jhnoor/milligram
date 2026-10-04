@@ -221,6 +221,28 @@ public class CrapServiceTests
 
 public class MutationServiceTests
 {
+    [UnixFact]
+    public async Task AbsoluteMutationInputsCanUseThePhysicalSpellingOfAnAliasedRoot()
+    {
+        using var fixture = new ServiceFixture();
+        using var links = new TempProject();
+        var alias = Path.Combine(links.Root, "project");
+        Directory.CreateSymbolicLink(alias, fixture.Project.Root);
+        var paths = new ProjectPaths(alias);
+        var workspace = new Workspace(paths, new CSharpScanner());
+        workspace.Load();
+        var app = fixture.AppProject with { Path = paths.Absolute("src/App/App.csproj") };
+        var tests = fixture.TestProject with { Path = paths.Absolute("tests/App.Tests/App.Tests.csproj"), References = [app.Path] };
+        var processes = new FakeProcessRunner(WriteReport);
+        var service = new MutationService(workspace, new FakeProjectLocator(app, tests), processes, new FakeMutationReader(Mutants));
+
+        var result = await service.RunAsync([fixture.Workspace.Paths.Absolute("src/App/A.cs")], false, _ => { }, CancellationToken.None);
+
+        Assert.Equal(2, result.Members);
+        Assert.Empty(result.Skipped);
+        Assert.Equal(app.Directory, Assert.Single(processes.Calls).Directory);
+    }
+
     private static readonly Mutant[] Mutants =
     [
         new("src/App/A.cs", 4, 25, MutantStatus.Killed, "number"),

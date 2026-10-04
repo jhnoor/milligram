@@ -12,6 +12,14 @@ public enum MemberKind
 /// <summary>Edge kinds in ascending strength; merging keeps the strongest.</summary>
 public enum EdgeKind { Association, Dependency, Implements, Inheritance }
 
+/// <summary>A physical source can belong to several separately measured compiler contexts.</summary>
+public sealed record CompilerContext(string Project, string? Framework, string? Configuration, string Assembly)
+{
+    public bool Resolved { get; init; } = true;
+    public string Fingerprint { get; init; } = "";
+    public string Label => Project + (Framework is null ? "" : " (" + Framework + ")");
+}
+
 /// <summary>A region of a source file. Lines and columns are 1-based; Start/End are 0-based character offsets.</summary>
 public sealed record SourceSpan(string File, int StartLine, int StartColumn, int EndLine, int EndColumn, int Start, int End)
 {
@@ -51,6 +59,7 @@ public sealed record TypeNode(
     IReadOnlyList<SourceSpan> Spans,
     IReadOnlyList<MemberNode> Members)
 {
+    public CompilerContext? Context { get; init; }
     public string File => Spans.Count > 0 ? Spans[0].File : "";
 
     public IEnumerable<string> Files => Spans.Select(s => s.File).Distinct();

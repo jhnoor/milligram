@@ -16,10 +16,12 @@ public sealed class StrykerReportReader : IMutationReportReader
             : projectDirectory;
 
         var mutants = new List<Mutant>();
+        var paths = new ProjectPaths(root);
         foreach (var file in report.GetProperty("files").EnumerateObject())
         {
             var absolute = Path.IsPathRooted(file.Name) ? file.Name : Path.Combine(baseDirectory, file.Name);
-            var relative = Path.GetRelativePath(root, absolute).Replace('\\', '/');
+            var relative = paths.ReportRelative(absolute);
+            if (relative is null) continue;
             foreach (var mutant in file.Value.GetProperty("mutants").EnumerateArray())
                 mutants.Add(Read(mutant, relative));
         }

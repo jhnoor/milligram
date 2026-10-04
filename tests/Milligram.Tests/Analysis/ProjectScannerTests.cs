@@ -13,6 +13,8 @@ public class ProjectScannerTests
     [InlineData("configuration")]
     [InlineData("symbols")]
     [InlineData("optimization")]
+    [InlineData("framework")]
+    [InlineData("unresolved")]
     public void AChangedCompilerContextMakesExistingMetricsStaleEvenWhenSourceIsUnchanged(string change)
     {
         using var root = new TempProject();
@@ -31,6 +33,8 @@ public class ProjectScannerTests
         Assert.Equal(member.Hash, Assert.Single(Assert.Single(Scan(root, [reordered]).Types).Members).Hash);
         if (change == "configuration") request = request with { Scan = request.Scan with { Configuration = "Release" } };
         else if (change == "symbols") project = Project(root, "App", [("A.cs", "public class A { public int Read() => 1; }")], ["TRACE"]);
+        else if (change == "framework") project = project with { Framework = "net10.0" };
+        else if (change == "unresolved") project = project with { ContextResolved = false };
         else project = project with { Compilation = project.Compilation.WithOptions(project.Compilation.Options.WithOptimizationLevel(OptimizationLevel.Release)) };
         var changed = Assert.Single(ProjectScanner.Collect([project], request, _ => { }).Types);
         Assert.True(TypeMetrics.Crap(changed, crap)!.Stale);

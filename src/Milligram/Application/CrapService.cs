@@ -5,7 +5,8 @@ namespace Milligram.Application;
 public sealed record CrapResult(int Members, int Files, int TestExitCode);
 
 /// <summary>Runs the tests with coverage and turns line hits plus complexity into a CRAP snapshot.</summary>
-public sealed class CrapService(Workspace workspace, IProjectLocator projects, IProcessRunner processes, ICoverageReader coverage)
+public sealed class CrapService(Workspace workspace, IProjectLocator projects, IProcessRunner processes, ICoverageReader coverage,
+    IMetricProjectReader? metricProjects = null)
 {
     /// <summary>`dotnet test --collect "XPlat Code Coverage"` needs this package in each test project.</summary>
     public const string CoverageCollector = "coverlet.collector";
@@ -15,15 +16,18 @@ public sealed class CrapService(Workspace workspace, IProjectLocator projects, I
         var collect = coverageReports is null or { Count: 0 };
         var tests = collect ? RunnableTestProjects(log) : [];
         var model = workspace.Generate(log);
-        var (reports, exitCode) = collect ? await CollectCoverageAsync(tests, log, cancellation) : (coverageReports!, 0);
-        if (reports.Count == 0)
+        var contexts = collect && model.Types.Any(type => type.Context is not null) && metricProjects is not null
+            ? await metricProjects.ReadAsync(workspace.Paths.Root, tests, workspace.ScanSettings.Configuration, log, cancellation) : null;
+        var (samples, exitCode) = collect ? await CollectCoverageAsync(tests, contexts, log, cancellation)
+            : (new List<CoverageSample> { new(coverage.Read(coverageReports!, workspace.Paths.Root), null) }, 0);
+        if (samples.Count == 0)
             throw new MilligramException("No coverage report was produced. Does the test project reference coverlet.collector?");
 
-        var hits = coverage.Read(reports, workspace.Paths.Root);
-        var snapshot = Crap.Compute(model, hits, DateTimeOffset.UtcNow);
+        var snapshot = CoverageAttribution.Compute(model, samples, DateTimeOffset.UtcNow, log);
+        var files = samples.SelectMany(sample => sample.Hits.Files.Keys).Distinct(StringComparer.Ordinal).Count();
         workspace.SaveMetrics(snapshot);
-        log($"CRAP: {snapshot.Members.Count} members, {hits.Files.Count} covered files.");
-        return new CrapResult(snapshot.Members.Count, hits.Files.Count, exitCode);
+        log($"CRAP: {snapshot.Members.Count} members, {files} covered files.");
+        return new CrapResult(snapshot.Members.Count, files, exitCode);
     }
 
     public IReadOnlyList<string> TestProjects()
@@ -46,24 +50,30 @@ public sealed class CrapService(Workspace workspace, IProjectLocator projects, I
         return tests;
     }
 
-    private async Task<(IReadOnlyList<string> Reports, int ExitCode)> CollectCoverageAsync(IReadOnlyList<string> tests, Action<string> log, CancellationToken cancellation)
+    private async Task<(List<CoverageSample> Samples, int ExitCode)> CollectCoverageAsync(IReadOnlyList<string> tests,
+        IReadOnlyList<MetricTestProject>? contexts, Action<string> log, CancellationToken cancellation)
     {
-        var output = Path.Combine(workspace.Paths.RunDirectory, "coverage", DateTime.UtcNow.ToString("yyyyMMddTHHmmss"));
+        var samples = new List<CoverageSample>();
+        var runs = contexts is null ? tests.Select(test => (Path: test, Test: (MetricTestProject?)null))
+            : contexts.Select(test => (Path: workspace.Paths.Absolute(test.Context.Project), Test: (MetricTestProject?)test));
         var worst = 0;
-        foreach (var test in tests)
+        foreach (var (test, context) in runs)
         {
-            log($"dotnet test {workspace.Paths.Relative(test)} (coverage)");
+            if (context?.Context.Resolved == false) { log($"Cannot collect coverage for unresolved test context {context.Context.Label}."); continue; }
+            var output = Path.Combine(workspace.Paths.RunDirectory, "coverage", $"{DateTime.UtcNow:yyyyMMddTHHmmss}-{Guid.NewGuid():N}");
+            log($"dotnet test {context?.Context.Label ?? workspace.Paths.Relative(test)} (coverage)");
             var args = new List<string> { "test", test, "--collect", "XPlat Code Coverage", "--results-directory", output };
-            if (workspace.ScanSettings.Configuration is { } configuration) args.AddRange(["--configuration", configuration]);
+            if ((context?.Context.Configuration ?? workspace.ScanSettings.Configuration) is { } configuration) args.AddRange(["--configuration", configuration]);
+            if (context?.Context.Framework is { } framework) args.AddRange(["--framework", framework]);
             if (workspace.Policy.Tests.Filter is { Length: > 0 } filter) args.AddRange(["--filter", filter]);
             var code = await processes.RunAsync("dotnet", args, workspace.Paths.Root, log, cancellation);
             if (code != 0) log($"dotnet test exited {code}; using whatever coverage it produced.");
             worst = Math.Max(worst, code);
+            var reports = Directory.Exists(output) ? Directory.GetFiles(output, "coverage.cobertura.xml", SearchOption.AllDirectories) : [];
+            if (reports.Length > 0) samples.Add(new(coverage.Read(reports, workspace.Paths.Root), context?.References));
+            else log($"No coverage report from {context?.Context.Label ?? workspace.Paths.Relative(test)}; its coverage remains unknown.");
         }
-        var reports = Directory.Exists(output)
-            ? Directory.GetFiles(output, "coverage.cobertura.xml", SearchOption.AllDirectories)
-            : [];
-        return (reports, worst);
+        return (samples, worst);
     }
 
     /// <summary>

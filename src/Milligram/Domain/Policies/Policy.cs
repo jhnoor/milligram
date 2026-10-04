@@ -108,7 +108,7 @@ public sealed record Thresholds
 
 public sealed record TestSettings
 {
-    /// <summary>Test projects to run for coverage. Empty = every detected test project.</summary>
+    /// <summary>Test projects used for metrics. Empty = every detected test project.</summary>
     public IReadOnlyList<string> Projects { get; init; } = [];
 
     /// <summary>Optional `dotnet test --filter` expression.</summary>

@@ -76,6 +76,15 @@ public interface IProcessRunner
     Task<int> RunAsync(string command, IReadOnlyList<string> args, string workingDirectory, Action<string> onLine, CancellationToken cancellation);
 }
 
+/// <summary>The evaluated test framework and the source compiler contexts its actual reference graph reaches.</summary>
+public sealed record MetricTestProject(CompilerContext Context, IReadOnlyList<CompilerContext> References);
+
+public interface IMetricProjectReader
+{
+    Task<IReadOnlyList<MetricTestProject>> ReadAsync(string root, IReadOnlyList<string> tests, string? configuration,
+        Action<string> log, CancellationToken cancellation);
+}
+
 /// <summary>Stops only the session created by one startup, even after the current session has been replaced.</summary>
 public sealed record AgentOwnership(Action Stop);
 

@@ -4,6 +4,16 @@ namespace Milligram.Tests.Application;
 
 public class ProjectPathsTests
 {
+    [UnixFact]
+    public void ReportPathsRejectAnUnresolvableRootAlias()
+    {
+        using var project = new TempProject(("Actual.cs", "class Actual {}"));
+        var alias = Path.Combine(project.Root, "loop");
+        Directory.CreateSymbolicLink(alias, alias);
+
+        Assert.Null(new ProjectPaths(alias).ReportRelative(Path.Combine(project.Root, "Actual.cs")));
+    }
+
     [Fact]
     public void ContainsRejectsTraversal()
     {

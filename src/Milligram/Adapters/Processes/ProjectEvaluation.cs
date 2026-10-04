@@ -44,10 +44,11 @@ public sealed partial class ProcessRunner
         workspace.SkipUnrecognizedProjects = false;
         var validated = new HashSet<string>(StringComparer.Ordinal);
         var inspected = new HashSet<string>(StringComparer.Ordinal);
+        var contexts = new List<EvaluatedProject>();
         foreach (var file in files)
         {
             if (workspace.CurrentSolution.Projects.Any(project => string.Equals(project.FilePath, file, StringComparison.Ordinal))) continue;
-            ProjectInputFiles.Read(file, configuration, inputs, inspected);
+            ProjectInputFiles.Read(file, configuration, inputs, inspected, contexts);
             LegacyBuildHost.Check(hostDirectory, OperatingSystem.IsWindows(), inspected);
             await ValidateProjectAsync(file, configuration).ConfigureAwait(false);
             validated.Add(file);
@@ -59,7 +60,7 @@ public sealed partial class ProcessRunner
         {
             if (project.FilePath is { } path && validated.Add(path))
             {
-                ProjectInputFiles.Read(path, configuration, inputs, inspected);
+                ProjectInputFiles.Read(path, configuration, inputs, inspected, contexts);
                 await ValidateProjectAsync(path, configuration).ConfigureAwait(false);
             }
             if (project.FilePath is null || await project.GetCompilationAsync().ConfigureAwait(false) is not CSharpCompilation compilation)
@@ -71,7 +72,15 @@ public sealed partial class ProcessRunner
             inputs.AddFiles(compilation.SyntaxTrees.Select(tree => tree.FilePath));
             inputs.AddFiles(project.AdditionalDocuments.Concat(project.AnalyzerConfigDocuments).Select(document => document.FilePath).OfType<string>());
             inputs.AddFiles(project.MetadataReferences.OfType<PortableExecutableReference>().Select(reference => reference.FilePath).OfType<string>());
-            result.Add(new ProjectCompilation(project.FilePath, project.Name, compilation) { Inputs = inputs });
+            var context = EvaluatedProject.Find(contexts, project.FilePath, project.Name, project.OutputFilePath);
+            if (context is null) report($"Cannot establish metric ownership for {project.Name}; its diagram is retained, but its metrics remain unknown.");
+            result.Add(new ProjectCompilation(project.FilePath, project.Name, compilation)
+            {
+                Inputs = inputs,
+                Framework = context?.Framework,
+                Configuration = context?.Configuration,
+                ContextResolved = context is not null,
+            });
         }
         foreach (var diagnostic in workspace.Diagnostics) report($"MSBuild {diagnostic.Kind}: {diagnostic.Message}");
         return result;
