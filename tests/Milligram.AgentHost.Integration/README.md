@@ -14,7 +14,7 @@ dotnet format tests/Milligram.AgentHost.Integration/Milligram.AgentHost.Integrat
 The full run checks terminal input, Unicode output, resize, Ctrl+C, doorbell delivery,
 owned process-tree cleanup, redirected output draining, followed-process shutdown diagnostics, detached startup, directory aliases,
 duplicate hosts, replacement ownership, attachment and terminal-mode restoration.
-The detached fixture also checks twelve fresh `agent status` processes concurrently, with
+The detached fixture also checks three rounds of twelve fresh `agent status` processes concurrently, with
 bounded probe stage timings enabled through `MILLIGRAM_TRACE_AGENT_PROBES=1` for those children.
 On Unix it also checks tmux session/server-id reuse and similarly named neighboring sessions.
 Temporary fixtures use unique directories and own the processes they stop.

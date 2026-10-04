@@ -80,6 +80,40 @@ public class AgentHostCompanionTests
     }
 
     [Fact]
+    public async Task AnEarlyRetryCannotExtendTheOriginalConnectionWindow()
+    {
+        await using var fixture = new Fixture(probeTimeout: TimeSpan.FromSeconds(3));
+        using var first = Server(fixture.Files.Endpoint);
+        var accepting = first.WaitForConnectionAsync(fixture.Token);
+        var probing = Task.Run(fixture.Companion.IsRunning);
+        await accepting;
+        await HostProtocol.ReadAsync(first, fixture.Token);
+        await Task.Delay(1500, fixture.Token);
+
+        using var second = Server(fixture.Files.Endpoint);
+        var retry = second.WaitForConnectionAsync(fixture.Token);
+        first.Dispose();
+        await retry;
+        await HostProtocol.ReadAsync(second, fixture.Token);
+        await Task.Delay(2000, fixture.Token);
+
+        using var third = Server(fixture.Files.Endpoint);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(fixture.Token);
+        var extended = third.WaitForConnectionAsync(cancellation.Token);
+        second.Dispose();
+        if (await Task.WhenAny(probing, extended).WaitAsync(fixture.Token) == extended)
+        {
+            await extended;
+            await HostProtocol.ReadAsync(third, fixture.Token);
+            await HostProtocol.WriteAsync(third, HostProtocol.Json(HostFrameKind.Hello, new HostHello(HostProtocol.Version, "test-version")), fixture.Token);
+        }
+        Assert.False(await probing.WaitAsync(fixture.Token));
+        Assert.False(extended.IsCompleted);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => extended);
+    }
+
+    [Fact]
     public async Task ProbeDiagnosticsDistinguishAnAbsentHostFromACompletedGreetingWithoutRecordingData()
     {
         var logs = new List<string>();
