@@ -11,7 +11,8 @@ $ToolAssembly = [IO.Path]::GetFullPath($ToolAssembly)
 $SampleRoot = [IO.Path]::GetFullPath($SampleRoot)
 $evidence = [IO.Path]::GetFullPath($EvidenceDirectory)
 [IO.Directory]::CreateDirectory($evidence) | Out-Null
-$result = [ordered]@{ status = 'running'; sample = $SampleRoot; stryker = '5.0.0'; adapter = 'xunit.runner.visualstudio 2.4.5' }
+$strykerVersion = '4.14.2'
+$result = [ordered]@{ status = 'running'; sample = $SampleRoot; stryker = $strykerVersion; adapter = 'xunit.runner.visualstudio 2.4.5' }
 $previousNoFetch = $env:GitVersion_NoFetchEnabled
 $env:GitVersion_NoFetchEnabled = 'true'
 
@@ -49,21 +50,31 @@ function Assert-LiveMutation([string]$Name, $Snapshot) {
     $stderr = $server.StandardError.ReadToEndAsync()
     try {
         $deadline = [DateTime]::UtcNow.AddSeconds(60)
+        $serverFile = Join-Path $SampleRoot '.milligram/run/server.json'
         do {
             if ($server.HasExited) { throw "The mutation viewer exited $($server.ExitCode)." }
-            try { $meta = Invoke-RestMethod 'http://127.0.0.1:15381/api/meta' } catch { $meta = $null }
+            try {
+                $announcement = Get-Content -LiteralPath $serverFile -Raw | ConvertFrom-Json
+                if ($announcement.pid -eq $server.Id) {
+                    $address = $announcement.url.Replace('localhost', '127.0.0.1')
+                    $meta = Invoke-RestMethod ($address + 'api/meta')
+                }
+            } catch { $meta = $null }
             if ($meta.job.state -eq 'succeeded') { break }
             Start-Sleep -Milliseconds 200
         } while ([DateTime]::UtcNow -lt $deadline)
         if ($meta.job.state -ne 'succeeded') { throw 'The mutation viewer did not finish scanning.' }
-        $card = Invoke-RestMethod 'http://127.0.0.1:15381/api/type?id=Polly.Context'
+        $card = Invoke-RestMethod ($address + 'api/type?id=Polly.Context')
         $expected = @((Read-Context).members | Where-Object { $Snapshot.members.ContainsKey($_.id) })
         $measured = @($card.members | Where-Object { $Snapshot.members.ContainsKey($_.id) })
-        if ($expected.Count -lt 1 -or $measured.Count -ne $expected.Count) { throw 'The live card omitted measured members.' }
+        if ($expected.Count -lt 1) { throw 'No measured members to check on the live card.' }
+        foreach ($member in $expected) {
+            if (@($measured | Where-Object id -CEQ $member.id).Count -ne 1) { throw 'The live card omitted or duplicated a measured member.' }
+        }
         foreach ($member in $measured) {
             $entry = $Snapshot.members[$member.id]
             if (!$member.mutation -or $member.mutationStale -or $member.mutation.hash -ne $entry.hash -or $member.mutation.killed -ne $entry.killed -or $member.mutation.survived -ne $entry.survived) { throw "Wrong live mutation score: $($member.name)" }
-            $source = Invoke-RestMethod ('http://127.0.0.1:15381/api/source?file=' + [Uri]::EscapeDataString($member.file))
+            $source = Invoke-RestMethod ($address + 'api/source?file=' + [Uri]::EscapeDataString($member.file))
             $text = [IO.File]::ReadAllText((Join-Path $SampleRoot $member.file))
             if ($source.text -cne $text -or $member.line -lt 1 -or $member.endLine -gt $text.Split("`n").Length) { throw 'Wrong live mutation source link.' }
             $gapCount = if ($Snapshot.gaps.ContainsKey($member.id)) { @($Snapshot.gaps[$member.id]).Count } else { 0 }
@@ -96,7 +107,9 @@ try {
     $result.commit = $pin
     $result.nuget = (@(& nuget help | Select-Object -First 1) -join '').Trim()
     [void](Invoke-MutationFixture 'source-before' 'git' @('-C', $SampleRoot, 'diff', '--exit-code', '--', 'src'))
-    [IO.File]::WriteAllText((Join-Path $SampleRoot 'dotnet-tools.json'), '{ "version": 1, "isRoot": true, "tools": { "dotnet-stryker": { "version": "5.0.0", "commands": ["dotnet-stryker"], "rollForward": false } } }')
+    # 4.15.0, 4.16.0 and 5.0.0 inject a MemoryMappedFile overload incompatible with Framework references.
+    $manifest = @{ version = 1; isRoot = $true; tools = @{ 'dotnet-stryker' = @{ version = $strykerVersion; commands = @('dotnet-stryker'); rollForward = $false } } }
+    $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $SampleRoot 'dotnet-tools.json')
     Push-Location $SampleRoot
     try { [void](Invoke-MutationFixture 'install-stryker' 'dotnet' @('tool', 'restore')) }
     finally { Pop-Location }
@@ -109,7 +122,7 @@ try {
     [IO.Compression.ZipFile]::ExtractToDirectory($adapterZip, $adapter)
     $targetsFile = Join-Path $SampleRoot 'Directory.Build.targets'
     [xml]$targets = [IO.File]::ReadAllText($targetsFile)
-    # Stryker 5 does not identify the original packages.config-based xUnit project as tests.
+    # Explicitly identify the original packages.config-based xUnit project as tests.
     $testProperties = $targets.CreateElement('PropertyGroup')
     $testProperties.SetAttribute('Condition', "'`$(MSBuildProjectName)' == 'Polly.Net45.Specs'")
     $isTestProject = $targets.CreateElement('IsTestProject')
@@ -132,19 +145,7 @@ try {
     Copy-Item -LiteralPath $solution -Destination (Join-Path $evidence 'Polly.Milligram.sln')
     $source = Join-Path $SampleRoot 'src/Polly.Shared/Context.cs'
     $snapshotFile = Join-Path $SampleRoot '.milligram/metrics/mutation.json'
-    $fullExit = Invoke-MutationFixture 'full' 'dotnet' @($ToolAssembly, 'mutate', $source, '--all', '--project', $SampleRoot) @(0, 1)
-    if ($fullExit -ne 0) {
-        $probe = @('stryker', '--project', 'Polly.Net45.csproj', '--test-project', (Join-Path $SampleRoot 'src/Polly.Net45.Specs/Polly.Net45.Specs.csproj'),
-            '--configuration', 'Release', '--mutate', '**/../Polly.Shared/Context.cs', '--reporter', 'json', '--reporter', 'progress', '--diag', '--log-to-file', '--skip-version-check')
-        Push-Location (Join-Path $SampleRoot 'src/Polly.Net45')
-        try {
-            $result.automaticDiagnosticExitCode = Invoke-MutationFixture 'automatic-diagnostic' 'dotnet' ($probe + @('--output', (Join-Path $SampleRoot '.milligram/run/stryker/automatic-probe'))) @()
-            $result.explicitMsbuild = (Get-Command msbuild).Source
-            $result.overrideDiagnosticExitCode = Invoke-MutationFixture 'override-diagnostic' 'dotnet' ($probe + @('--msbuild-path', $result.explicitMsbuild, '--output', (Join-Path $SampleRoot '.milligram/run/stryker/override-probe'))) @()
-        }
-        finally { Pop-Location }
-        throw 'Milligram mutation failed; inspect the automatic/explicit-MSBuild comparison before adding an override.'
-    }
+    [void](Invoke-MutationFixture 'full' 'dotnet' @($ToolAssembly, 'mutate', $source, '--all', '--project', $SampleRoot))
     $full = Read-MutationSnapshot
     $context = Read-Context
     $entries = @($context.members | ForEach-Object { $full.members[$_.id] } | Where-Object { $null -ne $_ })

@@ -11,11 +11,20 @@ internal static class ProcessRunnerFixture
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(10);
     private static readonly string AssemblyPath = typeof(Program).Assembly.Location;
+    private static readonly string[] BuildVariables = ["MSBUILD_EXE_PATH", "MSBuildExtensionsPath", "MSBuildSDKsPath"];
     private static readonly string Stdout = string.Concat(Enumerable.Range(0, 2000).Select(i => $"OUT:{i}\n")) + "\u001b[31mOUT:tail 漢 🐱\u001b[0m   ";
     private static readonly string Stderr = string.Concat(Enumerable.Range(0, 2000).Select(i => $"ERR:{i}\n")) + "ERR:tail";
 
     public static async Task Run()
     {
+        var buildRoot = TemporaryRoot();
+        try
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            Require(await new ProcessRunner().RunAsync(Program.Dotnet(), Args("build-environment", buildRoot), buildRoot,
+                Console.WriteLine, deadline.Token) == 0, "An evaluated scan changed the child build environment.");
+        }
+        finally { Delete(buildRoot); }
         var lines = new ConcurrentQueue<string>();
         var code = await new ProcessRunner().RunAsync(Program.Dotnet(), Args("normal"), Environment.CurrentDirectory,
             lines.Enqueue, CancellationToken.None).WaitAsync(Deadline);
@@ -37,6 +46,31 @@ internal static class ProcessRunnerFixture
 
     public static async Task<int> Child(string[] args)
     {
+        if (args[0] == "environment")
+        {
+            foreach (var name in BuildVariables) Console.WriteLine(name + "=" + Environment.GetEnvironmentVariable(name));
+            return 0;
+        }
+        if (args[0] == "build-environment")
+        {
+            // This isolated child starts before SDK registration, independent of fixture ordering.
+            foreach (var name in BuildVariables) Environment.SetEnvironmentVariable(name, null);
+            var projectFile = Path.Combine(args[1], "Probe.csproj");
+            await File.WriteAllTextAsync(projectFile, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
+            await File.WriteAllTextAsync(Path.Combine(args[1], "Probe.cs"), "namespace Fixture; public class Probe {}");
+            var processes = new ProcessRunner();
+            Require(await processes.RunAsync(Program.Dotnet(), ["restore", projectFile], args[1], Console.WriteLine, CancellationToken.None) == 0,
+                "Could not restore the build environment fixture.");
+            var before = ProcessRunner.Capture(Program.Dotnet(), Args("environment"));
+            var evaluated = await processes.EvaluateProjectsAsync([projectFile], "Release", Console.WriteLine);
+            Require(evaluated.Count == 1 && evaluated[0].Compilation.GetTypeByMetadataName("Fixture.Probe") is not null, "The fixture was not evaluated.");
+            Require(Environment.GetEnvironmentVariable("MSBUILD_EXE_PATH") is not null, "The scanner lost its registered SDK environment.");
+            var after = ProcessRunner.Capture(Program.Dotnet(), Args("environment"));
+            Require(before.ExitCode == 0 && after.ExitCode == 0 && before.Output == after.Output,
+                "SDK registration leaked into child tools: " + after.Output);
+            Console.WriteLine("PASS: evaluated scans preserve the caller's child build environment");
+            return 0;
+        }
         if (args[0] == "normal")
         {
             Console.Out.Write(Stdout);
