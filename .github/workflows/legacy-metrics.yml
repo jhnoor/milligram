@@ -10,6 +10,9 @@ on:
       - src/Milligram/Analysis/Coverage/**
       - src/Milligram/Application/CrapService.cs
       - src/Milligram/Application/CoverageAttribution.cs
+      - src/Milligram/Adapters/Processes/BuildEnvironment.cs
+      - src/Milligram/Adapters/Processes/ProcessRunner.cs
+      - src/Milligram/Adapters/Processes/ProjectEvaluation.cs
   pull_request:
     paths:
       - .github/scripts/legacy-metrics-fixture.ps1
@@ -17,6 +20,9 @@ on:
       - src/Milligram/Analysis/Coverage/**
       - src/Milligram/Application/CrapService.cs
       - src/Milligram/Application/CoverageAttribution.cs
+      - src/Milligram/Adapters/Processes/BuildEnvironment.cs
+      - src/Milligram/Adapters/Processes/ProcessRunner.cs
+      - src/Milligram/Adapters/Processes/ProjectEvaluation.cs
 
 permissions:
   contents: read

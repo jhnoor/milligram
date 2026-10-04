@@ -23,7 +23,7 @@ For focused work, append one of these after `--` to the `dotnet run` command:
 
 | Option | Checks |
 |---|---|
-| `--process-fixture` | Redirected process exit, output draining, cancellation and cleanup. |
+| `--process-fixture` | Child build environment after an evaluated scan, redirected process exit, output draining, cancellation and cleanup. |
 | `--watcher-fixture` | Windows only: repeated concurrent watchers, source/restore notifications, and idle/busy input closure. |
 | `--detached-fixture` | Detached host startup, project aliases and lifecycle controls. |
 | `--attach-fixture` | Interactive attachment and terminal-mode restoration. |
