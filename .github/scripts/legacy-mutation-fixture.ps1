@@ -21,7 +21,7 @@ function Invoke-MutationFixture([string]$Name, [string]$Command, [string[]]$Argu
     $text = ($lines | ForEach-Object { $_.ToString() }) -join "`n"
     [IO.File]::WriteAllText((Join-Path $evidence "$Name.log"), $text)
     Write-Host ($lines | Select-Object -Last 25 | Out-String)
-    if ($Expected -notcontains $code) { throw "$Name exited $code; see $evidence/$Name.log." }
+    if ($Expected.Count -gt 0 -and $Expected -notcontains $code) { throw "$Name exited $code; see $evidence/$Name.log." }
     return $code
 }
 
@@ -120,7 +120,19 @@ try {
     Copy-Item -LiteralPath $solution -Destination (Join-Path $evidence 'Polly.Milligram.sln')
     $source = Join-Path $SampleRoot 'src/Polly.Shared/Context.cs'
     $snapshotFile = Join-Path $SampleRoot '.milligram/metrics/mutation.json'
-    [void](Invoke-MutationFixture 'full' 'dotnet' @($ToolAssembly, 'mutate', $source, '--all', '--project', $SampleRoot))
+    $fullExit = Invoke-MutationFixture 'full' 'dotnet' @($ToolAssembly, 'mutate', $source, '--all', '--project', $SampleRoot) @(0, 1)
+    if ($fullExit -ne 0) {
+        $probe = @('stryker', '--project', 'Polly.Net45.csproj', '--test-project', (Join-Path $SampleRoot 'src/Polly.Net45.Specs/Polly.Net45.Specs.csproj'),
+            '--configuration', 'Release', '--mutate', '**/../Polly.Shared/Context.cs', '--reporter', 'json', '--reporter', 'progress', '--diag', '--log-to-file', '--skip-version-check')
+        Push-Location (Join-Path $SampleRoot 'src/Polly.Net45')
+        try {
+            $result.automaticDiagnosticExitCode = Invoke-MutationFixture 'automatic-diagnostic' 'dotnet' ($probe + @('--output', (Join-Path $SampleRoot '.milligram/run/stryker/automatic-probe'))) @()
+            $result.explicitMsbuild = (Get-Command msbuild).Source
+            $result.overrideDiagnosticExitCode = Invoke-MutationFixture 'override-diagnostic' 'dotnet' ($probe + @('--msbuild-path', $result.explicitMsbuild, '--output', (Join-Path $SampleRoot '.milligram/run/stryker/override-probe'))) @()
+        }
+        finally { Pop-Location }
+        throw 'Milligram mutation failed; inspect the automatic/explicit-MSBuild comparison before adding an override.'
+    }
     $full = Read-MutationSnapshot
     $context = Read-Context
     $entries = @($context.members | ForEach-Object { $full.members[$_.id] } | Where-Object { $null -ne $_ })
