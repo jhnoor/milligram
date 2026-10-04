@@ -189,6 +189,7 @@ public sealed partial class ProcessRunner : IProcessRunner
         info.UseShellExecute = false;
         info.Environment["DOTNET_NOLOGO"] = "1";
         info.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
+        lock (msbuildGate) childBuildEnvironment?.Restore(info.Environment);
         return info;
     }
 

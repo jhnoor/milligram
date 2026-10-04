@@ -12,6 +12,7 @@ public sealed partial class ProcessRunner
 {
     private static readonly Lock msbuildGate = new();
     private static string? registeredSdk;
+    private static BuildEnvironment? childBuildEnvironment;
     private EvaluatedInputs? evaluatedInputs;
     public IScanInputs? ScanInputs => Volatile.Read(ref evaluatedInputs);
 
@@ -122,6 +123,7 @@ public sealed partial class ProcessRunner
                     throw new InvalidOperationException("The selected .NET SDK changed. Restart Milligram to load the new SDK; the running process cannot replace MSBuild assemblies.");
                 return;
             }
+            childBuildEnvironment ??= BuildEnvironment.Capture();
             MSBuildLocator.RegisterInstance(instance);
             registeredSdk = instance.MSBuildPath;
             report($"MSBuild SDK: {instance.MSBuildPath}");
