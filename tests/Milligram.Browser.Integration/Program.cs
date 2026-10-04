@@ -33,17 +33,20 @@ internal static class Program
             Headless = true,
             Channel = name is "chrome" or "msedge" ? name : null,
         });
+        Console.WriteLine($"Browser: {name} {browser.Version}; OS: {System.Runtime.InteropServices.RuntimeInformation.OSDescription}; runtime: {Environment.Version}");
+        Assertions.SetDefaultExpectTimeout(15000);
+        Directory.CreateDirectory("artifacts/browser");
+        if (args.Contains("--startup", StringComparer.Ordinal)) return await StartupDiagnostics.Repeat(browser, name, viewer);
         await using var context = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1440, Height = 1000 } });
+        if (!diagram) await StartupDiagnostics.Install(context);
         var page = await context.NewPageAsync();
         var errors = new ConcurrentQueue<string>();
         page.PageError += (_, error) => errors.Enqueue(error);
         page.SetDefaultTimeout(15000);
-        Assertions.SetDefaultExpectTimeout(15000);
-        Directory.CreateDirectory("artifacts/browser");
         try
         {
             if (diagram) await DiagramSmoke.Run(page, viewer, cachedProject is not null);
-            else await Smoke(page, context, viewer);
+            else await Smoke(page, context, viewer, name);
             Require(errors.IsEmpty, "Browser script errors: " + string.Join("\n", errors));
             await page.ScreenshotAsync(new() { Path = $"artifacts/browser/{name}{(diagram ? "-diagram" : "")}.png", FullPage = true });
             Console.WriteLine(diagram ? $"PASS {name}: diagram overview, navigation, source and camera" : $"PASS {name}: output, input, keyboard isolation, bracketed paste, mail, resize, replay, controls, popout and source links");
@@ -51,7 +54,9 @@ internal static class Program
         }
         catch (Exception error)
         {
+            if (!diagram) await StartupDiagnostics.Capture(page, name + "-failure-before-screenshot");
             await page.ScreenshotAsync(new() { Path = $"artifacts/browser/{name}-failure.png", FullPage = true });
+            if (!diagram) await StartupDiagnostics.Capture(page, name + "-failure-after-screenshot");
             Console.Error.WriteLine(error);
             if (!diagram) Console.Error.WriteLine("Received input: " + System.Text.Json.JsonSerializer.Serialize(viewer.Companion.Terminal.Received));
             Console.Error.WriteLine(string.Join("\n", errors));
@@ -59,7 +64,7 @@ internal static class Program
         }
     }
 
-    private static async Task Smoke(IPage page, IBrowserContext context, ViewerFixture viewer)
+    private static async Task Smoke(IPage page, IBrowserContext context, ViewerFixture viewer, string name)
     {
         await page.GotoAsync(viewer.Url);
         var panel = page.Locator("#agent-panel");
@@ -68,6 +73,7 @@ internal static class Program
         await Expect(panel).ToBeVisibleAsync();
         await Expect(text).ToContainTextAsync("READY 1: Grüße 漢字 🐱");
         await Expect(panel.Locator(".agent-state")).ToHaveTextAsync("Running");
+        await StartupDiagnostics.Capture(page, name + "-initial-terminal");
 
         await input.FocusAsync();
         await page.Keyboard.TypeAsync("hello");
