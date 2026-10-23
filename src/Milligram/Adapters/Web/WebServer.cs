@@ -120,6 +120,8 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
             contexts = policy.Proposals
                 .Select(p => new { id = p.Id, name = p.Name, isProposal = true })
                 .Prepend(new { id = DiagramTree.RealContext, name = "Real diagram", isProposal = false }),
+            boards = workspace.Boards.List()
+                .Select(b => new { id = Domain.Views.BoardViewBuilder.ContextOf(b.Id), title = b.Title, kept = b.Kept, draft = b.Draft }),
             agent = new
             {
                 available,

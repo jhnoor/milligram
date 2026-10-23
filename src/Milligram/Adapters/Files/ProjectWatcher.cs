@@ -32,6 +32,7 @@ public sealed class ProjectWatcher : IDisposable
         this.events = events;
         Directory.CreateDirectory(paths.ToViewerDirectory);
         Directory.CreateDirectory(paths.MetricsDirectory);
+        Directory.CreateDirectory(paths.BoardDraftsDirectory);
         Watch(paths.StateDirectory, ["*"], recursive: true);
         Watch(paths.Root, ["*.cs", "*.csproj", "project.assets.json"], recursive: true);
         Watch(paths.Root, ["*"], recursive: true, directories: true);
@@ -57,6 +58,7 @@ public sealed class ProjectWatcher : IDisposable
             .Concat(ProjectInputs())
             .Concat(ChangePoller.Files(paths.StateDirectory, name => name is "milligram.json" or "model.json", recurse: false))
             .Concat(ChangePoller.Files(paths.MetricsDirectory, _ => true, recurse: true))
+            .Concat(ChangePoller.Files(paths.BoardsDirectory, name => name.EndsWith(".json", StringComparison.Ordinal), recurse: true))
             .Concat(ChangePoller.Files(paths.ToViewerDirectory, _ => true, recurse: false));
 
     private IEnumerable<KeyValuePair<string, Stamp>> ProjectInputs()
@@ -77,6 +79,7 @@ public sealed class ProjectWatcher : IDisposable
         debounce.Run("model", 300, ModelChanged);
         debounce.Run("metrics", 300, MetricsChanged);
         debounce.Run("mail", 150, DeliverMail);
+        debounce.Run("boards", 150, BoardsChanged);
         debounce.Run("source", 800, SourceChanged);
     }
 
@@ -106,6 +109,7 @@ public sealed class ProjectWatcher : IDisposable
         else if (relative == ".milligram/model.json") debounce.Run("model", 300, ModelChanged);
         else if (relative.StartsWith(".milligram/metrics/", StringComparison.Ordinal)) debounce.Run("metrics", 300, MetricsChanged);
         else if (relative.StartsWith(".milligram/mail/to-viewer/", StringComparison.Ordinal)) debounce.Run("mail", 150, DeliverMail);
+        else if (relative.StartsWith(".milligram/boards/", StringComparison.Ordinal)) debounce.Run("boards", 150, BoardsChanged);
         else if (workspace.ScanInputs is not null) return;
         else if ((relative.EndsWith(".cs", StringComparison.Ordinal) && IsScanned(relative)) || IsProjectInput(relative))
             debounce.Run("source", 800, SourceChanged);
@@ -164,6 +168,9 @@ public sealed class ProjectWatcher : IDisposable
         workspace.ReloadMetrics();
         events.Publish("metrics");
     }
+
+    /// <summary>The agent redrew, or the viewer kept or discarded, a board: lists and an open board refresh.</summary>
+    private void BoardsChanged() => events.Publish("boards");
 
     private void SourceChanged() => actions.Regenerate("Scan (source changed)", inputsOnly: workspace.ScanInputs is not null);
 

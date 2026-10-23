@@ -68,9 +68,15 @@ public class WebServerTests : IAsyncLifetime
             Assert.Equal("nosniff", Assert.Single(asset.Headers.GetValues("X-Content-Type-Options")));
             Assert.NotEmpty(await asset.Content.ReadAsByteArrayAsync());
         }
+        project.Write(".milligram/boards/drafts/flow.json", """{ "title": "Flow", "boxes": [{ "id": "o", "ref": "Order" }] }""");
         using var meta = JsonDocument.Parse(await client.GetStringAsync("api/meta"));
         Assert.Equal(1, meta.RootElement.GetProperty("types").GetInt32());
         Assert.False(meta.RootElement.GetProperty("agent").TryGetProperty("reason", out _));
+        var board = Assert.Single(meta.RootElement.GetProperty("boards").EnumerateArray());
+        Assert.Equal("""{"id":"board:flow","title":"Flow","kept":false,"draft":true}""", board.GetRawText());
+        using var drawn = JsonDocument.Parse(await client.GetStringAsync("api/view?context=board:flow"));
+        Assert.True(drawn.RootElement.GetProperty("context").GetProperty("isBoard").GetBoolean());
+        Assert.Equal("Shop.Order", drawn.RootElement.GetProperty("nodes")[0].GetProperty("typeId").GetString());
         var terminal = meta.RootElement.GetProperty("agent").GetProperty("terminal");
         Assert.False(terminal.GetProperty("available").GetBoolean());
         Assert.False(terminal.TryGetProperty("protocol", out _));
