@@ -14,7 +14,7 @@ public class ProjectWatcherTests
     [InlineData("src/App/App.csproj", "src/App/Order.cs")]
     public async Task ProjectEditsRefreshDependenciesWithoutSourceEdits(string projectFile, string sourceFile)
     {
-        using var project = new TempProject(("milligram.json", """{ "src": "src", "foreign": ["System.Net.Http"] }"""),
+        using var project = new TempProject((".milligram/milligram.json", """{ "src": "src", "foreign": ["System.Net.Http"] }"""),
             (projectFile, "<Project><PropertyGroup><ImplicitUsings>enable</ImplicitUsings></PropertyGroup></Project>"),
             (sourceFile, "namespace Shop; public class Order { public HttpClient Client { get; } = new(); }"));
         var workspace = new Workspace(new ProjectPaths(project.Root), new CSharpScanner());
@@ -38,7 +38,7 @@ public class ProjectWatcherTests
     [InlineData("move-obj")]
     public async Task RestoredAssetsRefreshDependenciesWithoutSourceEdits(string change)
     {
-        using var project = new TempProject(("milligram.json", """{ "src": "src", "foreign": ["Vendor"], "exclude": ["**/obj/**"] }"""),
+        using var project = new TempProject((".milligram/milligram.json", """{ "src": "src", "foreign": ["Vendor"], "exclude": ["**/obj/**"] }"""),
             ("App.csproj", "<Project />"), ("src/Order.cs", "namespace Shop; public class Order : Vendor.Entity { }"));
         var assembly = project.Write("packages/vendor/1.0/Vendor.dll", "");
         var emitted = CSharpCompilation.Create("Vendor", [CSharpSyntaxTree.ParseText("namespace Vendor; public class Entity { }")],
@@ -73,7 +73,7 @@ public class ProjectWatcherTests
     [InlineData(true)]
     public async Task GeneratedUsingsRefreshBindingsWhenTheyAppearOrDisappear(bool remove)
     {
-        using var project = new TempProject(("milligram.json", """{ "src": "src", "foreign": ["System.Net.Http"] }"""),
+        using var project = new TempProject((".milligram/milligram.json", """{ "src": "src", "foreign": ["System.Net.Http"] }"""),
             ("src/App/App.csproj", "<Project />"),
             ("src/App/Order.cs", "namespace Shop; public class Order { public HttpClient Client { get; } = new(); }"));
         const string usings = "src/App/obj/Debug/net10.0/App.GlobalUsings.g.cs";
@@ -112,7 +112,7 @@ public class ProjectWatcherTests
     [InlineData("src/App/obj/App.GlobalUsings.g.cs.tmp", false)]
     public void ProjectInputsBelongToScannedProjectsOrTheirAncestors(string relative, bool expected)
     {
-        using var project = new TempProject(("milligram.json", """{ "src": "./src/", "exclude": ["src/Generated/**", "**/obj/**"] }"""));
+        using var project = new TempProject((".milligram/milligram.json", """{ "src": "./src/", "exclude": ["src/Generated/**", "**/obj/**"] }"""));
         var workspace = new Workspace(new ProjectPaths(project.Root), new CSharpScanner());
         workspace.Load();
         var events = new FakeEvents();
@@ -123,7 +123,7 @@ public class ProjectWatcherTests
     [Fact]
     public async Task BuildNoiseAndSourcesOutsideThePolicyDoNotQueueScans()
     {
-        using var project = new TempProject(("milligram.json", """{ "src": "src", "exclude": ["src/Generated/**"] }"""),
+        using var project = new TempProject((".milligram/milligram.json", """{ "src": "src", "exclude": ["src/Generated/**"] }"""),
             ("src/App/obj/Generated.cs", ""), ("src/Generated/Skipped.cs", ""), ("tests/Skipped.cs", ""));
         var workspace = new Workspace(new ProjectPaths(project.Root), new CSharpScanner());
         workspace.Load();
@@ -143,16 +143,16 @@ public class ProjectWatcherTests
     [Fact]
     public async Task PolicyEditsReloadAndRegenerateTheLiveModel()
     {
-        using var project = new TempProject(("milligram.json", """{ "src": "src" }"""), ("src/Order.cs", "class Order {}"));
+        using var project = new TempProject((".milligram/milligram.json", """{ "src": "src" }"""), ("src/Order.cs", "class Order {}"));
         var workspace = new Workspace(new ProjectPaths(project.Root), new CSharpScanner());
         workspace.Load();
         var events = new FakeEvents();
         var jobs = new JobQueue(events);
         using var watcher = new ProjectWatcher(workspace.Paths, workspace, Actions(workspace, events, jobs), events);
 
-        project.Write("milligram.json", """{ "src": "src", "title": "Edited" }""");
+        project.Write(".milligram/milligram.json", """{ "src": "src", "title": "Edited" }""");
 
-        Assert.Equal(JobState.Succeeded, (await Jobs.Finished(jobs, "Scan (milligram.json changed)")).State);
+        Assert.Equal(JobState.Succeeded, (await Jobs.Finished(jobs, "Scan (.milligram/milligram.json changed)")).State);
         Assert.Equal("Edited", workspace.Model.Title);
         Assert.Contains("policy", events.Types);
     }
@@ -160,8 +160,8 @@ public class ProjectWatcherTests
     [Fact]
     public void PollingIncludesProjectInputsWithoutWalkingUnrelatedBuildOutput()
     {
-        using var project = new TempProject(("milligram.json", """{ "src": "src", "exclude": ["src/Generated/**", "**/obj/**"] }"""),
-            ("App.csproj", "<Project />"), ("src/App/App.csproj", "<Project />"),
+        using var project = new TempProject((".milligram/milligram.json", """{ "src": "src", "exclude": ["src/Generated/**", "**/obj/**"] }"""),
+            ("milligram.json", "{}"), ("App.csproj", "<Project />"), ("src/App/App.csproj", "<Project />"),
             ("src/App/Order.cs", "class Order {}"), ("obj/project.assets.json", "{}"),
             ("src/App/obj/project.assets.json", "{}"), ("src/App/obj/Debug/App.GlobalUsings.g.cs", "global using System;"),
             ("src/App/obj/Debug/App.AssemblyInfo.cs", ""), ("src/App/obj/Debug/project.assets.json", "{}"),
@@ -174,7 +174,7 @@ public class ProjectWatcherTests
 
         var inputs = watcher.Watched().Select(file => workspace.Paths.Relative(file.Key)).Order(StringComparer.Ordinal);
 
-        Assert.Equal(["App.csproj", "milligram.json", "obj/project.assets.json", "src/App/App.csproj", "src/App/Order.cs",
+        Assert.Equal([".milligram/milligram.json", "App.csproj", "obj/project.assets.json", "src/App/App.csproj", "src/App/Order.cs",
             "src/App/obj/Debug/App.GlobalUsings.g.cs", "src/App/obj/project.assets.json"], inputs);
     }
 
@@ -188,7 +188,7 @@ public class ProjectWatcherTests
     [InlineData(".", "bin", "Old", "Old/Order.cs")]
     public async Task MovingAWholeFolderUpdatesTheScannedTree(string source, string before, string after, string? expectedFile)
     {
-        using var project = new TempProject(("milligram.json", $$"""{ "src": "{{source}}" }"""),
+        using var project = new TempProject((".milligram/milligram.json", $$"""{ "src": "{{source}}" }"""),
             (before + "/Order.cs", "namespace Shop; public class Order { public int Total() => 1; }"));
         var paths = new ProjectPaths(project.Root);
         var workspace = new Workspace(paths, new CSharpScanner());
@@ -227,7 +227,7 @@ public class ProjectWatcherTests
     [InlineData("src/Domain/Ignore.cs", true, true)]
     public void OnlyChangesInsideTheSourceAndOutsideExcludedTreesNeedAScan(string relative, bool directory, bool expected)
     {
-        using var project = new TempProject(("milligram.json", """
+        using var project = new TempProject((".milligram/milligram.json", """
             { "src": "./src/", "exclude": ["src/Generated/**", "**/Ignore.cs"] }
             """));
         var workspace = new Workspace(new ProjectPaths(project.Root), new CSharpScanner());
@@ -240,12 +240,12 @@ public class ProjectWatcherTests
     [Fact]
     public async Task RecoveringLostEventsReloadsThePolicyAndRescansSource()
     {
-        using var project = new TempProject(("milligram.json", """{ "src": "src" }"""),
+        using var project = new TempProject((".milligram/milligram.json", """{ "src": "src" }"""),
             ("src/Order.cs", "namespace Shop; public class Order { }"));
         var workspace = new Workspace(new ProjectPaths(project.Root), new CSharpScanner());
         workspace.Load();
         workspace.Generate();
-        project.Write("milligram.json", """{ "src": "src", "title": "Recovered" }""");
+        project.Write(".milligram/milligram.json", """{ "src": "src", "title": "Recovered" }""");
         project.Write("src/Order.cs", "namespace Shop; public class Order { } public class Added { }");
         var events = new FakeEvents();
         var jobs = new JobQueue(events);
@@ -253,7 +253,7 @@ public class ProjectWatcherTests
 
         watcher.RefreshAll();
 
-        foreach (var name in new[] { "Scan (source changed)", "Scan (milligram.json changed)" })
+        foreach (var name in new[] { "Scan (source changed)", "Scan (.milligram/milligram.json changed)" })
         {
             var status = Assert.IsType<JobStatus>(await events.WaitFor("job",
                 payload => payload is JobStatus status && status.Name == name && status.State is JobState.Succeeded or JobState.Failed));

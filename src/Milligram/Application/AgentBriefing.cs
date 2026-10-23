@@ -27,7 +27,7 @@ public static class AgentBriefing
 
         You work alongside **Milligram**, a live architecture viewer for this C# project. The user
         looks at the diagram in a browser and talks to you here, in this terminal. The diagram updates
-        on its own whenever `.cs` files, `milligram.json`, or `.milligram/metrics/` change.
+        on its own whenever `.cs` files, `.milligram/milligram.json`, or `.milligram/metrics/` change.
 
         Components are **namespaces**; the boxes inside them are sub-namespaces and types. Arrows are
         source dependencies. A **red** arrow breaks the dependency rule: it points from an inner
@@ -43,17 +43,19 @@ public static class AgentBriefing
         |----|---------|
         | `context` | `{"context":"real"}` or `{"context":"proposal","proposalId":…,"name":…}`: the diagram under discussion. Stay on it until the next `context`. `focus` is the box the user drilled into. |
         | `message` | The user typed `text` in the viewer. `selection` is what they had selected. Answer as if they typed it here. |
-        | `changed` | For your information: the viewer itself edited `milligram.json` (omit, proposal rename/delete). Re-read the file before you edit it. |
+        | `changed` | For your information: the viewer itself edited `.milligram/milligram.json` (omit, proposal rename/delete). Re-read the file before you edit it. |
 
         Talk back to the viewer with:
 
         - `milligram tell display real` or `milligram tell display <proposalId> [--focus <nodeId>]`: switch the diagram.
         - `milligram tell notify "short text"`: show a note in the viewer (e.g. "Moved Parser into Domain").
 
-        ## The policy: `milligram.json`
+        ## The policy: `.milligram/milligram.json`
 
         The diagram is generated from the source by Roslyn. Never edit `.milligram/model.json`; edit
-        `milligram.json` and the viewer regenerates. Keys:
+        `.milligram/milligram.json` and the viewer regenerates. Like everything in `.milligram/`, it is
+        local to this machine and never committed. A `milligram.json` at the project root is an old copy
+        Milligram no longer reads. Keys:
 
         | key | role |
         |-----|------|

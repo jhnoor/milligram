@@ -46,8 +46,11 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
         checks.Add(Check.Skipped("Scanner", scan.Mode == ScanMode.SourceOnly
             ? "source-only approximation: Compile membership, build conditions and target-framework references are not evaluated"
             : $"MSBuild {(scan.Projects.Count > 0 ? "entry projects: " + string.Join(", ", scan.Projects) : "automatic project discovery under/above src")}; configuration: {scan.Configuration ?? "project default"}. Evaluation is checked when scanning; doctor does not run project tasks.",
-            "set scan.mode to sourceOnly in milligram.json, or use --source-only for an approximate scan without project evaluation"));
+            "set scan.mode to sourceOnly in .milligram/milligram.json, or use --source-only for an approximate scan without project evaluation"));
         if (watching.For(workspace.Paths.Root) is { } limit) checks.Add(Check.Skipped("Watching", limit.Detail, limit.Fix));
+        if (File.Exists(workspace.Paths.RootPolicyFile))
+            checks.Add(Check.Skipped("Policy", "milligram.json at the project root is no longer read; Milligram uses .milligram/milligram.json",
+                "delete the root milligram.json once nothing else needs it"));
         return checks;
     }
 
@@ -97,7 +100,7 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
     private Check Tests(IReadOnlyList<string> tests) =>
         tests.Count == 0
             ? Check.Failed("Tests", "no test projects found, so `milligram crap` and `milligram mutate` have nothing to run",
-                "list them in milligram.json: \"tests\": { \"projects\": [\"tests/App.Tests/App.Tests.csproj\"] }")
+                "list them in .milligram/milligram.json: \"tests\": { \"projects\": [\"tests/App.Tests/App.Tests.csproj\"] }")
             : Check.Ok("Tests", Names(tests));
 
     private Check Coverage(IReadOnlyList<BuildProject> projects, IReadOnlyList<string> tests)
@@ -132,7 +135,7 @@ public sealed class Doctor(Workspace workspace, CrapService crap, IProjectLocato
     private Check Agent()
     {
         var settings = workspace.Policy.Agent;
-        if (!settings.Enabled) return Check.Skipped("Agent", "turned off in milligram.json (agent.enabled)");
+        if (!settings.Enabled) return Check.Skipped("Agent", "turned off in .milligram/milligram.json (agent.enabled)");
         return companion.IsAvailable(out var reason)
             ? Check.Ok("Agent", settings.Host == AgentHostKind.Milligram
                 ? $"Milligram terminal and {settings.Command} found"

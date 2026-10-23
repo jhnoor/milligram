@@ -34,7 +34,7 @@ public sealed class TmuxCompanion(ProjectPaths paths, Func<Policy> policy, IRead
     public bool IsAvailable(out string reason)
     {
         var settings = policy().Agent;
-        reason = !settings.Enabled ? "The agent is disabled in milligram.json (agent.enabled)."
+        reason = !settings.Enabled ? "The agent is disabled in .milligram/milligram.json (agent.enabled)."
             : !Supported ? "tmux, which the agent runs in, doesn't run on native Windows."
             : !OnPath("tmux") ? "tmux is not installed."
             : !OnPath(settings.Command) ? $"'{settings.Command}' is not on PATH."

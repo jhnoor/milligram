@@ -151,7 +151,7 @@ public sealed class WebServer(Workspace workspace, ViewerActions actions, JobQue
     {
         if (Resolve(request.File) is not { } path) return Results.NotFound();
         var opened = Desktop.OpenEditor(workspace.Policy.Editor, path, Math.Max(1, request.Line));
-        return Json(opened ? ActionResult.Done() : ActionResult.Fail("Could not start the editor. Set \"editor\" in milligram.json."));
+        return Json(opened ? ActionResult.Done() : ActionResult.Fail("Could not start the editor. Set \"editor\" in .milligram/milligram.json."));
     }
 
     private string? Resolve(string? relative)

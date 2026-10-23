@@ -44,7 +44,8 @@ $webPath = [Security.SecurityElement]::Escape((Join-Path $webRoot 'tools/VSTools
 $referenceTargets = [Security.SecurityElement]::Escape((Join-Path $referenceRoot 'build/Microsoft.NETFramework.ReferenceAssemblies.net45.targets'))
 [IO.File]::WriteAllText((Join-Path $sampleRoot 'Directory.Build.props'), '<Project><PropertyGroup><VSToolsPath>' + $webPath + '</VSToolsPath></PropertyGroup></Project>')
 [IO.File]::WriteAllText((Join-Path $sampleRoot 'Directory.Build.targets'), '<Project><Import Project="' + $referenceTargets + '"/></Project>')
-[IO.File]::WriteAllText((Join-Path $sampleRoot 'milligram.json'), '{ "prefix": "MvcMusicStore", "foreign": ["System.ComponentModel", "System.ComponentModel.DataAnnotations", "System.Transactions", "System.Web", "System.Data.Entity"] }')
+[IO.Directory]::CreateDirectory((Join-Path $sampleRoot '.milligram')) | Out-Null
+[IO.File]::WriteAllText((Join-Path $sampleRoot '.milligram/milligram.json'), '{ "prefix": "MvcMusicStore", "foreign": ["System.ComponentModel", "System.ComponentModel.DataAnnotations", "System.Transactions", "System.Web", "System.Data.Entity"] }')
 [IO.File]::WriteAllText((Join-Path $sampleRoot 'MvcMusicStore/Models/UnlistedFixture.cs'), 'namespace MvcMusicStore { public class ExcludedFromCompile {} }')
 $output = @(& $ToolPath @PrefixArguments ir --project $sampleRoot --msbuild MvcMusicStore/MvcMusicStore.csproj 2>&1)
 $code = $LASTEXITCODE

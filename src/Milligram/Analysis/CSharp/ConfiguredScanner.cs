@@ -27,7 +27,7 @@ public sealed class ConfiguredScanner(ILanguageScanner source, IProjectLocator l
             discovered = files;
             if (files.Count == 0)
             {
-                if (settings.Mode == ScanMode.Msbuild) throw new MilligramException("No C# projects were selected. Set scan.projects or scan.mode to sourceOnly in milligram.json.");
+                if (settings.Mode == ScanMode.Msbuild) throw new MilligramException("No C# projects were selected. Set scan.projects or scan.mode to sourceOnly in .milligram/milligram.json.");
                 progress?.Invoke("No C# projects in the selected source tree; using the approximate source-only scanner.");
                 next = source;
             }

@@ -104,7 +104,7 @@ milligram
 ```
 
 The first run reports parsing, binding and dependency progress while it scans, then writes
-`milligram.json` from the namespaces it finds. It also infers the
+`.milligram/milligram.json` from the namespaces it finds. It also infers the
 **levels** from the dependencies: a namespace that depends on nothing is innermost, and each of
 the others sits just outside the namespaces it uses. When namespaces depend on each other in a
 cycle, Milligram breaks the cycle at its lightest link (the fewest references) and leaves that
@@ -113,7 +113,7 @@ the levels it chose. Edit `levels` to match the architecture you intend. The fir
 analysis for its diagram after checking source and project inputs; edits during initialization
 or inputs that cannot be verified trigger a fresh scan. Later starts scan the current code. Milligram
 serves the viewer at `http://localhost:5170/` (loopback only), opens your browser, and starts the
-agent in a terminal. Edit code, a `.csproj` or `milligram.json` and the diagram updates by itself.
+agent in a terminal. Edit code, a `.csproj` or `.milligram/milligram.json` and the diagram updates by itself.
 Restored `obj/project.assets.json` files and generated global usings also trigger a new scan;
 ordinary build output is ignored.
 
@@ -159,7 +159,7 @@ project's SDK and reference packs and restore its packages first; missing refere
 diagnostics and incomplete edges. A project that fails normal MSBuild evaluation leaves the old
 model intact. Run `milligram ir --source-only` to explicitly choose the approximate source-only fallback.
 The configuration defaults to the project's choice when omitted. These options also work with
-`init` and `ir`. A first run saves them in `milligram.json`; with an existing policy they override
+`init` and `ir`. A first run saves them in `.milligram/milligram.json`; with an existing policy they override
 that invocation only. Set `scan.projects` and `scan.configuration` in the policy to persist changes.
 Coverage and mutation commands also use the selected `scan.configuration`. Evaluated member
 fingerprints include the configuration, project identity, compiler flags, symbols and referenced
@@ -228,10 +228,17 @@ not additional namespaces. Their colours retain the worst grades of their conten
 between entries remain in the arrows or markers, and collapsed internal reference counts and
 level violations appear on the box. Open a namespace or type card to inspect the details.
 The exterior is bounded to 12 boxes, including its summary. Paging and filtering do not edit
-`milligram.json`, omit code, or change levels. Cameras are remembered separately for each
+the policy, omit code, or change levels. Cameras are remembered separately for each
 diagram, focus, detail setting, overview layout and filtered page.
 
-## Configure: `milligram.json`
+## Configure: `.milligram/milligram.json`
+
+The policy describes how *you* want to see the code, so it stays on your machine with everything
+else Milligram writes. `milligram init` keeps `.milligram/` out of git through the repository's own
+`.git/info/exclude`, so no tracked file changes. Because `.milligram/` holds your policy, delete
+`model.json` or `metrics/` to start over rather than the whole folder. A `milligram.json` at the
+project root, from an earlier version, is copied into `.milligram/` the first time a command runs
+and isn't read after that; `milligram doctor` points it out.
 
 Comments are allowed. Paths are relative to `prefix` and match whole dotted segments. `milligram init`
 writes a short, commented starter. When the viewer edits the file (omit, proposals), it rewrites only
@@ -288,10 +295,8 @@ proposal** in the viewer creates an empty one, and right-clicking a proposal ren
 
 ## Metrics
 
-Snapshots live in the examined project's `.milligram/metrics/`. `milligram init` git-ignores
-`.milligram/`, because everything in it can be regenerated. If you want clones or teammates to see
-the numbers without re-running the tests, remove that line and commit `.milligram/metrics/`.
-Snapshots are written in sorted order, so diffs stay small.
+Snapshots live in the examined project's `.milligram/metrics/`, which git ignores like the rest of
+`.milligram/`. They are written in sorted order, so a rerun only changes what was remeasured.
 
 - **CRAP** = complexity² × (1 − coverage)³ + complexity, for each method. Complexity comes from
   Roslyn and line coverage from coverlet.
@@ -324,7 +329,7 @@ By default, `milligram` starts Copilot CLI in a tmux session for the project, an
 The agent's instructions are in `.milligram/agent.md`, and each project keeps one conversation,
 resumed on every start.
 
-By default the agent may run `milligram` commands and edit `milligram.json` without asking.
+By default the agent may run `milligram` commands and edit `.milligram/milligram.json` without asking.
 Anything else, such as editing code, asks for your approval in its terminal. Add patterns to
 `agent.allowTools` to allow more.
 
@@ -351,7 +356,7 @@ viewer, tell the agent to run `milligram mail`.
 | Command | Does |
 |---------|------|
 | `milligram` | Viewer and agent. Options: `--port N` (1–65535, default 5170; tries up to 29 following ports), `--no-agent`, `--no-browser`, `--keep-agent`, `--project DIR`. |
-| `milligram init [--force]` | Write `milligram.json` from the source, inferring levels from the dependencies. |
+| `milligram init [--force]` | Write `.milligram/milligram.json` from the source, inferring levels from the dependencies. |
 | `milligram ir` | Rescan with the policy's project selection and configuration. |
 | `milligram crap [--coverage file.xml]` | Run the tests with coverage (or read a Cobertura file) and score CRAP. |
 | `milligram mutate [--all] [files…]` | Mutation-test changed members, including initializers (every file if you list none). |
@@ -422,7 +427,7 @@ Stop the old session before changing `agent.host`, then restart the viewer. Each
 its initial backend so a policy reload cannot redirect its shutdown command. On exit, a viewer
 stops only the session it originally started. A replacement started later, including through
 the Restart button, stays running. The Stop button and `agent stop` stop the current session.
-If `milligram.json` is unreadable, `agent stop` attempts both backends for this project; other
+If `.milligram/milligram.json` is unreadable, `agent stop` attempts both backends for this project; other
 agent commands still require a valid policy.
 `--keep-agent` and `agent.keepOnExit` leave the original session running too.
 The internal `agent host --project DIR [--instance ID]` entry point is for the detached launcher
@@ -440,7 +445,8 @@ dotnet run --project src/Milligram -- serve --no-agent     # view Milligram itse
 Contributor and agent guidance (layout, conventions, what must change together) is in
 [AGENTS.md](AGENTS.md).
 
-Milligram's own layers, as set in its `milligram.json`:
+Milligram's own layers, as set in `tests/Milligram.Tests/architecture.json` and enforced by its tests
+(copy that file to `.milligram/milligram.json` to view Milligram with them):
 
 - `Domain` (0) — pure model and rules.
 - `Application` (1) — use cases and ports.

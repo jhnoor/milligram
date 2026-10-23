@@ -30,7 +30,7 @@ function Assert-FrameworkEdge($Model, [string]$From, [string]$To, [bool]$Present
     if ($found -ne $Present) { throw "Wrong framework edge: $From -> $To (expected $Present)" }
 }
 
-Write-Framework 'milligram.json' '{ "src": "unused", "foreign": ["System.Web", "System.Threading", "Conditional.Left", "Conditional.Right"] }'
+Write-Framework '.milligram/milligram.json' '{ "src": "unused", "foreign": ["System.Web", "System.Threading", "Conditional.Left", "Conditional.Right"] }'
 foreach ($side in @('Left', 'Right')) {
     Write-Framework "$side/$side.csproj" @'
 <Project Sdk="Microsoft.NET.Sdk">

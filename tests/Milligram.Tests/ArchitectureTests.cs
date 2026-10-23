@@ -12,7 +12,7 @@ public class ArchitectureTests
     public void MilligramObeysItsOwnDependencyRule()
     {
         var root = TempProject.RepositoryRoot();
-        var policy = JsonFile.Read<Policy>(Path.Combine(root, "milligram.json"))!;
+        var policy = OwnPolicy(root);
         var model = new CSharpScanner().Scan(new ScanRequest(
             root, Path.Combine(root, policy.Src), policy.Exclude, policy.Prefix, policy.Foreign, "Milligram"));
         var tree = TreeBuilder.Real(model, policy);
@@ -30,7 +30,7 @@ public class ArchitectureTests
     public void TheDomainDependsOnNoFrameworks()
     {
         var root = TempProject.RepositoryRoot();
-        var policy = JsonFile.Read<Policy>(Path.Combine(root, "milligram.json"))!;
+        var policy = OwnPolicy(root);
         var model = new CSharpScanner().Scan(new ScanRequest(
             root, Path.Combine(root, policy.Src), policy.Exclude, policy.Prefix, ["Microsoft"], "Milligram"));
 
@@ -41,4 +41,8 @@ public class ArchitectureTests
 
         Assert.Empty(offenders);
     }
+
+    /// <summary>Milligram's own levels live with these tests, because a project's policy is never committed.</summary>
+    private static Policy OwnPolicy(string root) =>
+        JsonFile.Read<Policy>(Path.Combine(root, "tests", "Milligram.Tests", "architecture.json"))!;
 }

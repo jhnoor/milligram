@@ -18,7 +18,7 @@ internal sealed class ServiceFixture : IDisposable
 
     public ServiceFixture(string policy = """{ "prefix": "App", "src": "src" }""")
     {
-        Project = new TempProject(("milligram.json", policy), ("src/App/App.csproj", "<Project />"), ("src/App/A.cs", Source));
+        Project = new TempProject((".milligram/milligram.json", policy), ("src/App/App.csproj", "<Project />"), ("src/App/A.cs", Source));
         Workspace = new Workspace(new ProjectPaths(Project.Root), new CSharpScanner());
         Workspace.Load();
         AppProject = new BuildProject(Path.Combine(Project.Root, "src/App/App.csproj"), "App", false, []);

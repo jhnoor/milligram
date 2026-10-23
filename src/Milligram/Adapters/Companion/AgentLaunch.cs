@@ -37,7 +37,7 @@ public sealed class AgentLaunches(ProjectPaths paths, Func<Policy> policy, IRead
         Path.GetFileNameWithoutExtension(command.Replace('\\', '/').Split('/')[^1]) == "copilot";
 
     /// <summary>
-    /// Copilot joins the project's conversation, may run `milligram` and edit milligram.json without asking, and is told
+    /// Copilot joins the project's conversation, may run `milligram` and edit .milligram/milligram.json without asking, and is told
     /// to read its briefing: at once in a new conversation, or again after a restart in a resumed one.
     /// </summary>
     public static IReadOnlyList<string> CopilotArgs(AgentSettings settings, AgentConversation conversation, bool resumed, ProjectPaths paths)

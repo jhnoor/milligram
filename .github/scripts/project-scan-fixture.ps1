@@ -39,7 +39,7 @@ function Require-Edge($Model, [string]$From, [string]$To, [bool]$Present = $true
     if ($found -ne $Present) { throw "Wrong dependency: $From -> $To (expected present: $Present)" }
 }
 
-Write-Input 'milligram.json' '{ "src": "unused", "exclude": ["**/obj/**", "App/Hidden.cs"], "foreign": ["System.Net.Http", "System.Text"] }'
+Write-Input '.milligram/milligram.json' '{ "src": "unused", "exclude": ["**/obj/**", "App/Hidden.cs"], "foreign": ["System.Net.Http", "System.Text"] }'
 Write-Input 'Settings.props' '<Project><PropertyGroup><DefineConstants>$(DefineConstants);IMPORTED</DefineConstants></PropertyGroup></Project>'
 Write-Input 'App/App.csproj' @'
 <Project Sdk="Microsoft.NET.Sdk">

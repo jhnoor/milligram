@@ -455,7 +455,7 @@ function emptyMessage() {
   const meta = state.meta;
   if (!meta) return '';
   if (meta.types === 0 && meta.job?.state === 'running') return 'Scanning the source…';
-  if (meta.types === 0) return 'No C# types found. Check "src" and "exclude" in milligram.json, then press Regen.';
+  if (meta.types === 0) return 'No C# types found. Check "src" and "exclude" in .milligram/milligram.json, then press Regen.';
   return state.view?.context.isProposal ? 'This proposal is empty. Describe it to the agent.' : 'Nothing at this level.';
 }
 

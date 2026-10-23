@@ -66,7 +66,7 @@ Write-PathInput 'Legacy/Legacy.csproj' @'
 '@
 Write-PathInput 'Legacy/Legacy.cs' 'namespace Legacy { public class Selected {} }'
 Write-PathInput 'Legacy/Unlisted.cs' 'class Unlisted {}'
-Write-PathInput 'milligram.json' '{}'
+Write-PathInput '.milligram/milligram.json' '{}'
 Invoke-PathDotNet restore (Join-Path $projectRoot 'Modern/Modern.csproj') --nologo -v quiet
 Write-PathInput 'references/References.csproj' '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net48</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all"/></ItemGroup></Project>'
 Invoke-PathDotNet restore (Join-Path $projectRoot 'references/References.csproj') --nologo -v quiet

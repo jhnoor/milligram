@@ -32,7 +32,7 @@ public sealed class AgentHost(ProjectPaths paths, Func<Policy> policy, IReadOnly
             detach();
             var started = DateTimeOffset.UtcNow;
             Log($"Agent host {Environment.ProcessId} starting (Milligram {version}).");
-            if (!policy().Agent.Enabled) throw new MilligramException("The agent is disabled in milligram.json (agent.enabled).");
+            if (!policy().Agent.Enabled) throw new MilligramException("The agent is disabled in .milligram/milligram.json (agent.enabled).");
             AgentBriefing.Write(paths);
             var launch = new AgentLaunches(paths, policy, self).Prepare(OperatingSystem.IsWindows());
             var size = new TerminalSize(80, 24);

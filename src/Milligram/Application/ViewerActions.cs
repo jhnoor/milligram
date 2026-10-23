@@ -203,7 +203,7 @@ public sealed class ViewerActions(
         if (companion.IsRunning()) companion.Ring();
     }
 
-    /// <summary>Tells the agent the viewer edited milligram.json, without waking it.</summary>
+    /// <summary>Tells the agent the viewer edited the policy, without waking it.</summary>
     private void Notify(JsonObject data) => workspace.ToAgent.Post(MailMessage.Ops.Changed, data);
 
     private JsonObject ContextData(string? contextId, string? focus)

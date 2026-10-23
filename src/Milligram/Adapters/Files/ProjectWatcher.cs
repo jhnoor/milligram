@@ -32,7 +32,6 @@ public sealed class ProjectWatcher : IDisposable
         this.events = events;
         Directory.CreateDirectory(paths.ToViewerDirectory);
         Directory.CreateDirectory(paths.MetricsDirectory);
-        Watch(paths.Root, ["milligram.json"], recursive: false);
         Watch(paths.StateDirectory, ["*"], recursive: true);
         Watch(paths.Root, ["*.cs", "*.csproj", "project.assets.json"], recursive: true);
         Watch(paths.Root, ["*"], recursive: true, directories: true);
@@ -56,8 +55,7 @@ public sealed class ProjectWatcher : IDisposable
     internal IEnumerable<KeyValuePair<string, Stamp>> Watched() =>
         ChangePoller.Files(paths.Absolute(workspace.Policy.Src), name => name.EndsWith(".cs", StringComparison.Ordinal), recurse: true, Unscanned)
             .Concat(ProjectInputs())
-            .Concat(ChangePoller.Files(paths.Root, name => name == "milligram.json", recurse: false))
-            .Concat(ChangePoller.Files(paths.StateDirectory, name => name == "model.json", recurse: false))
+            .Concat(ChangePoller.Files(paths.StateDirectory, name => name is "milligram.json" or "model.json", recurse: false))
             .Concat(ChangePoller.Files(paths.MetricsDirectory, _ => true, recurse: true))
             .Concat(ChangePoller.Files(paths.ToViewerDirectory, _ => true, recurse: false));
 
@@ -104,7 +102,7 @@ public sealed class ProjectWatcher : IDisposable
     {
         var relative = paths.Relative(fullPath);
         if (relative.EndsWith(".tmp", StringComparison.Ordinal)) return;
-        if (relative == "milligram.json") debounce.Run("policy", 300, PolicyChanged);
+        if (relative == ".milligram/milligram.json") debounce.Run("policy", 300, PolicyChanged);
         else if (relative == ".milligram/model.json") debounce.Run("model", 300, ModelChanged);
         else if (relative.StartsWith(".milligram/metrics/", StringComparison.Ordinal)) debounce.Run("metrics", 300, MetricsChanged);
         else if (relative.StartsWith(".milligram/mail/to-viewer/", StringComparison.Ordinal)) debounce.Run("mail", 150, DeliverMail);
@@ -151,7 +149,7 @@ public sealed class ProjectWatcher : IDisposable
 
     private void PolicyChanged()
     {
-        if (workspace.ReloadPolicy()) actions.Regenerate("Scan (milligram.json changed)");
+        if (workspace.ReloadPolicy()) actions.Regenerate("Scan (.milligram/milligram.json changed)");
         events.Publish("policy");
     }
 

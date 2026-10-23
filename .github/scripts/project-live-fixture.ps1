@@ -78,7 +78,7 @@ try {
     Wait-Type 'App.DebugOnly'
     Wait-Type 'App.Linked'
     if ((Read-LiveModel).types.id -contains 'App.Unlisted') { throw 'Default startup included an unlisted source file' }
-    $policyFile = Join-Path $liveRoot 'milligram.json'
+    $policyFile = Join-Path $liveRoot '.milligram/milligram.json'
     $policy = Get-Content -LiteralPath $policyFile -Raw | ConvertFrom-Json -AsHashtable
     if ($policy.scan.mode -ne 'auto') { throw 'Initialization did not persist automatic project selection' }
     $serverFile = Join-Path $liveRoot '.milligram/run/server.json'

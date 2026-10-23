@@ -29,7 +29,8 @@ for ($p = 0; $p -lt $projects; $p++) {
     [IO.File]::WriteAllText((Join-Path $directory 'Code.cs'), $text)
     [IO.File]::WriteAllText((Join-Path $directory 'Unlisted.cs'), 'class Unlisted {}')
 }
-[IO.File]::WriteAllText((Join-Path $scaleRoot 'milligram.json'), '{"src":"src","prefix":"Bench","exclude":["**/bin/**","**/obj/**"]}')
+[IO.Directory]::CreateDirectory((Join-Path $scaleRoot '.milligram')) | Out-Null
+[IO.File]::WriteAllText((Join-Path $scaleRoot '.milligram/milligram.json'), '{"src":"src","prefix":"Bench","exclude":["**/bin/**","**/obj/**"]}')
 & dotnet restore (Join-Path $scaleRoot 'src/P000/P000.csproj') --disable-parallel > (Join-Path $scaleRoot 'project-startup-scale-restore.log') 2>&1
 if ($LASTEXITCODE -ne 0) { throw 'Synthetic graph restore failed' }
 $start = [Diagnostics.ProcessStartInfo]::new('dotnet')

@@ -82,7 +82,7 @@ public class StartupScanTests
         var workspace = new Workspace(paths, scanner);
         workspace.Load();
         var original = workspace.Policy;
-        if (change == "broken") project.Write("milligram.json", "{");
+        if (change == "broken") project.Write(".milligram/milligram.json", "{");
         else workspace.EditPolicy(policy => change switch
         {
             "title" => policy with { Title = "Changed" },
@@ -125,7 +125,7 @@ public class StartupScanTests
     [Fact]
     public async Task AnExistingPolicyAlwaysScansAndDoesNotInvokeTheInitializationCheck()
     {
-        using var project = new TempProject(("milligram.json", "{}"), ("Order.cs", "class Order { }"));
+        using var project = new TempProject((".milligram/milligram.json", "{}"), ("Order.cs", "class Order { }"));
         var scanner = new CountingScanner();
         var workspace = new Workspace(new ProjectPaths(project.Root), scanner);
         workspace.Load();
