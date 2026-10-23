@@ -24,7 +24,7 @@ public static class PolicyText
             {
               // Written by `milligram init`. Milligram's README explains every key, under "Configure".
               "title": {{Value(policy.Title)}},
-              // The source root and the globs to leave out, relative to this file.
+              // The source root and the globs to leave out, relative to the project root.
               "src": {{Value(policy.Src)}},
               "exclude": {{Value(policy.Exclude)}},
               // Auto evaluates discovered C# projects. sourceOnly is the approximate, build-free fallback.
