@@ -26,7 +26,7 @@ public sealed class AgentHostCompanion(ProjectPaths paths, Func<Policy> policy, 
     public bool IsAvailable(out string reason)
     {
         var settings = policy().Agent;
-        reason = !settings.Enabled ? "The agent is disabled in milligram.json (agent.enabled)."
+        reason = !settings.Enabled ? "The agent is disabled in .milligram/milligram.json (agent.enabled)."
             : !onPath(settings.Command) ? $"'{settings.Command}' is not on PATH."
             : terminalIssue?.Invoke() ?? "";
         if (reason.Length > 0) return false;

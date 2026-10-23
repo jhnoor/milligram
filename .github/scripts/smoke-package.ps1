@@ -42,6 +42,8 @@ if ($IsWindows) { & (Join-Path $PSScriptRoot 'legacy-host-path-fixture.ps1') -Pa
 Push-Location $projectRoot
 try {
     Invoke-DotNet new classlib -n Smoke -o src/Smoke --no-restore
+    & git init --quiet $projectRoot
+    if ($LASTEXITCODE -ne 0) { throw 'git init failed' }
     [IO.File]::WriteAllText((Join-Path $projectRoot 'src/Smoke/Class1.cs'), @'
 namespace Smoke.Domain { public class Order { public int Total(int amount) => amount > 0 ? amount : 0; } }
 namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } = new(); } }
@@ -119,10 +121,16 @@ namespace Smoke.Web { public class Handler { public Domain.Order Order { get; } 
                 throw 'Source preview or editor access followed a link outside the project'
             }
         }
-        foreach ($file in @('milligram.json', '.milligram/agent.md', '.milligram/model.json')) {
+        foreach ($file in @('.milligram/milligram.json', '.milligram/agent.md', '.milligram/model.json')) {
             if (!(Test-Path -LiteralPath (Join-Path $projectRoot $file))) { throw "First run did not create $file" }
         }
-        $policyFile = Join-Path $projectRoot 'milligram.json'
+        foreach ($file in @('milligram.json', '.gitignore')) {
+            if (Test-Path -LiteralPath (Join-Path $projectRoot $file)) { throw "First run wrote $file where git could commit it" }
+        }
+        if ((Get-Content -LiteralPath (Join-Path $projectRoot '.git/info/exclude')) -notcontains '.milligram/') { throw 'First run did not exclude .milligram/ from git' }
+        & git -C $projectRoot check-ignore -q .milligram/milligram.json
+        if ($LASTEXITCODE -ne 0) { throw 'git does not ignore the local policy' }
+        $policyFile = Join-Path $projectRoot '.milligram/milligram.json'
         $policyText = Get-Content -LiteralPath $policyFile -Raw
         $policy = $policyText | ConvertFrom-Json
         if ($policy.levels.Count -lt 2 -or $view.maxLevel -lt 1) { throw 'First-run diagram has no inferred layers' }

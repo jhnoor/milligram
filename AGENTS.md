@@ -38,7 +38,8 @@ dotnet test --filter "FullyQualifiedName~WorkspaceTests"   # one class
 dotnet format Milligram.slnx --verify-no-changes           # lint gate: must pass before you commit
 dotnet tool restore                            # Stryker 5, pinned in dotnet-tools.json
 
-# Point Milligram at itself (milligram.json at the repo root describes its own layers):
+# Point Milligram at itself. Its own layers live with the architecture tests; copy them in once:
+mkdir -p .milligram && cp tests/Milligram.Tests/architecture.json .milligram/milligram.json
 dotnet run --project src/Milligram -- ir                     # rescan -> .milligram/model.json
 dotnet run --project src/Milligram -- crap                   # tests + coverage -> .milligram/metrics/crap.json
 dotnet run --project src/Milligram -- mutate src/Milligram/Domain/Metrics/Crap.cs   # differential mutation
@@ -46,7 +47,8 @@ dotnet run --project src/Milligram -- doctor                 # what the metrics 
 dotnet run --project src/Milligram -- --no-agent --no-browser   # viewer at http://localhost:5170/
 ```
 
-Everything under `.milligram/` is regenerated and git-ignored. Never commit it.
+Everything under `.milligram/` is local and git-ignored. Never commit it. Not all of it regenerates:
+the policy, `.milligram/milligram.json`, lives there too, so never clear the folder wholesale.
 
 ## Layout
 
@@ -67,17 +69,17 @@ Data flow: `CSharpScanner` → `CodeModel` (written to `.milligram/model.json`) 
 builds a `DiagramTree` for one context (`real`, or a proposal id) → `ViewBuilder` and
 `TypeCardBuilder` apply the metrics → the JSON API (`/api/view`, `/api/type`, `/api/source`,
 `/api/action`, `/api/events`) → `app.js` lays it out with ELK and draws SVG. `ProjectWatcher`
-regenerates when `.cs` files, `milligram.json`, or metrics change, and pushes SSE events.
+regenerates when `.cs` files, `.milligram/milligram.json`, or metrics change, and pushes SSE events.
 
 ## Rules that tests enforce
 
-- **The dependency rule.** `ArchitectureTests` scans this repo with its own `milligram.json` and
-  fails on any edge from an inner level to an outer one. Domain → Application → Analysis/Adapters →
-  Main: inner code never references outer code.
+- **The dependency rule.** `ArchitectureTests` scans this repo with its own policy,
+  `tests/Milligram.Tests/architecture.json`, and fails on any edge from an inner level to an outer
+  one. Domain → Application → Analysis/Adapters → Main: inner code never references outer code.
 - **The Domain uses no frameworks.** Nothing under `Milligram.Domain` may reference
   `Microsoft.*`. System types are fine.
-- A new top-level namespace has to be added to `levels` (and `order`) in `milligram.json`.
-  Without a level it is **silently exempt** from the rule.
+- A new top-level namespace has to be added to `levels` (and `order`) in
+  `tests/Milligram.Tests/architecture.json`. Without a level it is **silently exempt** from the rule.
 - Need something from an outer layer? Add an interface to `Application/Ports.cs`, implement it in
   `Analysis` or `Adapters`, and wire it up in `Main/Composition.cs`.
 
@@ -96,9 +98,13 @@ Match the existing code. It is terse and consistent:
 - All JSON goes through `MilligramJson.Options` and `JsonFile`. Web defaults, camelCase enums,
   comments and trailing commas allowed in input. `JsonFile.Write` is atomic (temp file + rename).
   Keep it that way, because the watcher and the agent read these files while they are being written.
-  `milligram.json` is written through `PolicyText`: `init` writes a commented starter, and viewer edits
+  `.milligram/milligram.json` is written through `PolicyText`: `init` writes a commented starter, and viewer edits
   (`Workspace.EditPolicy`) rewrite only the keys that changed, so hand-written comments survive. Never
   `JsonFile.Write` a whole `Policy` over it.
+- In an examined project, Milligram writes only inside `.milligram/`, plus the `.milligram/` line in
+  the repository's own `.git/info/exclude` (`GitExclude`). Nothing it writes may need committing.
+  A root `milligram.json` from an earlier version is copied in once (`ProjectInitializer.AdoptRootPolicy`)
+  and never read or written again.
 - For errors the user should see, throw `MilligramException`. `Program` and `ViewerActions` turn
   it into a message. Don't use it for bugs.
 - Long work (scans, tests, Stryker) runs through `JobQueue`, one job at a time, and reports

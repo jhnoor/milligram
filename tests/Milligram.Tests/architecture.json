@@ -1,5 +1,6 @@
 {
-  // Milligram viewing itself. Levels are inner (0) first.
+  // Milligram's own layers, enforced by ArchitectureTests. Levels are inner (0) first; paths are
+  // relative to the repository root. To view Milligram with them, copy this file to .milligram/milligram.json.
   "title": "Milligram",
   "src": "src",
   "exclude": ["**/bin/**", "**/obj/**"],

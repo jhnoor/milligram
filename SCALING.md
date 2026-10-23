@@ -71,7 +71,8 @@ milligram serve --project /absolute/path/to/roslyn-scale --source-only --no-agen
 The clone command enables long paths for this checkout on Windows. The measurement used an
 isolated Release publish of Milligram and the equivalent
 `dotnet /path/to/Milligram.dll` commands. No Roslyn build, restore, coverage or mutation command
-was run. Initialization writes `milligram.json` and adds Milligram's local files to `.gitignore`.
+was run. At the time, initialization wrote `milligram.json` and added Milligram's local files to `.gitignore`;
+it now writes `.milligram/milligram.json` and lists `.milligram/` in `.git/info/exclude` instead.
 
 ## Semantic-model lifetime
 
@@ -153,7 +154,7 @@ source updates after reuse. Tests cover changed source/project inputs, edits rev
 initialization, concurrent policy creation, and existing-policy startup.
 
 To reproduce first-run startup, invoke `milligram serve --no-agent --no-browser` in a fresh
-checkout without `milligram.json`. Running `init` first measures existing-policy startup instead.
+checkout without `.milligram/milligram.json`. Running `init` first measures existing-policy startup instead.
 The Windows measurement predates the follow-up correction to atomic policy creation on Unix;
 that correction changes file publication, not scan reuse.
 

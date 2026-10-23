@@ -126,7 +126,8 @@ try {
     }
     finally { [IO.File]::WriteAllBytes($testFile, $original) }
     Build-Legacy 'build-restored'
-    [IO.File]::WriteAllText((Join-Path $sampleRoot 'milligram.json'), '{ "prefix": "Polly", "scan": { "projects": ["src/Polly.Net45/Polly.Net45.csproj"], "configuration": "Release" }, "tests": { "projects": ["src/Polly.Net45.Specs/Polly.Net45.Specs.csproj"] }, "agent": { "enabled": false } }')
+    [IO.Directory]::CreateDirectory((Join-Path $sampleRoot '.milligram')) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $sampleRoot '.milligram/milligram.json'), '{ "prefix": "Polly", "scan": { "projects": ["src/Polly.Net45/Polly.Net45.csproj"], "configuration": "Release" }, "tests": { "projects": ["src/Polly.Net45.Specs/Polly.Net45.Specs.csproj"] }, "agent": { "enabled": false } }')
     Assert-ImportedCoverage $partial 'partial-pass'
     Assert-ImportedCoverage $failing 'partial-fail'
     Copy-Item -LiteralPath (Join-Path $sampleRoot '.milligram/model.json') -Destination (Join-Path $evidence 'model.json')

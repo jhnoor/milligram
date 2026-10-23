@@ -4,8 +4,11 @@ namespace Milligram.Application;
 public sealed class ProjectPaths(string root)
 {
     public string Root { get; } = Path.GetFullPath(root);
-    public string PolicyFile => Path.Combine(Root, "milligram.json");
     public string StateDirectory => Path.Combine(Root, ".milligram");
+    public string PolicyFile => Path.Combine(StateDirectory, "milligram.json");
+
+    /// <summary>Where earlier versions kept the policy, in reach of a commit. Read once to adopt it, never written.</summary>
+    public string RootPolicyFile => Path.Combine(Root, "milligram.json");
     public string ModelFile => Path.Combine(StateDirectory, "model.json");
     public string MetricsDirectory => Path.Combine(StateDirectory, "metrics");
     public string CrapFile => Path.Combine(MetricsDirectory, "crap.json");
@@ -18,7 +21,7 @@ public sealed class ProjectPaths(string root)
     public string AgentStateFile => Path.Combine(RunDirectory, "agent.json");
     public string ServerFile => Path.Combine(RunDirectory, "server.json");
 
-    /// <summary>Everything Milligram writes is local: the model and metrics regenerate, mail and run files are transient.</summary>
+    /// <summary>Everything Milligram writes is local, the policy included: git ignores it without a change to any tracked file.</summary>
     public static readonly IReadOnlyList<string> GitIgnored = [".milligram/"];
 
     public string Relative(string path) =>

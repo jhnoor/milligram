@@ -23,17 +23,18 @@ internal sealed class ViewerFixture : IAsyncDisposable
 
     public async Task Start(bool diagram = false, string? cachedProject = null)
     {
-        Directory.CreateDirectory(root);
+        var policyFile = new ProjectPaths(root).PolicyFile;
+        Directory.CreateDirectory(Path.GetDirectoryName(policyFile)!);
         if (diagram)
         {
-            await File.WriteAllTextAsync(Path.Combine(root, "milligram.json"), """{"prefix":"","levels":[["Global000"],["Wide"]],"agent":{"enabled":false}}""");
+            await File.WriteAllTextAsync(policyFile, """{"prefix":"","levels":[["Global000"],["Wide"]],"agent":{"enabled":false}}""");
             var source = string.Join('\n', Enumerable.Range(0, 500).Select(i => $"public class Global{i:D3} {{ public Wide.N{i % 120:D3}.Item Next; public int Value() => {i}; }}")
                 .Concat(Enumerable.Range(0, 120).Select(i => $"namespace Wide.N{i:D3} {{ public class Item {{ public Global{i:D3} Back; }} }}")));
             await File.WriteAllTextAsync(Path.Combine(root, "Wide.cs"), source);
         }
         else
         {
-            await File.WriteAllTextAsync(Path.Combine(root, "milligram.json"), """{"prefix":"Shop","agent":{"host":"milligram"}}""");
+            await File.WriteAllTextAsync(policyFile, """{"prefix":"Shop","agent":{"host":"milligram"}}""");
             await File.WriteAllTextAsync(Path.Combine(root, "Order.cs"), "namespace Shop;\npublic class Order { public int Total() => 1; }\n");
         }
         Workspace = new Workspace(new ProjectPaths(cachedProject ?? root), new CSharpScanner());

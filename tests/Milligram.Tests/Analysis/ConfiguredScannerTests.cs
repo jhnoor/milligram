@@ -82,7 +82,7 @@ public class ConfiguredScannerTests
     [Fact]
     public void ConfigurationOverridesKeepThePersistedEntryProjects()
     {
-        using var project = new TempProject(("milligram.json", """{ "scan": { "mode": "msbuild", "projects": ["Selected.csproj"], "configuration": "Debug" } }"""));
+        using var project = new TempProject((".milligram/milligram.json", """{ "scan": { "mode": "msbuild", "projects": ["Selected.csproj"], "configuration": "Debug" } }"""));
         var calls = new List<(IReadOnlyList<string> Files, string? Configuration)>();
         var scanner = new ConfiguredScanner(new CSharpScanner(), new DotNetProjectLocator(), (files, configuration) =>
         {

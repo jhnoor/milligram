@@ -51,7 +51,7 @@ public sealed class Workspace
         ReloadMetrics();
     }
 
-    /// <summary>Re-reads milligram.json. A broken file keeps the last good policy and reports the error.</summary>
+    /// <summary>Re-reads .milligram/milligram.json. A broken file keeps the last good policy and reports the error.</summary>
     public bool ReloadPolicy() => ReloadPolicy(() => JsonFile.Read<Policy>(Paths.PolicyFile));
 
     internal bool ReloadPolicy(Func<Policy?> read)
@@ -66,7 +66,7 @@ public sealed class Workspace
             }
             catch (Exception e) when (e is System.Text.Json.JsonException or IOException or NotSupportedException)
             {
-                Update(() => PolicyError = $"milligram.json: {e.Message}");
+                Update(() => PolicyError = $".milligram/milligram.json: {e.Message}");
                 return false;
             }
         }
@@ -137,7 +137,7 @@ public sealed class Workspace
         left.Configuration == right.Configuration && left.Projects.SequenceEqual(right.Projects, StringComparer.Ordinal);
 
     /// <summary>
-    /// Applies a viewer edit. Only the keys it changes are rewritten, so comments and layout in milligram.json
+    /// Applies a viewer edit. Only the keys it changes are rewritten, so comments and layout in .milligram/milligram.json
     /// survive; a file that does not parse is left alone and the edit is refused.
     /// </summary>
     public Policy EditPolicy(Func<Policy, Policy> edit)
@@ -153,7 +153,7 @@ public sealed class Workspace
             }
             catch (System.Text.Json.JsonException e)
             {
-                throw new MilligramException($"Fix milligram.json before editing it from the viewer: {e.Message}");
+                throw new MilligramException($"Fix .milligram/milligram.json before editing it from the viewer: {e.Message}");
             }
             policy = edited;
             PolicyError = null;

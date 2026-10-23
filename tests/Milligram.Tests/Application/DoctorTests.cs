@@ -83,11 +83,29 @@ public class DoctorTests
             ✓ Stryker.NET: `dotnet stryker` runs
             ✓ Agent: tmux and copilot found
             – Scanner: MSBuild automatic project discovery under/above src; configuration: project default. Evaluation is checked when scanning; doctor does not run project tasks.
-                Fix: set scan.mode to sourceOnly in milligram.json, or use --source-only for an approximate scan without project evaluation
+                Fix: set scan.mode to sourceOnly in .milligram/milligram.json, or use --source-only for an approximate scan without project evaluation
             """,
             Report(checks));
         Assert.Equal([("dotnet", "--version"), ("dotnet", "stryker --help")], processes.Calls.Select(c => (c.Command, string.Join(' ', c.Args))));
         Assert.All(processes.Calls, c => Assert.Equal(fixture.Project.Root, c.Directory));
+    }
+
+    [Fact]
+    public async Task SaysARootPolicyIsNoLongerRead()
+    {
+        using var fixture = new ServiceFixture();
+        var checks = await Doctor(fixture, new FakeProjectLocator(), new FakeProcessRunner(), new FakeCompanion()).RunAsync(CancellationToken.None);
+        Assert.DoesNotContain(checks, check => check.Name == "Policy");
+
+        fixture.Project.Write("milligram.json", "{}");
+        checks = await Doctor(fixture, new FakeProjectLocator(), new FakeProcessRunner(), new FakeCompanion()).RunAsync(CancellationToken.None);
+
+        Assert.Equal(
+            """
+            – Policy: milligram.json at the project root is no longer read; Milligram uses .milligram/milligram.json
+                Fix: delete the root milligram.json once nothing else needs it
+            """,
+            string.Join("\n", checks[^1].Describe()));
     }
 
     [Fact]
@@ -127,7 +145,7 @@ public class DoctorTests
                 Fix: or run your own: start copilot in the project folder and tell it to read .milligram/agent.md
                 Fix: or turn the agent off: "agent": { "enabled": false }
             – Scanner: MSBuild automatic project discovery under/above src; configuration: project default. Evaluation is checked when scanning; doctor does not run project tasks.
-                Fix: set scan.mode to sourceOnly in milligram.json, or use --source-only for an approximate scan without project evaluation
+                Fix: set scan.mode to sourceOnly in .milligram/milligram.json, or use --source-only for an approximate scan without project evaluation
             """,
             Report(checks));
     }
@@ -187,7 +205,7 @@ public class DoctorTests
         Assert.Equal(
             ["– Coverage: can't tell whether tests/B.Tests/B.Tests.csproj has coverlet.collector until it is restored", "    Fix: dotnet restore"],
             checks[3].Describe());
-        Assert.Equal("– Agent: turned off in milligram.json (agent.enabled)", checks[5].Describe().Single());
+        Assert.Equal("– Agent: turned off in .milligram/milligram.json (agent.enabled)", checks[5].Describe().Single());
     }
 
     [Fact]
@@ -202,7 +220,7 @@ public class DoctorTests
         Assert.Equal(
             [
                 "✗ Tests: no test projects found, so `milligram crap` and `milligram mutate` have nothing to run",
-                """    Fix: list them in milligram.json: "tests": { "projects": ["tests/App.Tests/App.Tests.csproj"] }""",
+                """    Fix: list them in .milligram/milligram.json: "tests": { "projects": ["tests/App.Tests/App.Tests.csproj"] }""",
             ],
             checks[2].Describe());
         Assert.Equal("– Coverage: no test projects", checks[3].Describe().Single());

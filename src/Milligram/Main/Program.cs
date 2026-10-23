@@ -20,7 +20,9 @@ public static class Program
         if (line.Has("help") || line.Command == "help") { Console.WriteLine(Help); return 0; }
         try
         {
-            var composition = new Composition(FindRoot(line.Value("project")), SelfCommand(), Version, line.ScanOptions());
+            var composition = new Composition(FindRoot(line.Value("project"), Environment.CurrentDirectory), SelfCommand(), Version, line.ScanOptions());
+            if (composition.Initializer.AdoptRootPolicy())
+                Console.Error.WriteLine("milligram: copied milligram.json to .milligram/milligram.json, which is the only copy Milligram reads and writes from now on. The file at the project root is no longer used.");
             return line.Command switch
             {
                 "serve" => await ServeAsync(composition, line),
@@ -54,7 +56,7 @@ public static class Program
         var initialization = c.Initializer.Initialize(force: false, Console.WriteLine);
         if (initialization is not null)
         {
-            Console.WriteLine("Wrote milligram.json from the namespaces found in the source.");
+            Console.WriteLine("Wrote .milligram/milligram.json from the namespaces found in the source.");
             foreach (var described in initialization.Describe()) Console.WriteLine("  " + described);
         }
         c.Workspace.Load();
@@ -100,7 +102,7 @@ public static class Program
     {
         if (c.Initializer.Initialize(line.Has("force"), Console.WriteLine) is not { } initialization)
         {
-            Console.WriteLine("milligram.json already exists (use --force to replace it).");
+            Console.WriteLine(".milligram/milligram.json already exists (use --force to replace it).");
             return 0;
         }
         Console.WriteLine($"Wrote {c.Paths.PolicyFile}");
@@ -215,13 +217,16 @@ public static class Program
         }
     }
 
-    /// <summary>The nearest directory at or above the working directory holding milligram.json, else the working directory.</summary>
-    private static string FindRoot(string? explicitRoot)
+    /// <summary>The nearest directory at or above the working directory with a policy (or a root one to adopt), else the working directory.</summary>
+    internal static string FindRoot(string? explicitRoot, string workingDirectory)
     {
         if (explicitRoot is not null) return Path.GetFullPath(explicitRoot);
-        for (var dir = new DirectoryInfo(Environment.CurrentDirectory); dir is not null; dir = dir.Parent)
-            if (File.Exists(Path.Combine(dir.FullName, "milligram.json"))) return dir.FullName;
-        return Environment.CurrentDirectory;
+        for (var dir = new DirectoryInfo(workingDirectory); dir is not null; dir = dir.Parent)
+        {
+            var paths = new ProjectPaths(dir.FullName);
+            if (File.Exists(paths.PolicyFile) || File.Exists(paths.RootPolicyFile)) return dir.FullName;
+        }
+        return workingDirectory;
     }
 
     /// <summary>How to run this same build again, for the agent's `milligram` shim.</summary>
@@ -250,7 +255,7 @@ public static class Program
               --no-agent          Do not start the companion agent.
               --no-browser        Do not open a browser.
               --keep-agent        Leave the companion session running on exit.
-          init [--force]          Write milligram.json from the namespaces in the source.
+          init [--force]          Write .milligram/milligram.json from the namespaces in the source.
           ir                      Scan the source and write .milligram/model.json.
           crap [--coverage F]     Run tests with coverage (or read Cobertura file F) and score CRAP.
           mutate [--all] [files]  Mutation-test changed members (Stryker.NET); --all for whole files.
@@ -263,11 +268,11 @@ public static class Program
                                   With an unreadable policy, stop checks both project backends.
                                   Native attach uses this terminal; Ctrl+] then d detaches.
 
-        Global: --project DIR     Project root (default: nearest directory with milligram.json).
-        Scan options (serve, init, ir; saved when creating milligram.json):
+        Global: --project DIR     Project root (default: nearest directory with .milligram/milligram.json).
+        Scan options (serve, init, ir; saved when creating .milligram/milligram.json):
           --msbuild FILE          Select an entry C# project (repeatable). Replaces src selection; keeps excludes.
           --configuration NAME    Select a build configuration; otherwise use the project's default.
           --source-only           Use the approximate scanner without evaluating or executing project tasks.
-                                  Without an override, use scan settings from milligram.json (default: auto).
+                                  Without an override, use scan settings from .milligram/milligram.json (default: auto).
         """;
 }

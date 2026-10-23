@@ -23,7 +23,7 @@ public sealed record ScanSummary(int Types, int Namespaces, int RedArrows, bool 
     {
         if (Types == 0)
         {
-            yield return "No types found. Check \"src\" and \"exclude\" in milligram.json, then rerun.";
+            yield return "No types found. Check \"src\" and \"exclude\" in .milligram/milligram.json, then rerun.";
             yield break;
         }
         yield return $"{Count(Types, "type")} in {Count(Namespaces, "namespace")}, {Arrows}.";

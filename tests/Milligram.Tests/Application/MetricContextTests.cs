@@ -309,7 +309,7 @@ public class MetricContextTests
 
         public LinkedFixture(bool sharedTestProject = false, bool sharedSources = true, string policy = "{}")
         {
-            root.Write("milligram.json", policy);
+            root.Write(".milligram/milligram.json", policy);
             const string source = "public class Shared\n{\n    public bool Value() =>\n#if LEFT\n        true;\n#else\n        false;\n#endif\n}";
             var path = root.Write("Shared/Value.cs", source);
             var projects = new[] { "Left", "Right" }.Select(name =>

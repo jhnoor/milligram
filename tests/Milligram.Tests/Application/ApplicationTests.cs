@@ -15,7 +15,7 @@ public class PolicyJsonTests
     [Fact]
     public void ReadsCommentsTrailingCommasAndBothProposalEntryShapes()
     {
-        using var project = new TempProject(("milligram.json", """
+        using var project = new TempProject((".milligram/milligram.json", """
             {
               // a comment
               "prefix": "Shop",
@@ -28,7 +28,7 @@ public class PolicyJsonTests
             }
             """));
 
-        var policy = JsonFile.Read<Policy>(Path.Combine(project.Root, "milligram.json"))!;
+        var policy = JsonFile.Read<Policy>(Path.Combine(project.Root, ".milligram", "milligram.json"))!;
 
         Assert.Equal("Shop", policy.Prefix);
         Assert.Equal(2, policy.Levels.Count);
@@ -327,7 +327,7 @@ public class ScanSummaryTests
     public void CountsTypesNamespacesAndRedArrowsAndAsksForCrapFirst()
     {
         using var project = new TempProject(
-            ("milligram.json", PolicyJson),
+            (".milligram/milligram.json", PolicyJson),
             ("A.cs", """
                 namespace Shop.Domain { public class Order { Shop.Web.Page? page; } }
                 namespace Shop.Web { public class Page { } }
@@ -363,11 +363,11 @@ public class ScanSummaryTests
     [Fact]
     public void AnEmptyScanSendsTheUserBackToTheConfiguration()
     {
-        using var project = new TempProject(("milligram.json", """{ "src": "nope" }"""));
+        using var project = new TempProject((".milligram/milligram.json", """{ "src": "nope" }"""));
         var summary = ScanSummary.Of(Scanned(project));
 
         Assert.Equal(new ScanSummary(0, 0, 0, HasCrap: false, HasMutation: false), summary);
-        Assert.Equal(["No types found. Check \"src\" and \"exclude\" in milligram.json, then rerun."], summary.Describe());
+        Assert.Equal(["No types found. Check \"src\" and \"exclude\" in .milligram/milligram.json, then rerun."], summary.Describe());
     }
 }
 
@@ -388,7 +388,7 @@ public class WorkspaceTests
     [Fact]
     public void GenerateScansWritesTheModelAndBuildsViews()
     {
-        using var project = new TempProject(("milligram.json", """{ "prefix": "Shop", "levels": [["Domain"], ["Web"]] }"""), ("A.cs", Source));
+        using var project = new TempProject((".milligram/milligram.json", """{ "prefix": "Shop", "levels": [["Domain"], ["Web"]] }"""), ("A.cs", Source));
         var workspace = Open(project);
 
         var model = workspace.Generate();
@@ -405,7 +405,7 @@ public class WorkspaceTests
     [Fact]
     public void MetricsSnapshotsAreWrittenInKeyOrder()
     {
-        using var project = new TempProject(("milligram.json", """{ "prefix": "Shop" }"""));
+        using var project = new TempProject((".milligram/milligram.json", """{ "prefix": "Shop" }"""));
         var workspace = Open(project);
         var members = new Dictionary<string, Milligram.Domain.Metrics.MutationEntry>
         {
@@ -469,13 +469,13 @@ public class WorkspaceTests
     [Fact]
     public void ABrokenPolicyKeepsTheLastGoodOne()
     {
-        using var project = new TempProject(("milligram.json", """{ "prefix": "Shop" }"""));
+        using var project = new TempProject((".milligram/milligram.json", """{ "prefix": "Shop" }"""));
         var workspace = Open(project);
         File.WriteAllText(workspace.Paths.PolicyFile, "{ nope");
 
         Assert.False(workspace.ReloadPolicy());
         Assert.Equal("Shop", workspace.Policy.Prefix);
-        Assert.StartsWith("milligram.json:", workspace.PolicyError);
+        Assert.StartsWith(".milligram/milligram.json:", workspace.PolicyError);
     }
 
     [Theory]
@@ -483,7 +483,7 @@ public class WorkspaceTests
     [InlineData(true)]
     public async Task AnOlderReloadCannotOverwriteAViewerEditOrItsClearedError(bool fails)
     {
-        using var project = new TempProject(("milligram.json", """{ "title": "Original" }"""));
+        using var project = new TempProject((".milligram/milligram.json", """{ "title": "Original" }"""));
         var workspace = Open(project);
         using var reading = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
@@ -523,7 +523,7 @@ public class WorkspaceTests
     [Fact]
     public void PolicyEditsAreWrittenAndVisible()
     {
-        using var project = new TempProject(("milligram.json", """{ "prefix": "Shop" }"""), ("A.cs", Source));
+        using var project = new TempProject((".milligram/milligram.json", """{ "prefix": "Shop" }"""), ("A.cs", Source));
         var workspace = Open(project);
         workspace.Generate();
         var editor = new PolicyEditor(workspace);
@@ -555,7 +555,7 @@ public class WorkspaceTests
             }
 
             """;
-        using var project = new TempProject(("milligram.json", text), ("A.cs", Source));
+        using var project = new TempProject((".milligram/milligram.json", text), ("A.cs", Source));
         var workspace = Open(project);
         workspace.Generate();
         Assert.True(workspace.Tree(null).Contains("Shop.Web.Page"));
@@ -592,7 +592,7 @@ public class WorkspaceTests
     [Fact]
     public void AViewerEditAfterTheFileWasDeletedWritesTheWholePolicy()
     {
-        using var project = new TempProject(("milligram.json", """{ "prefix": "Shop" }"""));
+        using var project = new TempProject((".milligram/milligram.json", """{ "prefix": "Shop" }"""));
         var workspace = Open(project);
         File.Delete(workspace.Paths.PolicyFile);
 
@@ -604,12 +604,12 @@ public class WorkspaceTests
     [Fact]
     public void AViewerEditIsRefusedWhileTheFileIsBroken()
     {
-        using var project = new TempProject(("milligram.json", """{ "prefix": "Shop" }"""));
+        using var project = new TempProject((".milligram/milligram.json", """{ "prefix": "Shop" }"""));
         var workspace = Open(project);
         File.WriteAllText(workspace.Paths.PolicyFile, "{ \"prefix\": ");
 
         var refused = Assert.Throws<MilligramException>(() => new PolicyEditor(workspace).Omit("Web", null));
-        Assert.StartsWith("Fix milligram.json before editing it from the viewer:", refused.Message);
+        Assert.StartsWith("Fix .milligram/milligram.json before editing it from the viewer:", refused.Message);
         Assert.Equal("{ \"prefix\": ", File.ReadAllText(workspace.Paths.PolicyFile));
         Assert.Empty(workspace.Policy.Omit);
     }
@@ -660,14 +660,14 @@ public class ProjectInitializerTests
     [Fact]
     public void ExistingPolicySkipsInitializationAndScanProgress()
     {
-        using var project = new TempProject(("milligram.json", "{ \"prefix\": \"Kept\" }"));
+        using var project = new TempProject((".milligram/milligram.json", "{ \"prefix\": \"Kept\" }"));
         var initializer = new ProjectInitializer(new ProjectPaths(project.Root), new CSharpScanner(), new FakeProjectLocator(), new NewFilePublisher());
         var progress = new List<string>();
 
         Assert.Null(initializer.Initialize(force: false, progress.Add));
 
         Assert.Empty(progress);
-        Assert.Equal("{ \"prefix\": \"Kept\" }", File.ReadAllText(Path.Combine(project.Root, "milligram.json")));
+        Assert.Equal("{ \"prefix\": \"Kept\" }", File.ReadAllText(Path.Combine(project.Root, ".milligram", "milligram.json")));
     }
 
     [Fact]
@@ -714,7 +714,7 @@ public class ProjectInitializerTests
         string[] expected = ["Microsoft.AspNetCore", "Microsoft.CodeAnalysis", "System.Text.Json"];
         Assert.Equal(expected, initialization.Policy.Foreign);
         Assert.Equal(expected, JsonFile.Read<Policy>(paths.PolicyFile)!.Foreign);
-        Assert.Equal("Library ovals, inferred from usage (edit foreign in milligram.json): Microsoft.AspNetCore, Microsoft.CodeAnalysis, System.Text.Json.", initialization.Describe()[0]);
+        Assert.Equal("Library ovals, inferred from usage (edit foreign in .milligram/milligram.json): Microsoft.AspNetCore, Microsoft.CodeAnalysis, System.Text.Json.", initialization.Describe()[0]);
 
         var workspace = new Workspace(paths, new CSharpScanner());
         workspace.Load();
@@ -732,7 +732,7 @@ public class ProjectInitializerTests
         var paths = new ProjectPaths(project.Root);
         var initializer = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator(), new NewFilePublisher());
 
-        var initialization = initializer.Initialize(force: false, _ => project.Write("milligram.json", "{ \"title\": \"User choice\" }"));
+        var initialization = initializer.Initialize(force: false, _ => project.Write(".milligram/milligram.json", "{ \"title\": \"User choice\" }"));
 
         Assert.Null(initialization);
         Assert.Equal("User choice", JsonFile.Read<Policy>(paths.PolicyFile)!.Title);
@@ -741,7 +741,7 @@ public class ProjectInitializerTests
     [Fact]
     public void LibrarySuggestionsAreDescribedEvenWithoutLayers()
     {
-        Assert.Equal(["Library ovals, inferred from usage (edit foreign in milligram.json): System.Text.Json."],
+        Assert.Equal(["Library ovals, inferred from usage (edit foreign in .milligram/milligram.json): System.Text.Json."],
             new Initialization(new Policy { Foreign = ["System.Text.Json"] }, []).Describe());
     }
 
@@ -754,14 +754,16 @@ public class ProjectInitializerTests
         Assert.Equal(expected, ProjectInitializer.CommonPrefix(namespaces));
 
     [Fact]
-    public void InitializeWritesAPolicyFromTheSourceAndIgnoresRunFiles()
+    public void InitializeWritesAPolicyFromTheSourceAndKeepsItOutOfGit()
     {
         using var project = new TempProject(
-            ("src/Shop/Domain/Order.cs", "namespace Shop.Domain; public class Order { }"),
-            ("src/Shop/Web/Page.cs", "namespace Shop.Web; public class Page { public Shop.Domain.Order Order = new(); }"),
-            ("tests/Shop.Tests/Shop.Tests.csproj", "<Project><ItemGroup><PackageReference Include=\"xunit\" /></ItemGroup></Project>"),
-            ("tests/Shop.Tests/T.cs", "namespace Shop.Tests; public class T { }"));
-        var paths = new ProjectPaths(project.Root);
+            ("repo/src/Shop/Domain/Order.cs", "namespace Shop.Domain; public class Order { }"),
+            ("repo/src/Shop/Web/Page.cs", "namespace Shop.Web; public class Page { public Shop.Domain.Order Order = new(); }"),
+            ("repo/tests/Shop.Tests/Shop.Tests.csproj", "<Project><ItemGroup><PackageReference Include=\"xunit\" /></ItemGroup></Project>"),
+            ("repo/tests/Shop.Tests/T.cs", "namespace Shop.Tests; public class T { }"));
+        var repo = Path.Combine(project.Root, "repo");
+        Directory.CreateDirectory(Path.Combine(repo, ".git"));
+        var paths = new ProjectPaths(repo);
         var initializer = new ProjectInitializer(paths, new CSharpScanner(), new Milligram.Analysis.DotNet.DotNetProjectLocator(), new NewFilePublisher());
 
         Assert.NotNull(initializer.Initialize(force: false));
@@ -773,7 +775,71 @@ public class ProjectInitializerTests
         Assert.Equal(["Web", "Domain"], policy.Order);
         Assert.Equal([["Domain"], ["Web"]], policy.Levels);
         Assert.Contains("tests/Shop.Tests/**", policy.Exclude);
-        Assert.Contains(".milligram/", File.ReadAllLines(Path.Combine(project.Root, ".gitignore")));
+        Assert.Single(File.ReadAllLines(Path.Combine(repo, ".git", "info", "exclude")), ".milligram/");
+        Assert.False(File.Exists(Path.Combine(repo, ".gitignore")));
+        Assert.False(File.Exists(paths.RootPolicyFile));
+    }
+
+    [Fact]
+    public void ARootPolicyIsAdoptedOnceWithItsCommentsAndThenLeftAlone()
+    {
+        const string text = "{\n  // hand-written\n  \"prefix\": \"Shop\",\n}\n";
+        using var project = new TempProject(("repo/milligram.json", text), ("repo/A.cs", "namespace Shop; public class A { }"));
+        var repo = Path.Combine(project.Root, "repo");
+        Directory.CreateDirectory(Path.Combine(repo, ".git"));
+        var paths = new ProjectPaths(repo);
+        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator(), new NewFilePublisher());
+
+        Assert.True(initializer.AdoptRootPolicy());
+        Assert.Equal(text, File.ReadAllText(paths.PolicyFile));
+        Assert.Contains(".milligram/", File.ReadAllLines(Path.Combine(repo, ".git", "info", "exclude")));
+        Assert.Null(initializer.Initialize(force: false));
+
+        File.WriteAllText(paths.RootPolicyFile, "{ \"prefix\": \"Changed\" }");
+        Assert.False(initializer.AdoptRootPolicy());
+        Assert.Equal(text, File.ReadAllText(paths.PolicyFile));
+    }
+
+    [Fact]
+    public void ALocalPolicyIsNeverReplacedByARootOne()
+    {
+        using var project = new TempProject((".milligram/milligram.json", "{ \"prefix\": \"Local\" }"), ("milligram.json", "{ \"prefix\": \"Root\" }"));
+        var paths = new ProjectPaths(project.Root);
+        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator(), new NewFilePublisher());
+
+        Assert.False(initializer.AdoptRootPolicy());
+
+        Assert.Equal("{ \"prefix\": \"Local\" }", File.ReadAllText(paths.PolicyFile));
+        Assert.Equal("{ \"prefix\": \"Root\" }", File.ReadAllText(paths.RootPolicyFile));
+    }
+
+    [Fact]
+    public void WithoutARootPolicyNothingIsAdoptedOrCreated()
+    {
+        using var project = new TempProject(("A.cs", "class A { }"));
+        var paths = new ProjectPaths(project.Root);
+        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator(), new NewFilePublisher());
+
+        Assert.False(initializer.AdoptRootPolicy());
+
+        Assert.False(Directory.Exists(paths.StateDirectory));
+    }
+
+    [Fact]
+    public void AFailedAdoptionNamesBothFilesAndLeavesTheRootOne()
+    {
+        using var project = new TempProject(("milligram.json", "{}"));
+        var paths = new ProjectPaths(project.Root);
+        var publisher = new FakeNewFilePublisher((_, _) => throw new IOException("Read-only filesystem."));
+        var initializer = new ProjectInitializer(paths, new CSharpScanner(), new FakeProjectLocator(), publisher);
+
+        var error = Assert.Throws<MilligramException>(() => initializer.AdoptRootPolicy());
+
+        Assert.Contains(paths.RootPolicyFile, error.Message);
+        Assert.Contains(paths.PolicyFile, error.Message);
+        Assert.Contains("Read-only filesystem.", error.Message);
+        Assert.False(File.Exists(paths.PolicyFile));
+        Assert.Equal("{}", File.ReadAllText(paths.RootPolicyFile));
     }
 
     [Fact]
@@ -809,7 +875,7 @@ public class ProjectInitializerTests
         Assert.Equal(("Domain", "Web", 1), (outward.From, outward.To, outward.Count));
         Assert.Equal(
             [
-                "Levels, inferred from the dependencies (inner first; edit them in milligram.json):",
+                "Levels, inferred from the dependencies (inner first; edit them in .milligram/milligram.json):",
                 "  L0  Domain",
                 "  L1  Web",
                 "1 dependency points outward (red), the lightest links in dependency cycles:",
@@ -829,7 +895,7 @@ public class ProjectInitializerTests
 
         Assert.Equal(
             [
-                "Levels, inferred from the dependencies (inner first; edit them in milligram.json):",
+                "Levels, inferred from the dependencies (inner first; edit them in .milligram/milligram.json):",
                 "  L0  Domain",
                 "  L1  Adapters, Analysis",
                 "4 dependencies point outward (red), the lightest links in dependency cycles:",
@@ -970,7 +1036,7 @@ public class PolicyTextTests
     }
 
     [Theory]
-    [InlineData("[1]", "milligram.json is not a JSON object.")]
+    [InlineData("[1]", ".milligram/milligram.json is not a JSON object.")]
     [InlineData("{ \"prefix\": ", null)]
     public void AnEditRefusesTextThatIsNotAJsonObject(string text, string? message)
     {

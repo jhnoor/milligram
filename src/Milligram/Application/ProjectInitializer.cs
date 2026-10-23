@@ -15,9 +15,9 @@ public sealed record Initialization(Policy Policy, IReadOnlyList<DependencyEdge>
     public IReadOnlyList<string> Describe()
     {
         var lines = new List<string>();
-        if (Policy.Foreign.Count > 0) lines.Add($"Library ovals, inferred from usage (edit foreign in milligram.json): {string.Join(", ", Policy.Foreign)}.");
+        if (Policy.Foreign.Count > 0) lines.Add($"Library ovals, inferred from usage (edit foreign in .milligram/milligram.json): {string.Join(", ", Policy.Foreign)}.");
         if (Policy.Levels.Count == 0) return lines;
-        lines.Add("Levels, inferred from the dependencies (inner first; edit them in milligram.json):");
+        lines.Add("Levels, inferred from the dependencies (inner first; edit them in .milligram/milligram.json):");
         lines.AddRange(Policy.Levels.Select((names, level) => $"  L{level}  {string.Join(", ", names)}"));
         if (Outward.Count == 0)
         {
@@ -34,7 +34,7 @@ public sealed record Initialization(Policy Policy, IReadOnlyList<DependencyEdge>
     }
 }
 
-/// <summary>Writes a first milligram.json from what is actually in the source: no invented components.</summary>
+/// <summary>Writes a first .milligram/milligram.json from what is actually in the source: no invented components.</summary>
 public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scanner, IProjectLocator locator, INewFilePublisher publisher, ScanSettings? scanSettings = null)
 {
     /// <summary>Levels come from the dependencies (see <see cref="Layering"/>); boxes are ordered outer first, as drawn.</summary>
@@ -71,10 +71,10 @@ public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scan
         };
     }
 
-    /// <summary>Writes a commented milligram.json unless one exists (null then); always makes sure run files are git-ignored.</summary>
+    /// <summary>Writes a commented .milligram/milligram.json unless one exists (null then); always makes sure git ignores .milligram/.</summary>
     public Initialization? Initialize(bool force, Action<string>? progress = null)
     {
-        EnsureGitIgnore();
+        GitExclude.Ensure(paths.Root, ProjectPaths.GitIgnored);
         if (File.Exists(paths.PolicyFile) && !force) return null;
         var initialization = Propose(progress);
         var text = PolicyText.Starter(initialization);
@@ -90,6 +90,24 @@ public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scan
         return initialization;
     }
 
+    /// <summary>
+    /// Earlier versions kept milligram.json at the project root. Its first copy into .milligram/ is the one Milligram
+    /// reads and writes from then on, and the root file is left as it was. True when this call made the copy.
+    /// </summary>
+    public bool AdoptRootPolicy()
+    {
+        if (File.Exists(paths.PolicyFile) || !File.Exists(paths.RootPolicyFile)) return false;
+        GitExclude.Ensure(paths.Root, ProjectPaths.GitIgnored);
+        try
+        {
+            return JsonFile.TryCreateText(paths.PolicyFile, JsonFile.ReadText(paths.RootPolicyFile), publisher);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new MilligramException($"Could not copy {paths.RootPolicyFile} to {paths.PolicyFile}: {e.Message}");
+        }
+    }
+
     public static string CommonPrefix(IReadOnlyList<string> namespaces)
     {
         if (namespaces.Count == 0) return "";
@@ -102,15 +120,5 @@ public sealed class ProjectInitializer(ProjectPaths paths, ILanguageScanner scan
             common.RemoveRange(shared, common.Count - shared);
         }
         return string.Join('.', common);
-    }
-
-    private void EnsureGitIgnore()
-    {
-        var file = Path.Combine(paths.Root, ".gitignore");
-        var existing = File.Exists(file) ? File.ReadAllLines(file) : [];
-        var missing = ProjectPaths.GitIgnored.Where(line => !existing.Contains(line)).ToList();
-        if (missing.Count == 0) return;
-        var block = (existing.Length > 0 && existing[^1].Length > 0 ? "\n" : "") + "# Milligram\n" + string.Join('\n', missing) + "\n";
-        File.AppendAllText(file, block);
     }
 }

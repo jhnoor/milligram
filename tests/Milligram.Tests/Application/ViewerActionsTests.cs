@@ -20,7 +20,7 @@ public class ViewerActionsTests : IDisposable
         namespace Shop.Web { public class Page { public Shop.Domain.Order Order = new(); } }
         """;
 
-    private readonly TempProject project = new(("milligram.json", Policy), ("Shop.cs", Source));
+    private readonly TempProject project = new((".milligram/milligram.json", Policy), ("Shop.cs", Source));
     private readonly Workspace workspace;
     private readonly FakeCompanion companion = new();
     private readonly FakeEvents events = new();
@@ -443,7 +443,7 @@ public class AgentBriefingTests
 
 public class AgentLauncherTests : IDisposable
 {
-    private readonly TempProject project = new(("milligram.json", """{ "agent": { "command": "my-copilot" } }"""));
+    private readonly TempProject project = new((".milligram/milligram.json", """{ "agent": { "command": "my-copilot" } }"""));
     private readonly Workspace workspace;
     private readonly FakeCompanion companion = new();
 

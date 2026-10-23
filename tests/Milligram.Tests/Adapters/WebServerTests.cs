@@ -12,7 +12,7 @@ namespace Milligram.Tests.Adapters;
 
 public class WebServerTests : IAsyncLifetime
 {
-    private readonly TempProject project = new(("milligram.json", """{ "prefix": "Shop" }"""),
+    private readonly TempProject project = new((".milligram/milligram.json", """{ "prefix": "Shop" }"""),
         ("Order.cs", "namespace Shop; public class Order { public int Total() => 1; }"));
     private readonly EventHub events = new();
     private readonly FakeCompanion companion = new();

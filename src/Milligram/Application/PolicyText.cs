@@ -77,7 +77,7 @@ public static class PolicyText
             // Policies are read case-insensitively (web defaults), so "Omit" in the file is the omit key.
             if (string.Equals(name, key, StringComparison.OrdinalIgnoreCase)) return Splice(bytes, (start, lastEnd, Format(value, indent)));
         }
-        if (reader.TokenType != JsonTokenType.EndObject) throw new JsonException("milligram.json is not a JSON object.");
+        if (reader.TokenType != JsonTokenType.EndObject) throw new JsonException(".milligram/milligram.json is not a JSON object.");
 
         var close = reader.TokenStartIndex;
         var property = $"{indent}{Quote(key)}: {Format(value, indent)}\n";

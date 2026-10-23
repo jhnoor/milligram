@@ -3,7 +3,7 @@ using Milligram.Domain.Model;
 namespace Milligram.Domain.Policies;
 
 /// <summary>
-/// The hand-edited description of how to draw a project (milligram.json).
+/// The hand-edited description of how to draw a project (.milligram/milligram.json).
 /// The namespace tree is the architecture; the policy only orders, ranks, and filters it.
 /// </summary>
 public sealed record Policy

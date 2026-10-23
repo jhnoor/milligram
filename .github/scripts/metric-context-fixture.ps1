@@ -19,7 +19,7 @@ function Read-Metric([string]$Name) {
     return Get-Content -LiteralPath (Join-Path $metricRoot ".milligram/$Name.json") -Raw | ConvertFrom-Json -AsHashtable
 }
 
-Write-Metric 'milligram.json' '{ "scan": { "projects": ["Left/Left.csproj", "Right/Right.csproj"], "configuration": "Release" }, "tests": { "projects": ["Left.Tests/Tests.csproj", "Right.Tests/Tests.csproj"] } }'
+Write-Metric '.milligram/milligram.json' '{ "scan": { "projects": ["Left/Left.csproj", "Right/Right.csproj"], "configuration": "Release" }, "tests": { "projects": ["Left.Tests/Tests.csproj", "Right.Tests/Tests.csproj"] } }'
 Write-Metric 'Shared/Value.cs' @'
 namespace Fixture {
     public class Shared {

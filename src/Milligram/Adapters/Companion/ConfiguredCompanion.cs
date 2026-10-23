@@ -10,7 +10,7 @@ public sealed class ConfiguredCompanion(Func<AgentHostKind> host, ICompanion tmu
     {
         AgentHostKind.Tmux => (AgentHostKind.Tmux, tmux),
         AgentHostKind.Milligram => (AgentHostKind.Milligram, native),
-        _ => throw new MilligramException("Unsupported agent.host. Use \"tmux\" or \"milligram\" in milligram.json."),
+        _ => throw new MilligramException("Unsupported agent.host. Use \"tmux\" or \"milligram\" in .milligram/milligram.json."),
     });
 
     public AgentHostKind Host => selected.Value.Kind;
