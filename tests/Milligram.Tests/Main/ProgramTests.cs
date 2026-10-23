@@ -35,12 +35,12 @@ public class ProgramTests
             ("legacy/milligram.json", "{}"), ("legacy/src/B.cs", ""),
             ("nested/.milligram/milligram.json", "{}"), ("nested/inner/.milligram/milligram.json", "{}"), ("nested/inner/src/C.cs", ""),
             ("none/.milligram/model.json", "{}"), ("none/src/D.cs", ""));
-        string Find(string relative) => global::Milligram.Main.Program.FindRoot(null, Path.Combine(project.Root, relative));
+        string Find(params string[] parts) => global::Milligram.Main.Program.FindRoot(null, Path.Combine([project.Root, .. parts]));
 
-        Assert.Equal(Path.Combine(project.Root, "local"), Find("local/src/App"));
-        Assert.Equal(Path.Combine(project.Root, "legacy"), Find("legacy/src"));
-        Assert.Equal(Path.Combine(project.Root, "nested", "inner"), Find("nested/inner/src"));
-        Assert.Equal(Path.Combine(project.Root, "none", "src"), Find("none/src"));
+        Assert.Equal(Path.Combine(project.Root, "local"), Find("local", "src", "App"));
+        Assert.Equal(Path.Combine(project.Root, "legacy"), Find("legacy", "src"));
+        Assert.Equal(Path.Combine(project.Root, "nested", "inner"), Find("nested", "inner", "src"));
+        Assert.Equal(Path.Combine(project.Root, "none", "src"), Find("none", "src"));
         Assert.Equal(Path.Combine(project.Root, "local"), global::Milligram.Main.Program.FindRoot(Path.Combine(project.Root, "local", "src", ".."), project.Root));
     }
 
