@@ -21,6 +21,7 @@
     </header>
 
     <main id="stage">
+      <nav id="tabs" aria-label="Diagram and boards" hidden></nav>
       <svg id="canvas" xmlns="http://www.w3.org/2000/svg" tabindex="0">
         <defs id="defs"></defs>
         <g id="viewport"></g>
@@ -46,6 +47,15 @@
         <button id="new-proposal" class="wide">+ New proposal</button>
       </section>
 
+      <section id="board-section" hidden>
+        <h2>Board</h2>
+        <div id="board-info" class="small"></div>
+        <div class="buttons">
+          <button id="keep-board" title="Save this board in .milligram/boards/ so it survives a restart">Keep</button>
+          <button id="discard-board" title="Remove this board">Discard</button>
+        </div>
+      </section>
+
       <section>
         <h2>View</h2>
         <div class="row"><span class="label">Arrows</span>
@@ -66,7 +76,7 @@
         <div class="row muted small">Zoom <span id="zoom-level">100%</span> · F fits · Ctrl+wheel zooms · drag pans</div>
       </section>
 
-      <section aria-label="Browse this level">
+      <section id="browse" aria-label="Browse this level">
         <h2>Browse this level</h2>
         <form id="level-search">
           <label for="level-query" class="small muted">Find a namespace or type on this level</label>

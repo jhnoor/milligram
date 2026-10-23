@@ -21,6 +21,11 @@ public sealed class ProjectPaths(string root)
     public string AgentStateFile => Path.Combine(RunDirectory, "agent.json");
     public string ServerFile => Path.Combine(RunDirectory, "server.json");
 
+    /// <summary>The one file the agent may write without asking; `milligram tell board` draws it.</summary>
+    public string BoardPenFile => Path.Combine(StateDirectory, "board.json");
+    public string BoardsDirectory => Path.Combine(StateDirectory, "boards");
+    public string BoardDraftsDirectory => Path.Combine(BoardsDirectory, "drafts");
+
     /// <summary>Everything Milligram writes is local, the policy included: git ignores it without a change to any tracked file.</summary>
     public static readonly IReadOnlyList<string> GitIgnored = [".milligram/"];
 

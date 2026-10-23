@@ -27,7 +27,7 @@ public class AgentLaunchTests : IDisposable
         Assert.Equal(
             [
                 "--session-id", "s-1", "--name", $"Milligram: {Path.GetFileName(project.Root)}",
-                "--allow-tool", "shell(milligram:*)", "--allow-tool", $"write({paths.PolicyFile})",
+                "--allow-tool", "shell(milligram:*)", "--allow-tool", $"write({paths.PolicyFile})", "--allow-tool", $"write({paths.BoardPenFile})",
                 "-i", AgentBriefing.LaunchPrompt,
             ],
             args);
@@ -50,7 +50,7 @@ public class AgentLaunchTests : IDisposable
         var args = AgentLaunches.CopilotArgs(settings, Conversation, resumed: true, paths);
 
         Assert.Equal(
-            ["--session-id", "s-1", "--allow-tool", "shell(git:*)", "--allow-tool", "write", "--allow-tool", $"write({paths.PolicyFile})",
+            ["--session-id", "s-1", "--allow-tool", "shell(git:*)", "--allow-tool", "write", "--allow-tool", $"write({paths.PolicyFile})", "--allow-tool", $"write({paths.BoardPenFile})",
              "--model", "gpt-6", "--no-color", "-i", AgentBriefing.ResumePrompt],
             args);
     }

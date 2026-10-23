@@ -13,7 +13,9 @@ const FONTS = {
   member: `11px ${MONO}`,
   stereo: `10.5px ${FONT}`,
   caption: `10.5px ${FONT}`,
+  note: `12px ${FONT}`,
 };
+const NOTE_WIDTH = 44;
 const MAX_MEMBERS = 14;
 const MAX_SIGNATURE = 58;
 const PAD = 10;
@@ -63,6 +65,8 @@ const state = {
   pan: { x: 24, y: 24 },
   token: 0,
   lastJob: '',
+  tabs: JSON.parse(sessionStorage.getItem('mg.tabs') || '[]'),
+  diagram: { context: 'real', focus: null },
 };
 
 // ---------------------------------------------------------------- helpers
@@ -121,6 +125,22 @@ function clip(text, max) {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
+/** Breaks a note into lines of at most `max` characters, keeping the agent's own line breaks. */
+function wrap(text, max) {
+  const lines = [];
+  for (const paragraph of text.split('\n')) {
+    let line = '';
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      if (line && line.length + word.length + 1 > max) { lines.push(line); line = ''; }
+      line = line ? `${line} ${word}` : clip(word, max);
+    }
+    lines.push(line);
+  }
+  return lines.slice(0, 24);
+}
+
+function isBoard(context) { return typeof context === 'string' && context.startsWith('board:'); }
+
 function average(values) {
   const known = values.filter((v) => v !== null && v !== undefined);
   return known.length ? known.reduce((a, b) => a + b, 0) / known.length : null;
@@ -171,6 +191,7 @@ function writeHash() {
 /** `mail` tells the agent which diagram is now under discussion (user choices only, never agent requests). */
 function navigate(context, focus, { mail = false, page = 0, query = '' } = {}) {
   saveCamera();
+  if (isBoard(context)) openTab(context);
   state.context = context;
   state.focus = focus;
   state.page = page;
@@ -179,6 +200,20 @@ function navigate(context, focus, { mail = false, page = 0, query = '' } = {}) {
   writeHash();
   if (mail) action('context');
   refresh();
+}
+
+function openTab(context) {
+  if (state.tabs.includes(context)) return;
+  state.tabs.push(context);
+  sessionStorage.setItem('mg.tabs', JSON.stringify(state.tabs));
+}
+
+/** Closing a tab only hides it; the board stays in the list until it is discarded. */
+function closeTab(context) {
+  state.tabs = state.tabs.filter((id) => id !== context);
+  sessionStorage.setItem('mg.tabs', JSON.stringify(state.tabs));
+  if (state.context === context) navigate(state.diagram.context, state.diagram.focus, { mail: true });
+  else renderTabs();
 }
 
 function up() {
@@ -211,6 +246,8 @@ async function refresh({ keepCamera = false } = {}) {
   state.focus = view.focus.id;
   state.page = view.page?.index ?? 0;
   state.query = view.page?.query ?? '';
+  if (view.context.isBoard) openTab(view.context.id);
+  else state.diagram = { context: state.context, focus: state.focus };
   if (state.selected && !view.nodes.some((n) => n.id === state.selected)) state.selected = null;
   renderChrome();
   const layout = await layoutView(view);
@@ -226,6 +263,8 @@ async function refreshMeta() {
   try {
     state.meta = await api.get('/api/meta');
     renderContexts();
+    renderTabs();
+    renderBoard();
     renderAgent();
     renderMetrics();
     renderJob();
@@ -236,7 +275,16 @@ async function refreshMeta() {
 // ---------------------------------------------------------------- layout
 
 function leafSpec(node) {
+  if (node.kind === 'note') {
+    const lines = wrap(node.label, NOTE_WIDTH).map((text, i) => ({ text, cls: 'note-text', font: FONTS.note, center: false, y: 22 + i * 16 }));
+    return { shape: 'note', w: Math.ceil(Math.max(120, ...lines.map((l) => textWidth(l.text, l.font) + 2 * PAD))), h: 18 + lines.length * 16, lines };
+  }
   const label = clip(node.label, 64);
+  if (node.kind === 'free' || node.kind === 'missing') {
+    const lines = [{ text: label, cls: 'title', font: FONTS.title, center: true, y: 24 }];
+    if (node.caption) lines.push({ text: clip(node.caption, 64), cls: 'caption', font: FONTS.caption, center: true, y: 40 });
+    return { shape: node.kind, w: Math.ceil(Math.max(110, ...lines.map((l) => textWidth(l.text, l.font) + 2 * PAD + 16))), h: node.caption ? 52 : 38, lines };
+  }
   if (node.kind === 'foreign') {
     return { shape: 'ellipse', w: Math.max(textWidth(label, FONTS.title) + 44, 96), h: 38, lines: [{ text: label, cls: 'title', font: FONTS.title, center: true, y: 23 }] };
   }
@@ -251,6 +299,7 @@ function leafSpec(node) {
     if (node.stereotype && node.stereotype !== 'class') add(`«${node.stereotype}»`, 'stereo', FONTS.stereo, { height: 12 });
     const italic = ['interface', 'enum', 'abstract', 'delegate'].includes(node.stereotype);
     add(label, `title${italic ? ' italic' : ''}`, FONTS.title);
+    if (node.caption) add(clip(node.caption, 64), 'caption', FONTS.caption, { height: 14 });
     if (node.kind === 'type' && !node.parent && state.detail === 'members' && node.members.length) {
       y += 6;
       for (const member of node.members.slice(0, MAX_MEMBERS)) {
@@ -301,8 +350,14 @@ function edgesFor(view, visible, topOf, bundledOnly) {
   return [...bundles.values()].map((b) => ({ ...b, kind: b.kinds.size === 1 ? [...b.kinds][0] : 'dependency' }));
 }
 
+/** A board's arrows are its content: each one is drawn, with its label, whatever the arrow setting. */
+function boardEdges(view) {
+  return view.edges.map((e, i) => ({ id: `e${i}`, from: e.from, to: e.to, kind: e.kind, violating: false, pairs: [], involved: new Set([e.from, e.to]), label: e.label ?? null }));
+}
+
 async function layoutView(view) {
-  const compact = !!view.page && state.arrows === 'auto';
+  const board = !!view.context.isBoard;
+  const compact = !board && !!view.page && state.arrows === 'auto';
   const closed = state.detail === 'boxes';
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
   const tops = view.nodes.filter((n) => !n.parent || !byId.has(n.parent));
@@ -341,20 +396,26 @@ async function layoutView(view) {
     return { id: n.id, children: kids.map(leaf), layoutOptions: { ...common, ...inner } };
   };
 
-  const edges = edgesFor(view, visible, topOf, false);
-  const layoutEdges = state.arrows === 'hidden' ? edgesFor(view, visible, topOf, true) : edges;
+  const edges = board ? boardEdges(view) : edgesFor(view, visible, topOf, false);
+  const layoutEdges = state.arrows === 'hidden' && !board ? edgesFor(view, visible, topOf, true) : edges;
+  const labelled = (e) => (e.label ? { labels: [{ text: e.label, width: Math.ceil(textWidth(e.label, FONTS.caption)) + 10, height: 16 }] } : {});
   const graph = {
     id: 'root',
     layoutOptions: { ...ROOT_OPTIONS, 'elk.hierarchyHandling': hierarchical ? 'INCLUDE_CHILDREN' : 'SEPARATE_CHILDREN',
-      ...(compact ? { 'elk.algorithm': 'rectpacking', 'elk.aspectRatio': '1.6', 'elk.partitioning.activate': 'false' } : {}) },
+      ...(compact ? { 'elk.algorithm': 'rectpacking', 'elk.aspectRatio': '1.6', 'elk.partitioning.activate': 'false' } : {}),
+      ...(board ? { 'elk.edgeLabels.placement': 'CENTER', 'elk.layered.spacing.nodeNodeBetweenLayers': '64' } : {}) },
     children: tops.map(top),
-    edges: compact ? [] : layoutEdges.map((e) => ({ id: e.id, sources: [e.from], targets: [e.to] })),
+    edges: compact ? [] : layoutEdges.map((e) => ({ id: e.id, sources: [e.from], targets: [e.to], ...labelled(e) })),
   };
   const result = await elk.layout(graph);
   const boxes = new Map();
   const routes = new Map();
+  const labels = new Map();
   const walk = (node) => {
-    for (const edge of node.edges ?? []) routes.set(edge.id, edge.sections ?? []);
+    for (const edge of node.edges ?? []) {
+      routes.set(edge.id, edge.sections ?? []);
+      if (edge.labels?.length) labels.set(edge.id, edge.labels[0]);
+    }
     for (const child of node.children ?? []) {
       boxes.set(child.id, { x: child.x, y: child.y, w: child.width, h: child.height });
       walk(child);
@@ -362,9 +423,9 @@ async function layoutView(view) {
   };
   walk(result);
   return {
-    view, byId, boxes, routes, specs, topOf, visible, edges,
+    view, byId, boxes, routes, labels, specs, topOf, visible, edges,
     width: result.width, height: result.height,
-    triangles: compact || state.arrows === 'hidden' ? triangles(view, visible, topOf) : null,
+    triangles: !board && (compact || state.arrows === 'hidden') ? triangles(view, visible, topOf) : null,
   };
 }
 
@@ -439,7 +500,7 @@ function draw(layout, keepCamera) {
     else drawLeaf(node, box, spec, layers.nodes);
   }
   if (layout.triangles) drawTriangles(layout, layers.tris);
-  else for (const edge of layout.edges) drawEdge(edge, layout.routes.get(edge.id) ?? [], layers.edges);
+  else for (const edge of layout.edges) drawEdge(edge, layout.routes.get(edge.id) ?? [], layers.edges, layout.labels.get(edge.id));
 
   $('#empty').hidden = layout.view.nodes.length > 0;
   $('#empty').textContent = emptyMessage();
@@ -456,6 +517,7 @@ function emptyMessage() {
   if (!meta) return '';
   if (meta.types === 0 && meta.job?.state === 'running') return 'Scanning the source…';
   if (meta.types === 0) return 'No C# types found. Check "src" and "exclude" in .milligram/milligram.json, then press Regen.';
+  if (state.view?.context.isBoard) return 'This board has no boxes.';
   return state.view?.context.isProposal ? 'This proposal is empty. Describe it to the agent.' : 'Nothing at this level.';
 }
 
@@ -480,6 +542,11 @@ function drawLeaf(node, box, spec, parent) {
   const stroke = node.kind === 'external' ? '#4a5475' : strokeFor(node.grades);
   if (spec.shape === 'ellipse') {
     el('ellipse', { class: 'body', cx: box.x + box.w / 2, cy: box.y + box.h / 2, rx: box.w / 2, ry: box.h / 2, fill: '#1b2138', stroke: '#56607a', 'stroke-width': 1.3 }, g);
+  } else if (spec.shape === 'note') {
+    el('rect', { class: 'body', x: box.x, y: box.y, width: box.w, height: box.h, rx: 4, fill: '#3a3416', stroke: '#8a7a34', 'stroke-width': 1.2 }, g);
+  } else if (spec.shape === 'free' || spec.shape === 'missing') {
+    el('rect', { class: 'body', x: box.x, y: box.y, width: box.w, height: box.h, rx: 12, fill: 'rgba(20,24,40,.9)',
+      stroke: spec.shape === 'missing' ? '#ff8a8a' : '#7d869e', 'stroke-width': 1.3, 'stroke-dasharray': '6 4' }, g);
   } else if (spec.shape === 'package') {
     const tab = Math.min(56, box.w * 0.4);
     el('path', { d: `M${box.x},${box.y + 8} v-6 a2,2 0 0 1 2,-2 h${tab - 4} a2,2 0 0 1 2,2 v6`, fill, stroke, 'stroke-width': 1.3 }, g);
@@ -492,7 +559,7 @@ function drawLeaf(node, box, spec, parent) {
     const x = line.center ? box.x + box.w / 2 : box.x + PAD;
     el('text', { class: line.cls, x, y: box.y + line.y + offset, 'text-anchor': line.center ? 'middle' : 'start' }, g, line.text);
   }
-  if (node.kind !== 'foreign') {
+  if (!['foreign', 'note', 'free', 'missing'].includes(node.kind)) {
     const levelText = levelLabel(node);
     if (levelText) el('text', { class: 'badge', x: box.x + 6, y: box.y + 13 + offset }, g, levelText);
     let right = box.x + box.w - 10;
@@ -517,13 +584,17 @@ function drawDots(node, x, y, parent) {
   return x - 2;
 }
 
-function drawEdge(edge, sections, parent) {
+function drawEdge(edge, sections, parent, label) {
   const points = sections.flatMap((s, i) => [...(i === 0 ? [s.startPoint] : []), ...(s.bendPoints ?? []), s.endPoint]);
   if (points.length < 2) return;
   const g = el('g', { class: `edge ${edge.kind}${edge.violating ? ' violating' : ''}`, 'data-edge': edge.id }, parent);
   const d = roundedPath(points);
   el('path', { class: 'line', d, 'marker-end': markerFor(edge, false) }, g);
   el('path', { class: 'hit', d }, g);
+  if (label && edge.label) {
+    el('rect', { class: 'label-bg', x: label.x, y: label.y, width: label.width, height: label.height, rx: 8 }, g);
+    el('text', { class: 'label', x: label.x + label.width / 2, y: label.y + label.height - 4.5, 'text-anchor': 'middle' }, g, edge.label);
+  }
 }
 
 function drawTriangles(layout, parent) {
@@ -596,8 +667,9 @@ function fit() {
   const layout = state.layout;
   const stage = $('#stage').getBoundingClientRect();
   if (!layout || !layout.width) return;
-  state.zoom = Math.max(0.01, Math.min(1, (stage.width - 40) / layout.width, (stage.height - 90) / layout.height));
-  state.pan = { x: Math.max(20, (stage.width - layout.width * state.zoom) / 2), y: 20 };
+  const top = $('#tabs').hidden ? 20 : 52;
+  state.zoom = Math.max(0.01, Math.min(1, (stage.width - 40) / layout.width, (stage.height - 70 - top) / layout.height));
+  state.pan = { x: Math.max(20, (stage.width - layout.width * state.zoom) / 2), y: top };
 }
 
 function zoomAt(factor, clientX, clientY) {
@@ -627,8 +699,10 @@ function renderChrome() {
   $('#subtitle').textContent = `${meta.types} types · ${meta.prefix || '(no prefix)'} · ${meta.root}`;
   $('#policy-error').hidden = !meta.policyError;
   $('#policy-error').textContent = meta.policyError ?? '';
-  $('#banner').hidden = !view.context.isProposal;
-  $('#banner').textContent = view.context.isProposal ? `PROPOSAL “${view.context.name}” — not instantiated in code` : '';
+  $('#banner').hidden = !view.context.isProposal && !view.context.isBoard;
+  $('#banner').textContent = view.context.isProposal ? `PROPOSAL “${view.context.name}” — not instantiated in code`
+    : view.context.isBoard ? 'BOARD — drawn by the agent' : '';
+  $('#browse').hidden = !!view.context.isBoard;
   $('#up').disabled = view.breadcrumbs.length <= 1;
   const crumbs = $('#crumbs');
   crumbs.replaceChildren();
@@ -644,11 +718,53 @@ function renderChrome() {
   for (const [id, key] of [['#arrows', 'arrows'], ['#detail', 'detail']])
     for (const button of $(id).querySelectorAll('button')) button.classList.toggle('on', button.dataset.v === state[key]);
   renderContexts();
+  renderTabs();
+  renderBoard();
   renderAgent();
   renderMetrics();
   renderJob();
   renderStatus();
   renderBrowse();
+}
+
+/** The diagram and each open board, as tabs over the canvas. */
+function renderTabs() {
+  const boards = state.meta?.boards ?? [];
+  state.tabs = state.tabs.filter((id) => boards.some((b) => b.id === id));
+  sessionStorage.setItem('mg.tabs', JSON.stringify(state.tabs));
+  const nav = $('#tabs');
+  nav.hidden = state.tabs.length === 0;
+  nav.replaceChildren();
+  const tab = (label, on, open, closeId) => {
+    const button = document.createElement('button');
+    button.className = `tab${on ? ' on' : ''}`;
+    button.textContent = label;
+    button.onclick = open;
+    if (closeId) {
+      const close = document.createElement('span');
+      close.className = 'close';
+      close.textContent = '×';
+      close.title = 'Close the tab; the board stays in the list';
+      close.onclick = (e) => { e.stopPropagation(); closeTab(closeId); };
+      button.appendChild(close);
+    }
+    nav.appendChild(button);
+  };
+  tab('Diagram', !isBoard(state.context), () => navigate(state.diagram.context, state.diagram.focus, { mail: true }));
+  for (const id of state.tabs) tab(boards.find((b) => b.id === id).title, state.context === id, () => navigate(id, null, { mail: true }), id);
+}
+
+function renderBoard() {
+  const view = state.view;
+  const board = view?.context.isBoard ? (state.meta?.boards ?? []).find((b) => b.id === view.context.id) : null;
+  $('#board-section').hidden = !board;
+  if (!board) return;
+  const code = view.nodes.filter((n) => n.typeId).length;
+  const missing = view.nodes.filter((n) => n.kind === 'missing').length;
+  $('#board-info').innerHTML = `<div><b>${html(board.title)}</b></div>
+    <div class="muted">${view.nodes.length} boxes · ${code} in the code${missing ? ` · ${missing} missing` : ''} · ${view.edges.length} arrows</div>
+    <div class="muted">${board.draft ? 'Throwaway until you keep it.' : 'Kept in .milligram/boards/.'}</div>`;
+  $('#keep-board').disabled = !board.draft;
 }
 
 function renderBrowse() {
@@ -676,6 +792,15 @@ function renderContexts() {
     if (context.isProposal) item.oncontextmenu = (e) => { e.preventDefault(); showMenu(proposalMenu(context), e.clientX, e.clientY); };
     list.appendChild(item);
   });
+  const boards = state.meta?.boards ?? [];
+  if (boards.length) list.appendChild(Object.assign(document.createElement('li'), { className: 'header', textContent: 'Boards' }));
+  for (const board of boards) {
+    const item = document.createElement('li');
+    item.className = board.id === state.context ? 'on' : '';
+    item.innerHTML = `<span>${html(board.title)}</span><span class="tag">${board.draft ? 'draft' : 'kept'}</span>`;
+    item.onclick = () => navigate(board.id, null, { mail: true });
+    list.appendChild(item);
+  }
 }
 
 function proposalMenu(context) {
@@ -759,20 +884,25 @@ function renderSelection() {
   }
   box.className = '';
   const grade = (g) => (g === null || g === undefined ? 'unknown' : `${g}/10`);
+  const board = !!state.view?.context.isBoard;
+  const measured = node.kind !== 'foreign' && (!board || !!node.typeId);
+  const boardKind = { free: 'not in the code', missing: 'missing from the code', note: 'note' }[node.kind] ?? node.stereotype;
   const rows = [
-    ['Kind', node.stereotype ? `${node.kind} (${node.stereotype})` : node.kind],
+    ['Kind', board ? boardKind : node.stereotype ? `${node.kind} (${node.stereotype})` : node.kind],
     node.namespace ? ['Namespace', node.namespace] : null,
     node.target ? ['Path', node.target] : null,
-    ['Level', node.level ?? '—'],
-    node.kind !== 'foreign' ? ['Types', node.typeCount] : null,
-    node.kind !== 'foreign' ? ['CRAP', grade(node.grades?.crap)] : null,
-    node.kind !== 'foreign' ? ['Mutation', grade(node.grades?.mutation)] : null,
+    node.kind === 'missing' && node.caption ? ['Reference', node.caption] : null,
+    board ? null : ['Level', node.level ?? '—'],
+    measured && !board ? ['Types', node.typeCount] : null,
+    measured ? ['CRAP', grade(node.grades?.crap)] : null,
+    measured ? ['Mutation', grade(node.grades?.mutation)] : null,
     node.internalReferences ? ['References within', node.internalReferences.toLocaleString()] : null,
     node.internalViolations ? ['Violating refs within', node.internalViolations.toLocaleString()] : null,
   ].filter(Boolean);
   box.innerHTML = `<div><b>${html(node.label)}</b></div><dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${html(v)}</dd>`).join('')}</dl>
-    <div class="buttons">${node.typeId ? '<button data-do="card">Open card</button>' : ''}${node.drill ? '<button data-do="drill">Open</button>' : ''}</div>`;
+    <div class="buttons">${node.typeId ? '<button data-do="card">Open card</button>' : ''}${node.file ? '<button data-do="source">Open source</button>' : ''}${node.drill ? '<button data-do="drill">Open</button>' : ''}</div>`;
   box.querySelector('[data-do="card"]')?.addEventListener('click', () => openCard(node.typeId));
+  box.querySelector('[data-do="source"]')?.addEventListener('click', () => openSource(node.file, node.line ?? 1));
   box.querySelector('[data-do="drill"]')?.addEventListener('click', () => navigate(state.context, node.drill));
 }
 
@@ -998,6 +1128,12 @@ function nodeMenu(node) {
   if (node.kind === 'summary') return node.id === 'summary:exterior'
     ? [{ label: 'Up a level', run: up }]
     : [{ label: 'Browse this level', run: () => $('#level-query').focus() }];
+  if (state.view.context.isBoard) return [
+    node.typeId && { label: 'Open card', run: () => openCard(node.typeId) },
+    node.file && { label: 'Open source', run: () => openSource(node.file, node.line ?? 1) },
+    (node.typeId || node.file) && '-',
+    { label: 'Ask the agent about this…', run: () => askAbout(node) },
+  ];
   const metrics = node.kind !== 'foreign';
   const proposal = state.view.context.isProposal;
   return [
@@ -1073,7 +1209,8 @@ function wireCanvas() {
       const data = state.layout.edges.find((x) => x.id === edge.dataset.edge);
       const from = state.layout.byId.get(data.from)?.label;
       const to = state.layout.byId.get(data.to)?.label;
-      showTip(pairLines(data.pairs, `${from} → ${to}`), e.clientX, e.clientY);
+      showTip(data.label !== undefined ? [`<span class="h">${html(from)} → ${html(to)}</span>`, ...(data.label ? [html(data.label)] : [])]
+        : pairLines(data.pairs, `${from} → ${to}`), e.clientX, e.clientY);
     } else if (tri) {
       showTip(pairLines(tri.pairs, tri.direction === 'in' ? 'Incoming' : 'Outgoing'), e.clientX, e.clientY);
     } else hideTip();
@@ -1091,7 +1228,8 @@ function wireCanvas() {
   svg.addEventListener('dblclick', (e) => {
     const node = nodeFrom(e.target);
     if (!node) return;
-    if (node.typeId && node.kind === 'type') openCard(node.typeId);
+    if (state.view?.context.isBoard && node.file) openSource(node.file, node.line ?? 1);
+    else if (node.typeId && node.kind === 'type') openCard(node.typeId);
     else if (node.drill) navigate(state.context, node.drill);
     else if (node.typeId) openCard(node.typeId);
   });
@@ -1171,6 +1309,13 @@ function wireInspector() {
   $('#run-mutate').onclick = () => action('refresh-mutate');
   $('#banner-crap').onclick = () => action('refresh-crap');
   $('#banner-mutate').onclick = () => action('refresh-mutate');
+  $('#keep-board').onclick = () => action('keep-board');
+  $('#discard-board').onclick = async () => {
+    const context = state.context;
+    if (!isBoard(context) || !confirm(`Discard the board “${state.view.context.name}”?`)) return;
+    const result = await action('discard-board');
+    if (result.ok) closeTab(context);
+  };
   $('#new-proposal').onclick = async () => {
     const result = await action('new-proposal');
     if (result.ok && result.data?.proposalId) navigate(result.data.proposalId, null);
@@ -1199,6 +1344,7 @@ function connectEvents() {
     if (type === 'model' || type === 'metrics' || type === 'policy') scheduleRefresh();
     else if (type === 'job' && state.meta) { state.meta.job = payload; renderJob(); renderStatus(); }
     else if (type === 'mail') onMail(payload);
+    else if (type === 'boards') { refreshMeta(); if (isBoard(state.context)) scheduleRefresh(); }
     else if (type === 'agent') refreshMeta();
   };
 }
@@ -1207,7 +1353,7 @@ function onMail(message) {
   const data = message.data ?? {};
   if (message.op === 'display' && data.context) {
     navigate(data.context, data.focus ?? null);
-    toast(`Showing ${data.context === 'real' ? 'the real diagram' : data.context}.`, 'agent');
+    toast(isBoard(data.context) ? 'The agent drew a board.' : `Showing ${data.context === 'real' ? 'the real diagram' : data.context}.`, 'agent');
   } else if (message.op === 'notify' && data.text) toast(data.text, 'agent');
   else if (message.op === 'reload') refresh({ keepCamera: true });
 }

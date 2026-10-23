@@ -37,7 +37,7 @@ public sealed class AgentLaunches(ProjectPaths paths, Func<Policy> policy, IRead
         Path.GetFileNameWithoutExtension(command.Replace('\\', '/').Split('/')[^1]) == "copilot";
 
     /// <summary>
-    /// Copilot joins the project's conversation, may run `milligram` and edit .milligram/milligram.json without asking, and is told
+    /// Copilot joins the project's conversation, may run `milligram`, edit .milligram/milligram.json and draw on .milligram/board.json without asking, and is told
     /// to read its briefing: at once in a new conversation, or again after a restart in a resumed one.
     /// </summary>
     public static IReadOnlyList<string> CopilotArgs(AgentSettings settings, AgentConversation conversation, bool resumed, ProjectPaths paths)
@@ -45,7 +45,7 @@ public sealed class AgentLaunches(ProjectPaths paths, Func<Policy> policy, IRead
         var args = new List<string> { "--session-id", conversation.SessionId };
         if (!resumed) args.AddRange(["--name", $"Milligram: {Path.GetFileName(paths.Root)}"]);
         foreach (var tool in settings.AllowTools) args.AddRange(["--allow-tool", tool]);
-        args.AddRange(["--allow-tool", $"write({paths.PolicyFile})"]);
+        args.AddRange(["--allow-tool", $"write({paths.PolicyFile})", "--allow-tool", $"write({paths.BoardPenFile})"]);
         if (settings.Model is { Length: > 0 } model) args.AddRange(["--model", model]);
         args.AddRange(settings.Args);
         args.AddRange(["-i", resumed ? AgentBriefing.ResumePrompt : AgentBriefing.LaunchPrompt]);

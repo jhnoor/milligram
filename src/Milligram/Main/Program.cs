@@ -6,6 +6,7 @@ using Milligram.Adapters.Files;
 using Milligram.Application;
 using Milligram.Domain.Mail;
 using Milligram.Domain.Policies;
+using Milligram.Domain.Views;
 
 namespace Milligram.Main;
 
@@ -51,6 +52,7 @@ public static class Program
     private static async Task<int> ServeAsync(Composition c, CommandLine line)
     {
         var preferredPort = line.Port(DefaultPort);
+        c.Workspace.Boards.ClearDrafts();
         if (!File.Exists(c.Paths.PolicyFile)) Console.WriteLine("Checking source and project inputs before initialization.");
         using var inputs = File.Exists(c.Paths.PolicyFile) ? null : c.WatchInitialization();
         var initialization = c.Initializer.Initialize(force: false, Console.WriteLine);
@@ -169,6 +171,7 @@ public static class Program
     {
         var op = line.Arguments.FirstOrDefault();
         var rest = string.Join(' ', line.Arguments.Skip(1));
+        if (op == "board") return TellBoard(c, rest.Length > 0 ? Path.GetFullPath(rest) : null);
         JsonObject? data = op switch
         {
             MailMessage.Ops.Display when rest.Length > 0 => new JsonObject { ["context"] = rest, ["focus"] = line.Value("focus") },
@@ -177,8 +180,25 @@ public static class Program
             _ => null,
         };
         if (op is null || data is null)
-            return Usage("usage: milligram tell display <real|proposalId> [--focus <nodeId>] | notify <text> | reload");
+            return Usage(TellUsage);
         c.Workspace.ToViewer.Post(op, data);
+        return 0;
+    }
+
+    private const string TellUsage =
+        "usage: milligram tell display <real|proposalId|board:id> [--focus <nodeId>] | board [file] | notify <text> | reload";
+
+    /// <summary>Draws the pen file (or another file) as a board and shows it, saying which code references didn't resolve.</summary>
+    private static int TellBoard(Composition c, string? file)
+    {
+        var board = c.Workspace.Boards.Draw(file);
+        c.Workspace.ReloadPolicy();
+        c.Workspace.ReloadModel();
+        var missing = BoardViewBuilder.Unresolved(board, c.Workspace.Model, c.Workspace.Policy.Prefix);
+        c.Workspace.ToViewer.Post(MailMessage.Ops.Display, new JsonObject { ["context"] = BoardViewBuilder.ContextOf(board.Id!) });
+        Console.WriteLine($"Drew board {board.Id}: {board.Boxes.Count} boxes, {board.Arrows.Count} arrows. Keep or discard it in the viewer.");
+        if (missing.Count > 0)
+            Console.WriteLine($"Not in the code, so drawn as missing: {string.Join(", ", missing)}. Use a type id such as Shop.Orders.OrderService, or Type.Member.");
         return 0;
     }
 
@@ -261,8 +281,9 @@ public static class Program
           mutate [--all] [files]  Mutation-test changed members (Stryker.NET); --all for whole files.
           doctor                  Check what the metrics and the agent need; print the fix for anything missing.
           mail [--peek]           Print (and remove) mail for the agent.
-          tell display <ctx> [--focus id] | notify <text> | reload
-                                  Send mail to the viewer.
+          tell display <ctx> [--focus id] | board [file] | notify <text> | reload
+                                  Send mail to the viewer. `board` draws .milligram/board.json (or file).
+                                  <ctx> is real, a proposal id, or board:<id>.
           agent [status|start|stop|attach]
                                   Manage the companion agent session.
                                   With an unreadable policy, stop checks both project backends.

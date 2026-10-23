@@ -40,6 +40,18 @@ public static class Grading
         new(CrapGrade(TypeMetrics.Crap(type, metrics.Crap), thresholds),
             MutationGrade(TypeMetrics.Mutation(type, metrics.Mutation), thresholds));
 
+    /// <summary>One member's own scores, for a box that points at a single method.</summary>
+    public static Grades ForMember(MemberNode member, MetricsSet metrics, Thresholds thresholds)
+    {
+        var crap = metrics.Crap.Members.GetValueOrDefault(member.Id) is { Crap: { } score }
+            ? Scale(score, thresholds.CrapGood, thresholds.CrapBad)
+            : (int?)null;
+        var mutation = metrics.Mutation.Tested(member.Span.File) && metrics.Mutation.Members.GetValueOrDefault(member.Id) is { } entry
+            ? MutationGrade(new MutationSummary(entry.Detected, entry.Survived, entry.Uncovered, entry.Sites, Stale: false), thresholds)
+            : null;
+        return new Grades(crap, mutation);
+    }
+
     /// <summary>Linear from <paramref name="bad"/> (1) to <paramref name="good"/> (10); works whichever direction is better.</summary>
     public static int Scale(double value, double good, double bad)
     {

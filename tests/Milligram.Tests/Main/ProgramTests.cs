@@ -45,6 +45,46 @@ public class ProgramTests
     }
 
     [Fact]
+    public async Task TellBoardDrawsThePenAndShowsTheBoard()
+    {
+        using var project = new TempProject((".milligram/milligram.json", """{ "prefix": "App" }"""), ("Source.cs", "namespace App; public class Source {}"),
+            (".milligram/board.json", """{ "title": "Flow", "boxes": [{ "id": "s", "ref": "Source" }, { "id": "g", "ref": "Gone" }] }"""));
+        var paths = new ProjectPaths(project.Root);
+        Assert.Equal(0, await global::Milligram.Main.Program.Main(["ir", "--project", project.Root]));
+
+        Assert.Equal(0, await global::Milligram.Main.Program.Main(["tell", "board", "--project", project.Root]));
+
+        Assert.True(File.Exists(Path.Combine(paths.BoardDraftsDirectory, "flow.json")));
+        var mail = Assert.Single(new Mailbox(paths.ToViewerDirectory).Take());
+        Assert.Equal("display", mail.Op);
+        Assert.Equal("board:flow", (string?)mail.Data["context"]);
+    }
+
+    [Fact]
+    public async Task TellBoardCanDrawAnotherFile()
+    {
+        using var project = new TempProject((".milligram/milligram.json", "{}"),
+            ("notes/flow.json", """{ "id": "other", "boxes": [{ "id": "a", "label": "A" }] }"""));
+        var paths = new ProjectPaths(project.Root);
+
+        Assert.Equal(0, await global::Milligram.Main.Program.Main(["tell", "board", Path.Combine(project.Root, "notes", "flow.json"), "--project", project.Root]));
+
+        Assert.True(File.Exists(Path.Combine(paths.BoardDraftsDirectory, "other.json")));
+    }
+
+    [Fact]
+    public async Task ABoardThatCannotBeDrawnShowsNothing()
+    {
+        using var project = new TempProject((".milligram/milligram.json", "{}"), (".milligram/board.json", """{ "title": "Flow", "boxes": [] }"""));
+        var paths = new ProjectPaths(project.Root);
+
+        Assert.Equal(1, await global::Milligram.Main.Program.Main(["tell", "board", "--project", project.Root]));
+
+        Assert.Empty(new Mailbox(paths.ToViewerDirectory).Take());
+        Assert.False(Directory.Exists(paths.BoardDraftsDirectory));
+    }
+
+    [Fact]
     public async Task ARootPolicyFromAnEarlierVersionIsCopiedOnceAndThenLeftAlone()
     {
         const string text = "{\n  // hand-written\n  \"prefix\": \"App\",\n}\n";
