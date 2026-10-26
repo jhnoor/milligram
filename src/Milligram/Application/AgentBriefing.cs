@@ -41,14 +41,48 @@ public static class AgentBriefing
 
         | op | meaning |
         |----|---------|
-        | `context` | `{"context":"real"}` or `{"context":"proposal","proposalId":…,"name":…}`: the diagram under discussion. Stay on it until the next `context`. `focus` is the box the user drilled into. |
+        | `context` | `{"context":"real"}`, `{"context":"proposal","proposalId":…,"name":…}` or `{"context":"board","boardId":…,"title":…}`: the diagram under discussion. Stay on it until the next `context`. `focus` is the box the user drilled into. |
         | `message` | The user typed `text` in the viewer. `selection` is what they had selected. Answer as if they typed it here. |
         | `changed` | For your information: the viewer itself edited `.milligram/milligram.json` (omit, proposal rename/delete). Re-read the file before you edit it. |
 
         Talk back to the viewer with:
 
         - `milligram tell display real` or `milligram tell display <proposalId> [--focus <nodeId>]`: switch the diagram.
+        - `milligram tell board`: draw `.milligram/board.json` as a board (below). `milligram tell display board:<id>` shows a board again.
         - `milligram tell notify "short text"`: show a note in the viewer (e.g. "Moved Parser into Domain").
+
+        ## Boards: draw to explain
+
+        When a picture would help, such as how a request flows, what a change touches or how parts fit,
+        draw a board. Write it to `.milligram/board.json` (you may write that file without asking), then
+        run `milligram tell board`. It checks the board, prints any problem and any reference it couldn't
+        find, and opens the board in a tab beside the diagram. Run it again after each edit.
+
+        ```json
+        {
+          "id": "order-pricing",
+          "title": "How an order is priced",
+          "boxes": [
+            { "id": "handler", "ref": "Shop.Orders.PlaceOrderHandler" },
+            { "id": "quote", "ref": "Shop.Pricing.Quoting.Quote", "label": "Quote()" },
+            { "id": "customer", "label": "the customer" },
+            { "id": "n1", "note": "Prices are only computed in Pricing." }
+          ],
+          "arrows": [
+            { "from": "customer", "to": "handler", "label": "POST /orders" },
+            { "from": "handler", "to": "quote" }
+          ]
+        }
+        ```
+
+        - `ref` is a type id, the full name such as `Shop.Orders.PlaceOrderHandler`, or `Type.Member` for
+          one member. The prefix may be left off. A box with a `ref` takes that code's CRAP and mutation
+          colours and opens its source; a `ref` that matches nothing is drawn as missing. `label` renames it.
+        - A box with only a `label` stands for something with no code: a user, a queue, another service.
+        - A `note` is a short explanation in a yellow box. Use few, and keep them short.
+        - Choose the few boxes that make the point, usually 5 to 15, not everything. The viewer lays them out.
+        - `id` names the board (lowercase letters, digits, hyphens); reuse it to revise the same board.
+          Boards are throwaway until the user presses Keep, which saves them in `.milligram/boards/`.
 
         ## The policy: `.milligram/milligram.json`
 

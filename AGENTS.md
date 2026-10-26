@@ -57,8 +57,8 @@ One project, `src/Milligram`, packed as the `milligram` dotnet tool. One test pr
 
 | Namespace | Level | Holds |
 |-----------|-------|-------|
-| `Domain` | 0 | Pure model and rules. `Model` (CodeModel, TypeNode, edges), `Policies` (milligram.json records, NamePath, Glob), `Hierarchy` (component tree, dependency rule, `Layering` used by `init` to infer levels), `Views` (what the browser draws), `Metrics` (CRAP, mutation, grades, snapshots), `Mail`. |
-| `Application` | 1 | Use cases and ports. `Workspace` (current policy, model, and metrics, all thread-safe), `ViewerActions` (what the viewer's buttons do), `CrapService`, `MutationService`, `JobQueue`, `Mailbox`, `PolicyEditor`, `ProjectInitializer`, `AgentBriefing`, `AgentLauncher` (what `serve` does about the agent), and `Ports.cs` (every interface an adapter implements). |
+| `Domain` | 0 | Pure model and rules. `Model` (CodeModel, TypeNode, edges), `Policies` (milligram.json records, NamePath, Glob), `Hierarchy` (component tree, dependency rule, `Layering` used by `init` to infer levels), `Views` (what the browser draws, including `BoardViewBuilder`), `Metrics` (CRAP, mutation, grades, snapshots), `Mail`, `Boards` (the boards the agent draws). |
+| `Application` | 1 | Use cases and ports. `Workspace` (current policy, model, and metrics, all thread-safe), `ViewerActions` (what the viewer's buttons do), `CrapService`, `MutationService`, `JobQueue`, `Mailbox`, `PolicyEditor`, `ProjectInitializer`, `AgentBriefing`, `AgentLauncher` (what `serve` does about the agent), `BoardStore` (the agent's pen, drafts and kept boards), and `Ports.cs` (every interface an adapter implements). |
 | `Analysis` | 2 | Readers of the outside world: the Roslyn `CSharp` scanner, the Cobertura and Stryker report readers, and the .csproj locator. |
 | `Adapters` | 2 | Web server, SSE `EventHub` and guarded `AgentWebSocket`; tmux companion and native host (session, protocol, pipes, lease and discovery); `AgentLaunch` (command, arguments, conversation and shim); PTY and local terminal attachment; file watcher (`DrvFs`, `WindowsSideWatcher`, `ChangePoller` for Windows drives under WSL); process runner (`ProgramPath`, `BatchCommandLine`, output draining); CLI parsing. |
 | `Main` | 3 | `Program` (commands) and `Composition` (the only place that constructs concrete classes). |
@@ -70,6 +70,9 @@ builds a `DiagramTree` for one context (`real`, or a proposal id) → `ViewBuild
 `TypeCardBuilder` apply the metrics → the JSON API (`/api/view`, `/api/type`, `/api/source`,
 `/api/action`, `/api/events`) → `app.js` lays it out with ELK and draws SVG. `ProjectWatcher`
 regenerates when `.cs` files, `.milligram/milligram.json`, or metrics change, and pushes SSE events.
+Boards take a side route: the agent writes `.milligram/board.json`, `milligram tell board` checks it
+into a draft (`BoardStore`), and `BoardViewBuilder` turns a `board:<id>` context into the same
+`DiagramView`, so the viewer draws boards with the diagram's code.
 
 ## Rules that tests enforce
 
@@ -152,6 +155,9 @@ Match the existing code. It is terse and consistent:
 - **Terminal WebSocket.** Change `Adapters/Web/AgentWebSocket.cs`, `wwwroot/agent-panel.js`,
   their fast/browser tests and `AGENT_HOST.md` together. Preserve exact Host and Origin checks,
   the secret subprotocol, protocol version, message bounds and parsed-output credit accounting.
+- **Board format.** Change `Domain/Boards/Board.cs`, `BoardViewBuilder`, the README's Boards section and
+  `AgentBriefing.Text` together. The agent writes this format by hand, so keep it forgiving and its
+  errors specific.
 - `AgentBriefing.Text` holds the instructions for the companion agent. Milligram writes them into
   *each examined project* as `.milligram/agent.md`. They are not instructions for you, but they are
   product copy, so keep them accurate.

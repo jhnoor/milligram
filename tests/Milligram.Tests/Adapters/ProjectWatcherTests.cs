@@ -158,10 +158,27 @@ public class ProjectWatcherTests
     }
 
     [Fact]
+    public async Task BoardChangesTellTheViewerWithoutAScan()
+    {
+        using var project = new TempProject((".milligram/milligram.json", """{ "src": "src" }"""), ("src/Order.cs", "class Order {}"));
+        var workspace = new Workspace(new ProjectPaths(project.Root), new CSharpScanner());
+        workspace.Load();
+        var events = new FakeEvents();
+        var jobs = new JobQueue(events);
+        using var watcher = new ProjectWatcher(workspace.Paths, workspace, Actions(workspace, events, jobs), events);
+
+        project.Write(".milligram/boards/drafts/flow.json", """{ "title": "Flow" }""");
+
+        await events.WaitFor("boards");
+        Assert.Equal(JobState.Idle, jobs.Status.State);
+    }
+
+    [Fact]
     public void PollingIncludesProjectInputsWithoutWalkingUnrelatedBuildOutput()
     {
         using var project = new TempProject((".milligram/milligram.json", """{ "src": "src", "exclude": ["src/Generated/**", "**/obj/**"] }"""),
-            ("milligram.json", "{}"), ("App.csproj", "<Project />"), ("src/App/App.csproj", "<Project />"),
+            ("milligram.json", "{}"), (".milligram/board.json", "{}"), (".milligram/boards/flow.json", "{}"), (".milligram/boards/drafts/x.json", "{}"),
+            ("App.csproj", "<Project />"), ("src/App/App.csproj", "<Project />"),
             ("src/App/Order.cs", "class Order {}"), ("obj/project.assets.json", "{}"),
             ("src/App/obj/project.assets.json", "{}"), ("src/App/obj/Debug/App.GlobalUsings.g.cs", "global using System;"),
             ("src/App/obj/Debug/App.AssemblyInfo.cs", ""), ("src/App/obj/Debug/project.assets.json", "{}"),
@@ -174,7 +191,7 @@ public class ProjectWatcherTests
 
         var inputs = watcher.Watched().Select(file => workspace.Paths.Relative(file.Key)).Order(StringComparer.Ordinal);
 
-        Assert.Equal([".milligram/milligram.json", "App.csproj", "obj/project.assets.json", "src/App/App.csproj", "src/App/Order.cs",
+        Assert.Equal([".milligram/boards/drafts/x.json", ".milligram/boards/flow.json", ".milligram/milligram.json", "App.csproj", "obj/project.assets.json", "src/App/App.csproj", "src/App/Order.cs",
             "src/App/obj/Debug/App.GlobalUsings.g.cs", "src/App/obj/project.assets.json"], inputs);
     }
 

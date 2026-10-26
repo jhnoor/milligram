@@ -329,13 +329,28 @@ By default, `milligram` starts Copilot CLI in a tmux session for the project, an
 The agent's instructions are in `.milligram/agent.md`, and each project keeps one conversation,
 resumed on every start.
 
-By default the agent may run `milligram` commands and edit `.milligram/milligram.json` without asking.
+By default the agent may run `milligram` commands, edit `.milligram/milligram.json` and draw on
+`.milligram/board.json` without asking.
 Anything else, such as editing code, asks for your approval in its terminal. Add patterns to
 `agent.allowTools` to allow more.
 
 The viewer and agent exchange JSON files in `.milligram/mail/`. The agent reads with `milligram mail`
 and replies with `milligram tell`. The viewer runs scans, metrics, and omits itself, so those cost no
 agent tokens.
+
+### Boards
+
+When a picture explains something better than text, such as how a request flows or what a change
+touches, the agent draws a board: the few boxes that make the point, linked to real types and members,
+with notes and labelled arrows. It writes `.milligram/board.json` and runs `milligram tell board`,
+which checks the board and opens it in a tab beside the diagram. Boxes that point at code keep their
+CRAP and mutation colours; double-click one to open its source, or right-click it to ask the agent
+about it. Boxes for things with no code (a user, a queue) are dashed, and a reference that no longer
+matches the code is drawn as missing instead of failing the board.
+
+Boards are throwaway: the next viewer start clears them. **Keep** saves one in
+`.milligram/boards/`, which, like the rest of `.milligram/`, is never committed. **Discard** removes
+it. Closing a tab only hides the board; it stays under *Boards* in the inspector.
 
 ### Run the agent yourself
 
@@ -362,7 +377,7 @@ viewer, tell the agent to run `milligram mail`.
 | `milligram mutate [--all] [files…]` | Mutation-test changed members, including initializers (every file if you list none). |
 | `milligram doctor` | Check the SDK, restore, test projects, coverage collector, Stryker, and the agent; print the fix for anything missing. Exits 1 if something is. |
 | `milligram mail [--peek]` | Print and remove mail for the agent. |
-| `milligram tell display <real\|proposalId>` / `tell notify "text"` | Send mail to the viewer. |
+| `milligram tell display <real\|proposalId\|board:id>` / `tell board [file]` / `tell notify "text"` | Send mail to the viewer. `tell board` checks and draws `.milligram/board.json` (or `file`) as a board. |
 | `milligram agent status\|start\|stop\|attach` | Manage the session selected by `agent.host`. With an unreadable policy, `stop` attempts both project backends. Native `attach` uses the current terminal; Ctrl+] then d detaches. |
 
 `milligram`, `init` and `ir` accept `--msbuild FILE.csproj` (repeatable), `--configuration NAME`,

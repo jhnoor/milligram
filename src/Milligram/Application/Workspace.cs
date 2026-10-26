@@ -1,3 +1,4 @@
+using Milligram.Domain.Boards;
 using Milligram.Domain.Hierarchy;
 using Milligram.Domain.Metrics;
 using Milligram.Domain.Model;
@@ -27,12 +28,14 @@ public sealed class Workspace
         this.scanOverride = scanOverride;
         ToAgent = new Mailbox(paths.ToAgentDirectory);
         ToViewer = new Mailbox(paths.ToViewerDirectory);
+        Boards = new BoardStore(paths);
         model = CodeModel.Empty(DefaultTitle, "");
     }
 
     public ProjectPaths Paths { get; }
     public Mailbox ToAgent { get; }
     public Mailbox ToViewer { get; }
+    public BoardStore Boards { get; }
     public string DefaultTitle => Path.GetFileName(Paths.Root);
     public string? PolicyError { get; private set; }
     public string? ScanError { get; private set; }
@@ -197,8 +200,11 @@ public sealed class Workspace
         }
     }
 
+    /// <summary>A "board:" context draws that board; an unknown or unreadable board, like an unknown proposal, falls back to the real diagram.</summary>
     public DiagramView View(string? contextId, string? focusId, int page = 0, string? query = null)
     {
+        if (BoardViewBuilder.BoardIdOf(contextId) is { } boardId && LoadBoard(boardId) is { } board)
+            lock (gate) return BoardViewBuilder.Build(board, model, policy, metrics);
         var tree = Tree(contextId);
         lock (gate) return ViewBuilder.Build(model, policy, metrics, tree, focusId, page, query);
     }
@@ -207,6 +213,12 @@ public sealed class Workspace
     {
         var tree = Tree(contextId);
         lock (gate) return TypeCardBuilder.Build(model, policy, metrics, tree, typeId);
+    }
+
+    private Board? LoadBoard(string id)
+    {
+        try { return Boards.Load(id); }
+        catch (MilligramException) { return null; }
     }
 
     /// <summary>The types a view node stands for: a tree node's subtree, or a single type.</summary>

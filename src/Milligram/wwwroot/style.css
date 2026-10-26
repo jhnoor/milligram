@@ -48,6 +48,11 @@ a:hover { text-decoration: underline; }
 #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 15px; pointer-events: none; text-align: center; padding: 40px; }
 #no-metrics { position: absolute; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 10; display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: 0 6px 20px rgba(0,0,0,.4); font-size: 12px; }
 #no-metrics span { color: var(--muted); }
+#tabs { position: absolute; top: 8px; left: 10px; z-index: 10; display: flex; gap: 4px; }
+#tabs .tab { display: flex; gap: 6px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; color: var(--muted); font-size: 12px; cursor: pointer; }
+#tabs .tab.on { color: var(--ink); border-color: var(--gold); font-weight: 600; }
+#tabs .close { color: var(--muted); padding: 0 2px; }
+#tabs .close:hover { color: var(--red); }
 
 #inspector { grid-row: 1 / 3; grid-column: 2 / 3; background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; }
 #inspector section { padding: 10px 14px; border-bottom: 1px solid var(--line); }
@@ -104,6 +109,10 @@ code, .mono { font-family: var(--mono); font-size: 11.5px; }
 .edge.hot path.line { stroke: var(--gold); stroke-width: 2.6; }
 .edge.hot.violating path.line { stroke: var(--red); stroke-width: 3.2; }
 .edge path.hit { fill: none; stroke: transparent; stroke-width: 12; cursor: help; }
+.edge rect.label-bg { fill: #0f1320; stroke: #56607a; }
+.edge text.label { fill: var(--ink); font: 10.5px var(--font); }
+.node.note text.note-text { fill: #f3e6b8; }
+.node.missing .caption { fill: #ff8a8a; }
 .tri { cursor: help; }
 
 /* Floating panels */

@@ -50,6 +50,8 @@ public sealed class ViewerActions(
                 "new-proposal" => NewProposal(action),
                 "rename-proposal" => RenameProposal(action),
                 "delete-proposal" => DeleteProposal(action),
+                "keep-board" => KeepBoard(action),
+                "discard-board" => DiscardBoard(action),
                 MailMessage.Ops.Context => Context(action),
                 MailMessage.Ops.Message => Message(action),
                 "start-agent" or "stop-agent" or "restart-agent" => await ControlAgentAsync(action.Op, cancellation),
@@ -158,6 +160,21 @@ public sealed class ViewerActions(
         return ActionResult.Done();
     }
 
+    private ActionResult KeepBoard(ViewerAction action)
+    {
+        if (BoardViewBuilder.BoardIdOf(action.Context) is not { } id) return ActionResult.Fail("Keep needs a board.");
+        if (!workspace.Boards.Keep(id)) return ActionResult.Fail("That board is already kept.");
+        events.Publish("boards");
+        return ActionResult.Done("Kept the board in .milligram/boards/.");
+    }
+
+    private ActionResult DiscardBoard(ViewerAction action)
+    {
+        if (BoardViewBuilder.BoardIdOf(action.Context) is not { } id || !workspace.Boards.Discard(id)) return ActionResult.Fail("There is no such board.");
+        events.Publish("boards");
+        return ActionResult.Done("Discarded the board.");
+    }
+
     private ActionResult Context(ViewerAction action)
     {
         Mail(MailMessage.Ops.Context, ContextData(action.Context, action.Focus));
@@ -208,6 +225,8 @@ public sealed class ViewerActions(
 
     private JsonObject ContextData(string? contextId, string? focus)
     {
+        if (BoardViewBuilder.BoardIdOf(contextId) is { } boardId && workspace.Boards.List().FirstOrDefault(b => b.Id == boardId) is { } board)
+            return new JsonObject { ["context"] = "board", ["boardId"] = board.Id, ["title"] = board.Title };
         var tree = workspace.Tree(contextId);
         var data = tree.IsProposal
             ? new JsonObject { ["context"] = "proposal", ["proposalId"] = tree.ContextId, ["name"] = tree.ContextName }

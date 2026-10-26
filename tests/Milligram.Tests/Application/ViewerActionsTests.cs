@@ -107,6 +107,56 @@ public class ViewerActionsTests : IDisposable
     }
 
     [Fact]
+    public async Task ChoosingABoardTellsTheAgentWhichBoardIsUnderDiscussion()
+    {
+        project.Write(".milligram/boards/drafts/flow.json", """{ "title": "The flow", "boxes": [{ "id": "a", "label": "A" }] }""");
+
+        await Do("message", context: "board:flow", text: "why?", focus: "board:flow");
+
+        var mail = Assert.Single(workspace.ToAgent.Take());
+        Assert.Equal("board", (string?)mail.Data["context"]);
+        Assert.Equal("flow", (string?)mail.Data["boardId"]);
+        Assert.Equal("The flow", (string?)mail.Data["title"]);
+        Assert.Equal("why?", (string?)mail.Data["text"]);
+        Assert.Null(mail.Data["focus"]);
+    }
+
+    [Fact]
+    public async Task AGoneBoardIsDiscussedAsTheRealDiagram()
+    {
+        await Do("context", context: "board:gone");
+
+        Assert.Equal("real", (string?)Assert.Single(workspace.ToAgent.Take()).Data["context"]);
+    }
+
+    [Fact]
+    public async Task KeepingADraftSavesItAndTellsTheViewer()
+    {
+        project.Write(".milligram/boards/drafts/flow.json", """{ "title": "The flow", "boxes": [{ "id": "a", "label": "A" }] }""");
+
+        var kept = await Do("keep-board", context: "board:flow");
+        var again = await Do("keep-board", context: "board:flow");
+
+        Assert.Equal(ActionResult.Done("Kept the board in .milligram/boards/."), kept);
+        Assert.Equal(ActionResult.Fail("That board is already kept."), again);
+        Assert.True(File.Exists(Path.Combine(workspace.Paths.BoardsDirectory, "flow.json")));
+        Assert.Equal(["boards"], events.Types);
+        Assert.Equal(ActionResult.Fail("Keep needs a board."), await Do("keep-board", context: "real"));
+    }
+
+    [Fact]
+    public async Task DiscardingABoardRemovesItAndTellsTheViewer()
+    {
+        project.Write(".milligram/boards/flow.json", """{ "title": "The flow", "boxes": [{ "id": "a", "label": "A" }] }""");
+
+        Assert.Equal(ActionResult.Done("Discarded the board."), await Do("discard-board", context: "board:flow"));
+        Assert.Equal(ActionResult.Fail("There is no such board."), await Do("discard-board", context: "board:flow"));
+        Assert.Equal(ActionResult.Fail("There is no such board."), await Do("discard-board", context: "p1"));
+        Assert.Empty(workspace.Boards.List());
+        Assert.Equal(["boards"], events.Types);
+    }
+
+    [Fact]
     public async Task OmittingATypeOnTheRealDiagramEditsThePolicyAndNotifiesQuietly()
     {
         companion.Running = true;

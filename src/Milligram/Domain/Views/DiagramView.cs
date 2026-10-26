@@ -3,11 +3,14 @@ using Milligram.Domain.Model;
 
 namespace Milligram.Domain.Views;
 
-public sealed record ContextInfo(string Id, string Name, bool IsProposal);
+public sealed record ContextInfo(string Id, string Name, bool IsProposal)
+{
+    public bool IsBoard { get; init; }
+}
 
 public sealed record NodeRef(string Id, string Label);
 
-public enum ViewNodeKind { Component, Package, Type, External, Foreign, Summary }
+public enum ViewNodeKind { Component, Package, Type, External, Foreign, Summary, Note, Free, Missing }
 
 /// <summary>One box on screen. <see cref="Parent"/> is the containing component, if any.</summary>
 public sealed record ViewNode
@@ -35,12 +38,22 @@ public sealed record ViewNode
     public IReadOnlyList<string> Contents { get; init; } = [];
     public IReadOnlyList<ViewMember> Members { get; init; } = [];
     public Grades Grades { get; init; } = Grades.Unknown;
+
+    /// <summary>A line under the label, such as the namespace of a type on a board.</summary>
+    public string? Caption { get; init; }
+
+    /// <summary>Where the box's code starts, for boxes that open their source.</summary>
+    public string? File { get; init; }
+    public int? Line { get; init; }
 }
 
 public sealed record ViewMember(string Name, string Signature, MemberKind Kind, Visibility Visibility, bool IsStatic, bool IsAbstract);
 
 /// <summary>An arrow between two visible nodes, bundling every type-level dependency it stands for.</summary>
-public sealed record ViewEdge(string From, string To, EdgeKind Kind, bool Violating, IReadOnlyList<EdgePair> Pairs);
+public sealed record ViewEdge(string From, string To, EdgeKind Kind, bool Violating, IReadOnlyList<EdgePair> Pairs)
+{
+    public string? Label { get; init; }
+}
 
 public sealed record EdgePair(string From, string To, EdgeKind Kind, bool Violating, int Count);
 
